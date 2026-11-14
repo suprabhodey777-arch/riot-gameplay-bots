@@ -3,6 +3,10 @@ import type { Skill, WeaknessEvidence, WeaknessFinding } from '../shared/coachin
 import { loadMap } from '../shared/maps/index.ts';
 import { idleInput, startDrill } from '../session/drill-run.ts';
 import { sessionWithWeakness } from '../session/headless.ts';
+import { createSimulatedPlayer, profileWithWeakness } from '../session/simulated-player.ts';
+import { lineOfSight } from '../sim/geometry.ts';
+import { DEFUSE_TIME_S, PLANT_TIME_S, RUN_SPEED } from '../sim/sim.ts';
+import { pathBetween } from '../bot/nav.ts';
 import { analyze } from './analyze.ts';
 import { EXAM_SEED_BASE } from './drills.ts';
 import { rehearsalDrill } from './rehearse.ts';
@@ -61,25 +65,26 @@ describe('analyzer situations', () => {
 });
 
 describe('rehearsalDrill', () => {
-  test('starts a sim with the player and enemies where the evidence said, enemies facing the player', () => {
+  test('starts the approach: enemies where the evidence said, the player back out of their sight', () => {
     const d = rehearsalDrill(evidence(), finding('entry'), map, 7);
-    expect(d.player.spawn).toEqual({ x: 30, y: 40 });
+    expect(d.player.spawn).not.toEqual({ x: 30, y: 40 });
     expect(d.bots.map((b) => b.spawn)).toEqual([{ x: 64, y: 40 }, { x: 60, y: 50 }]);
     expect(d.player.team).toBe('attack');
     expect(d.bots.every((b) => b.team === 'defense' && b.hold)).toBe(true);
-    expect(d.roundTimeLeftS).toBe(80);
+    // The walk back is added to the clock.
+    expect(d.roundTimeLeftS).toBeGreaterThan(80);
     expect(d.player.carryingSpike).toBe(true);
     const run = startDrill(d);
     const at = (id: string) => run.state().agents.find((a) => a.id === id)?.pos;
-    expect(at('player')).toEqual({ x: 30, y: 40 });
+    expect(at('player')).toEqual(d.player.spawn);
     expect(at('bot-1')).toEqual({ x: 64, y: 40 });
     expect(at('bot-2')).toEqual({ x: 60, y: 50 });
-    expect(run.state().roundTimeLeftS).toBe(80);
+    expect(run.state().roundTimeLeftS).toBe(d.roundTimeLeftS);
   });
 
   test('the goal text says what happened and names the callout', () => {
     const d = rehearsalDrill(evidence(), finding('entry'), map, 7);
-    expect(d.goal).toBe('Round 11: you lost the opening duel at Mid Road 0.6 s after contact. Same spot, same angle. Try again.');
+    expect(d.goal).toBe('Round 11: you lost the opening duel at Mid Road 0.6 s after contact. Same angle, a few seconds earlier: take it differently.');
     const c = rehearsalDrill(evidence({ side: 'attack', enemies: [{ pos: { x: 62, y: 40 } }] }), finding('clutch'), map, 7);
     expect(c.goal).toContain('Mid Road');
     expect(c.goal).toContain('1v1 clutch');
@@ -107,7 +112,7 @@ describe('rehearsalDrill', () => {
       7,
     );
     expect(d.spikePlanted?.site).toBe('B');
-    expect(d.spikePlanted?.secondsLeft).toBe(22);
+    expect(d.spikePlanted?.secondsLeft).toBeGreaterThanOrEqual(22);
     expect(d.player.carryingSpike).toBe(false);
     expect(startDrill(d).state().spike.status).toBe('planted');
   });
@@ -139,6 +144,56 @@ describe('rehearsalDrill', () => {
         const run = startDrill(d);
         for (let i = 0; i < 80 && !run.done(); i++) run.step(null);
         expect(run.finish().drillId).toBe(d.id);
+      }
+    }
+  });
+
+  test('the player starts out of every enemy sight and at least 8 m away, for every skill', () => {
+    for (const skill of SKILLS) {
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        for (const d of sessionWithWeakness(skill, seed, NO_KEY).rehearsals()) {
+          const st = startDrill(d).state();
+          const me = st.agents.find((a) => a.id === 'player');
+          expect(me).toBeDefined();
+          for (const a of st.agents.filter((x) => x.id !== 'player')) {
+            expect(lineOfSight(me?.pos ?? a.pos, a.pos, map.walls), `${skill} seed ${seed} ${d.id}`).toBe(false);
+            expect(Math.hypot((me?.pos.x ?? 0) - a.pos.x, (me?.pos.y ?? 0) - a.pos.y), `${skill} seed ${seed}`).toBeGreaterThanOrEqual(8);
+          }
+        }
+      }
+    }
+  });
+
+  test('a competent simulated player wins rehearsals of every skill, so they can be won', () => {
+    for (const skill of SKILLS) {
+      let n = 0;
+      let won = 0;
+      for (const seed of [1, 2, 3]) {
+        for (const d of sessionWithWeakness(skill, seed, NO_KEY).rehearsals()) {
+          n++;
+          if (createSimulatedPlayer({ seed: 1, profile: profileWithWeakness(skill, 0.9, 0.9) }).play(d).success) won++;
+        }
+      }
+      expect(n, skill).toBeGreaterThan(0);
+      expect(won / n, `${skill}: ${won}/${n}`).toBeGreaterThanOrEqual(0.2);
+    }
+  });
+
+  test('a time-pressure rehearsal leaves time to reach the site and plant or defuse', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      for (const d of sessionWithWeakness('time_pressure', seed, NO_KEY).rehearsals()) {
+        const goal = d.spikePlanted ? d.spikePlanted.pos : null;
+        const target = goal ?? d.bots[0].spawn;
+        const path = pathBetween(map, d.player.spawn, target) ?? [target];
+        let len = 0;
+        let at = d.player.spawn;
+        for (const p of path) {
+          len += Math.hypot(p.x - at.x, p.y - at.y);
+          at = p;
+        }
+        const job = d.player.team === 'attack' ? PLANT_TIME_S : DEFUSE_TIME_S;
+        // Site centre is not known to the test for a plant; the enemy stands in the site, so it is a close stand-in.
+        expect(d.roundTimeLeftS, `${d.id}`).toBeGreaterThanOrEqual(len / RUN_SPEED + job - 3);
       }
     }
   });
