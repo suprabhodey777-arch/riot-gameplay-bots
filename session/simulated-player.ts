@@ -9,7 +9,8 @@
  *   entry          reaction 520 -> 200 ms, head accuracy .06 -> .30, body .40 -> .75,
  *                  aggression .25 -> .90, patience .80 -> .10 (c = 0 -> 1): a weak
  *                  player is slow, inaccurate and hangs back before the swing.
- *   clutch         reaction 400 -> 240 ms, head .12 -> .30, body .50 -> .75; and once per drill the player PANICS with probability 1 - c: it
+ *   clutch         reaction 400 -> 140 ms, head .10 -> .60, body .50 -> .95 (a composed player aims well;
+ *                  without a stronger spread the 1v2 and 1v3 exam drills are unwinnable); and once per drill the player PANICS with probability 1 - c: it
  *                  abandons its position and runs at the defenders' side of the
  *                  map, reacting 200 ms slower and shooting at 30% of its normal
  *                  accuracy. Otherwise it plays the bot's patient post-plant guard.
@@ -78,7 +79,7 @@ export function traitsForSkill(skill: Skill, c: number): BotTraits {
     };
   }
   if (skill === 'clutch') {
-    return { ...BASE, reactionMs: Math.round(lerp(400, 240, k)), headAccuracy: r2(lerp(0.12, 0.3, k)), bodyAccuracy: r2(lerp(0.5, 0.75, k)), aggression: 0.3, patience: 0.7 };
+    return { ...BASE, reactionMs: Math.round(lerp(400, 140, k)), headAccuracy: r2(lerp(0.1, 0.6, k)), bodyAccuracy: r2(lerp(0.5, 0.95, k)), aggression: 0.3, patience: 0.7 };
   }
   return { ...BASE };
 }
