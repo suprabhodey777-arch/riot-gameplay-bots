@@ -38,6 +38,7 @@ import { sitePoly } from '../sim/geometry.ts';
 import { DETONATION_S, ROUND_TIME_S, TICK_RATE } from '../sim/sim.ts';
 import { BENCHMARKS, type Role } from './benchmarks.ts';
 import { calloutAt, centroid, dist } from './geo.ts';
+import { situationAt } from './situation.ts';
 
 export const TEAM_SIZE = 5;
 export const LATE_PLANT_LEFT_S = 20;
@@ -112,6 +113,7 @@ function entrySample(log: MatchLog, r: Round, playerId: string, map: MapDef): Sa
       note: won
         ? `won the opening duel at ${where}, ${lead} s after first contact`
         : `${fight.type === 'kill' ? 'died first' : 'lost the opening duel'} at ${where}, ${lead} s after first contact`,
+      situation: situationAt(map, r, playerId, fight.tick, { hint: fight.victimPos }),
     },
   };
 }
@@ -145,6 +147,7 @@ function clutchSample(log: MatchLog, r: Round, playerId: string, map: MapDef): S
           round: r.index,
           tick: e.tick,
           note: `${won ? 'won' : 'lost'} a 1v${left} clutch${where}, ${fmt(secs(e.tick))} s into the round`,
+          situation: situationAt(map, r, playerId, e.tick, { inclusive: true, allEnemies: true, hint: lastPos.v ?? undefined }),
         },
       };
     }
@@ -152,7 +155,7 @@ function clutchSample(log: MatchLog, r: Round, playerId: string, map: MapDef): S
   return null;
 }
 
-function timePressureSample(log: MatchLog, r: Round, playerId: string): Sample | null {
+function timePressureSample(log: MatchLog, r: Round, playerId: string, map: MapDef): Sample | null {
   const plant = r.events.find((e): e is SimEvent & { type: 'plant' } => e.type === 'plant');
   const defuse = r.events.find((e): e is SimEvent & { type: 'defuse' } => e.type === 'defuse');
   const end = r.events.find((e): e is SimEvent & { type: 'round_end' } => e.type === 'round_end');
@@ -168,13 +171,21 @@ function timePressureSample(log: MatchLog, r: Round, playerId: string): Sample |
           round: r.index,
           tick: plant.tick,
           note: `planted with ${fmt(left)} s left and ${won ? 'still won the round' : 'lost the round'}`,
+          situation: situationAt(map, r, playerId, plant.tick, { secondsLeft: left }),
         },
       };
     }
     if (end && end.reason === 'time') {
       return {
         success: false,
-        evidence: { matchId: log.matchId, round: r.index, tick: end.tick, note: 'never planted; the round was lost on time' },
+        evidence: {
+          matchId: log.matchId,
+          round: r.index,
+          tick: end.tick,
+          note: 'never planted; the round was lost on time',
+          // The log cannot say when the player should have gone; rehearse it with 25 s left.
+          situation: situationAt(map, r, playerId, end.tick, { secondsLeft: 25 }),
+        },
       };
     }
     return null;
@@ -193,7 +204,14 @@ function timePressureSample(log: MatchLog, r: Round, playerId: string): Sample |
   if (end && end.reason === 'detonated') {
     return {
       success: false,
-      evidence: { matchId: log.matchId, round: r.index, tick: end.tick, note: 'the spike detonated before the retake finished a defuse' },
+      evidence: {
+        matchId: log.matchId,
+        round: r.index,
+        tick: end.tick,
+        note: 'the spike detonated before the retake finished a defuse',
+        // Rehearsed as a retake with 25 s on the spike.
+        situation: situationAt(map, r, playerId, end.tick, { secondsLeft: 25 }),
+      },
     };
   }
   return null;
@@ -218,7 +236,8 @@ function smokeSamples(log: MatchLog, r: Round, playerId: string, map: MapDef): S
     else if (!early && contact !== null) note = `smoke at ${where} thrown ${fmt(secs(e.tick - contact))} s after first contact`;
     else if (!Number.isFinite(nearest)) note = `smoke at ${where} thrown in a round with no fight or plant`;
     else note = `smoke at ${where} landed ${Math.round(nearest)} m from where the fight happened`;
-    out.push({ success: early && near, evidence: { matchId: log.matchId, round: r.index, tick: e.tick, note } });
+    const situation = situationAt(map, r, playerId, e.tick, { posTick: fight?.tick ?? e.tick, hint: fight?.victimPos });
+    out.push({ success: early && near, evidence: { matchId: log.matchId, round: r.index, tick: e.tick, note, situation } });
   }
   return out;
 }
@@ -253,7 +272,7 @@ export function analyze(logs: MatchLog[], playerId: string): WeaknessReport {
       if (e) samples.entry.push(e);
       const c = clutchSample(log, r, playerId, map);
       if (c) samples.clutch.push(c);
-      const t = timePressureSample(log, r, playerId);
+      const t = timePressureSample(log, r, playerId, map);
       if (t) samples.time_pressure.push(t);
       samples.smoke_usage.push(...smokeSamples(log, r, playerId, map));
     }
