@@ -58,10 +58,12 @@ class RoundBuilder {
   firstContact = 0;
   firstFightPos: Vec2 = { x: 0, y: 0 };
   plantSite: 'A' | 'B' | null = null;
-  constructor(
-    readonly rng: Rng,
-    readonly map: MapDef,
-  ) {}
+  readonly rng: Rng;
+  readonly map: MapDef;
+  constructor(rng: Rng, map: MapDef) {
+    this.rng = rng;
+    this.map = map;
+  }
 
   u(a: number, b: number): number {
     return a + this.rng.next() * (b - a);
@@ -309,7 +311,11 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
   const end = b.events.find((e) => e.type === 'round_end') as SimEvent;
   const rest = b.events.filter((e) => e !== end).sort((a, c) => a.tick - c.tick);
   if (end.tick < (rest.at(-1)?.tick ?? 0)) end.tick = rest.at(-1)?.tick ?? end.tick;
-  return { index, playerTeam: team, playerRole: profile.role, events: [...rest, end], winner };
+  const enemyTeam: Team = team === 'attack' ? 'defense' : 'attack';
+  const teams: Record<string, Team> = { [PLAYER_ID]: team };
+  for (const id of ALLIES) teams[id] = team;
+  for (const id of ENEMIES) teams[id] = enemyTeam;
+  return { index, playerTeam: team, playerRole: profile.role, teams, events: [...rest, end], winner };
 }
 
 /** Deterministic match logs for one profile. Match i uses an RNG derived from `seed` and i. */

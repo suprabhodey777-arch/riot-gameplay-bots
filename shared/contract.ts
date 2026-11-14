@@ -5,7 +5,7 @@
  * Yaw is in radians, 0 = +x, counter-clockwise.
  */
 
-export const CONTRACT_VERSION = 'v1';
+export const CONTRACT_VERSION = 'v2';
 
 /** A point or vector on the floor plan, in metres. */
 export interface Vec2 {
@@ -165,6 +165,8 @@ export interface MatchLog {
     index: number;
     playerTeam: Team;
     playerRole: 'duelist' | 'initiator' | 'controller' | 'sentinel';
+    /** Every agent id that appears in this round's events, mapped to its team. */
+    teams: Record<string, Team>;
     events: SimEvent[];
     winner: Team;
   }[];

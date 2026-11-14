@@ -1,7 +1,7 @@
 // Maps are authored as JSON and loaded here. `test-box` is a small placeholder
 // for tests; the real map is owned by the 3D team and added as another JSON file.
 import type { MapDef, Vec2 } from '../contract.ts';
-import testBox from './test-box.json';
+import testBox from './test-box.json' with { type: 'json' };
 
 const isVec2 = (p: unknown): p is Vec2 =>
   typeof p === 'object' && p !== null && Number.isFinite((p as Vec2).x) && Number.isFinite((p as Vec2).y);

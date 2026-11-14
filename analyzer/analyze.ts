@@ -2,11 +2,8 @@
  * Weakness analyzer: reads match logs and measures four skills from events
  * alone. Every definition below is about what the log shows, not about intent.
  *
- * Teams: events carry agent ids but no teams, so teams are inferred. The
- * player's team is known per round; two agents are on opposite teams when one
- * damaged, killed or spotted the other; whoever planted is on attack and
- * whoever defused is on defense. This is a parity union-find, so teammates are
- * found even when they never interact directly. A team has 5 players.
+ * Teams: each round carries a `teams` map (agent id to team), so no team is
+ * inferred. An agent missing from the map is ignored. A team has 5 players.
  *
  * "First contact" = the first spotted, damage or kill event of the round.
  * Times are seconds = ticks / 20. The round clock is 100 s from tick 0.
@@ -71,52 +68,6 @@ export function severityOf(successes: number, n: number, benchmark: number): num
   return Math.max(0, Math.min(1, gap / benchmark));
 }
 
-/** Parity union-find over agent ids: are two agents on the same team? */
-class Teams {
-  private parent = new Map<string, string>();
-  private par = new Map<string, number>(); // parity to parent
-  private find(x: string): { root: string; parity: number } {
-    if (!this.parent.has(x)) {
-      this.parent.set(x, x);
-      this.par.set(x, 0);
-    }
-    let p = 0;
-    let cur = x;
-    while (this.parent.get(cur) !== cur) {
-      p ^= this.par.get(cur) as number;
-      cur = this.parent.get(cur) as string;
-    }
-    return { root: cur, parity: p };
-  }
-  /** Declare a and b on the same (diff 0) or opposite (diff 1) teams. */
-  relate(a: string, b: string, diff: 0 | 1): void {
-    const ra = this.find(a);
-    const rb = this.find(b);
-    if (ra.root === rb.root) return;
-    this.parent.set(ra.root, rb.root);
-    this.par.set(ra.root, ra.parity ^ rb.parity ^ diff);
-  }
-  same(a: string, b: string): boolean | null {
-    const ra = this.find(a);
-    const rb = this.find(b);
-    return ra.root === rb.root ? ra.parity === rb.parity : null;
-  }
-}
-
-function teamsFor(round: Round, playerId: string): Teams {
-  const t = new Teams();
-  t.relate('#attack', '#defense', 1);
-  t.relate(playerId, round.playerTeam === 'attack' ? '#attack' : '#defense', 0);
-  for (const e of round.events) {
-    if (e.type === 'damage') t.relate(e.attacker, e.victim, 1);
-    else if (e.type === 'kill') t.relate(e.killer, e.victim, 1);
-    else if (e.type === 'spotted') t.relate(e.observer, e.target, 1);
-    else if (e.type === 'plant') t.relate(e.agent, '#attack', 0);
-    else if (e.type === 'defuse') t.relate(e.agent, '#defense', 0);
-  }
-  return t;
-}
-
 const secs = (ticks: number): number => ticks / TICK_RATE;
 const fmt = (s: number): string => (Math.round(s * 10) / 10).toString();
 
@@ -165,8 +116,7 @@ function entrySample(log: MatchLog, r: Round, playerId: string, map: MapDef): Sa
 }
 
 function clutchSample(log: MatchLog, r: Round, playerId: string, map: MapDef): Sample | null {
-  const teams = teamsFor(r, playerId);
-  const deadAllies = new Set<string>();
+    const deadAllies = new Set<string>();
   const deadEnemies = new Set<string>();
   const lastPos = { v: null as Vec2 | null };
   const events = [...r.events].sort((a, b) => a.tick - b.tick);
@@ -180,9 +130,9 @@ function clutchSample(log: MatchLog, r: Round, playerId: string, map: MapDef): S
     }
     if (e.type !== 'kill') continue;
     if (e.victim === playerId) return null; // died before the clutch began
-    const same = teams.same(e.victim, playerId);
-    if (same === true) deadAllies.add(e.victim);
-    else if (same === false) deadEnemies.add(e.victim);
+    const victimTeam = r.teams[e.victim];
+    if (victimTeam === r.playerTeam) deadAllies.add(e.victim);
+    else if (victimTeam) deadEnemies.add(e.victim);
     if (deadAllies.size >= TEAM_SIZE - 1 && deadEnemies.size < TEAM_SIZE) {
       const left = TEAM_SIZE - deadEnemies.size;
       const won = r.winner === r.playerTeam;
