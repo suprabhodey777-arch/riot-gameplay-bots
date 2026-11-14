@@ -146,7 +146,8 @@ export class CoachingSession {
   rehearsals(): DrillSpec[] {
     const map = loadMap(this.s.mapId);
     const finding = this.s.report.findings[0];
-    if (!finding || finding.sampleSize === 0) return [];
+    // Only a credible weakness has mistakes to rehearse; a severity of 0 means the evidence is not there.
+    if (!finding || finding.sampleSize === 0 || finding.severity <= 0) return [];
     return finding.evidence
       .filter((e) => e.situation)
       .slice(0, 5)

@@ -2,7 +2,7 @@
 import type { DrillResult, DrillSpec, Skill, WeaknessReport } from '../shared/coaching.ts';
 import type { MatchLog } from '../shared/contract.ts';
 import { analyze } from '../analyzer/analyze.ts';
-import { generateMatches, weakProfile } from '../analyzer/synthetic.ts';
+import { sampleHistory } from '../analyzer/synthetic.ts';
 import { createRecorder } from '../session/recorder.ts';
 import { CoachingSession } from '../session/session.ts';
 import { Game, type FinishInfo, type HudInfo } from './game.ts';
@@ -53,7 +53,7 @@ let lastResult: { spec: DrillSpec; info: FinishInfo } | null = null;
 
 function makeSession(src: Source): CoachingSession {
   if (src.skill) {
-    const logs = generateMatches(weakProfile('duelist', src.skill, 0.1), src.seed, { matches: 6 });
+    const logs = sampleHistory(src.skill, src.seed);
     return CoachingSession.fromHistory(logs, 'me', { seed: src.seed, apiKey: null });
   }
   return CoachingSession.fromHistory(ownLogs, PLAYER, { seed: src.seed, apiKey: null });
@@ -123,7 +123,8 @@ function showStart(): void {
     $('ownInfo').textContent = own ? `${ownRounds()} rounds recorded from your drills` : '';
     $('reanalyze').hidden = !own;
     $('clear').hidden = !own || ownRounds() === 0;
-    $('rehearse').hidden = !hasRehearsals();
+    // Only offer rehearsals when there is a credible weakness with mistakes to rebuild.
+    $('rehearse').hidden = !hasRehearsals() || readRehearsals().length === 0;
   };
   $<HTMLSelectElement>('src').onchange = (e) => {
     source = SOURCES.find((s) => s.id === (e.target as HTMLSelectElement).value) ?? SOURCES[0];

@@ -337,3 +337,15 @@ export function generateMatches(profile: PlayerProfile, seed: number, opts: Gene
   }
   return logs;
 }
+
+/**
+ * A sample player's weak skill succeeds at this share of the role's benchmark. A flat 10% was a
+ * strong weakness for skills benchmarked near 50% but a mild one for clutch (22% for duelists),
+ * too mild for six matches to show: the clutch sample's history read as no weakness at all.
+ */
+export const SAMPLE_WEAK_SHARE = 0.2;
+
+/** History for a sample duelist who is weak at `skill` (the play page's sample players). */
+export function sampleHistory(skill: Skill, seed: number, matches = 6): MatchLog[] {
+  return generateMatches(weakProfile('duelist', skill, BENCHMARKS.duelist[skill] * SAMPLE_WEAK_SHARE), seed, { matches });
+}

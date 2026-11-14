@@ -294,17 +294,22 @@ export function analyze(logs: MatchLog[], playerId: string): WeaknessReport {
     const wins = s.filter((x) => x.success).length;
     const rate = wins / s.length;
     const benchmark = BENCHMARKS[role][skill];
+    const severity = severityOf(wins, s.length, benchmark);
+    // Below the benchmark but not by enough to be sure: say so, rather than let severity 0 read as "fine".
+    const unsure = severity === 0 && rate < benchmark ? ` Below the benchmark, but ${s.length} situations is not enough evidence to call it a weakness yet.` : '';
     findings.push({
       skill,
       rate,
       benchmark,
-      severity: severityOf(wins, s.length, benchmark),
+      severity,
       sampleSize: s.length,
-      summary: `${wins} of ${s.length} ${SKILL_TEXT[skill]} (${Math.round(rate * 100)}%), against a ${Math.round(benchmark * 100)}% benchmark for ${role}s.`,
+      summary: `${wins} of ${s.length} ${SKILL_TEXT[skill]} (${Math.round(rate * 100)}%), against a ${Math.round(benchmark * 100)}% benchmark for ${role}s.${unsure}`,
       evidence: pickEvidence(s),
     });
   }
-  findings.sort((a, b) => b.severity - a.severity);
+  // Worst first; among equal severities (usually 0), the furthest below its benchmark first.
+  const shortfall = (f: WeaknessFinding): number => (f.benchmark - f.rate) / f.benchmark;
+  findings.sort((a, b) => b.severity - a.severity || shortfall(b) - shortfall(a));
   return { playerId, role, matchesRead: mine.length, findings };
 }
 

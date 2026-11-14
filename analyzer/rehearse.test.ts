@@ -13,7 +13,7 @@ import { HIDDEN_RADIUS_M, rehearsalDrill } from './rehearse.ts';
 import { CoachingSession } from '../session/session.ts';
 import type { DrillSpec } from '../shared/coaching.ts';
 import type { Vec2 } from '../shared/contract.ts';
-import { generateMatches, PLAYER_ID, weakProfile } from './synthetic.ts';
+import { generateMatches, neutralProfile, PLAYER_ID, sampleHistory, weakProfile } from './synthetic.ts';
 
 const map = loadMap('saltworks');
 const SKILLS: Skill[] = ['entry', 'clutch', 'time_pressure', 'smoke_usage'];
@@ -210,7 +210,7 @@ const SAMPLES: [Skill, number][] = [
   ['smoke_usage', 14],
 ];
 const sampleRehearsals = (skill: Skill, seed: number): DrillSpec[] =>
-  CoachingSession.fromHistory(generateMatches(weakProfile('duelist', skill, 0.1), seed, { matches: 6 }), PLAYER_ID, { seed, ...NO_KEY }).rehearsals();
+  CoachingSession.fromHistory(sampleHistory(skill, seed), PLAYER_ID, { seed, ...NO_KEY }).rehearsals();
 
 /** Ticks until the first bot `engage` while the player runs with `steer`, or null within `ticks`. */
 function firstReaction(spec: DrillSpec, steer: (p: Vec2) => Vec2, ticks: number): number | null {
@@ -251,7 +251,7 @@ describe('rehearsal starts stay hidden on the way out', () => {
   });
 
   test.each(SAMPLES)('the player starts on their own side of the moment, not behind the enemy (%s sample)', (skill, seed) => {
-    const logs = generateMatches(weakProfile('duelist', skill, 0.1), seed, { matches: 6 });
+    const logs = sampleHistory(skill, seed);
     const moments = (analyze(logs, PLAYER_ID).findings[0]?.evidence ?? []).filter((e) => e.situation).slice(0, 5);
     const specs = sampleRehearsals(skill, seed);
     expect(specs.length).toBe(moments.length);
@@ -263,5 +263,41 @@ describe('rehearsal starts stay hidden on the way out', () => {
       expect(toOwn(spec.player.spawn), spec.id).toBeLessThanOrEqual(toOwn(moment) + 4);
       expect(spec.id, spec.id).toMatch(/-hide-(strict|fov)$/);
     });
+  });
+});
+
+describe('the play page sample players', () => {
+  // Found in the browser: the "weak clutch" sample read as no weakness (clutch 18% of 33 against 22%),
+  // so "Rehearse my mistakes" replayed entry moments at severity 0 that were not mistakes.
+  test.each(SAMPLES)('the %s sample is flagged weak at its own skill', (skill, seed) => {
+    const top = analyze(sampleHistory(skill, seed), PLAYER_ID).findings[0];
+    expect(top.skill).toBe(skill);
+    expect(top.severity).toBeGreaterThan(0);
+  });
+
+  test('a player with no credible weakness gets no rehearsals, and the report says the evidence is thin', () => {
+    let unsure = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const logs = generateMatches(neutralProfile('duelist'), seed, { matches: 6 });
+      const s = CoachingSession.fromHistory(logs, PLAYER_ID, { seed, ...NO_KEY });
+      const top = s.report.findings[0];
+      if (top.severity > 0) continue; // noise can still read as a real (small) weakness
+      expect(s.rehearsals(), `seed ${seed}`).toEqual([]);
+      for (const f of s.report.findings) {
+        if (f.rate < f.benchmark) {
+          expect(f.summary).toMatch(/not enough evidence/);
+          unsure++;
+        }
+      }
+    }
+    expect(unsure).toBeGreaterThan(0);
+  });
+
+  test('findings tied at severity 0 are ordered by how far below the benchmark they are', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const fs = analyze(generateMatches(neutralProfile('duelist'), seed, { matches: 6 }), PLAYER_ID).findings.filter((f) => f.severity === 0);
+      const gaps = fs.map((f) => (f.benchmark - f.rate) / f.benchmark);
+      expect(gaps, `seed ${seed}`).toEqual([...gaps].sort((x, y) => y - x));
+    }
   });
 });
