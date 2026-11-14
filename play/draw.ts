@@ -5,6 +5,8 @@ import { rayBlockDistance } from './ray.ts';
 export const FOV_RAD = (103 * Math.PI) / 180;
 export const HEARING_M = 3;
 const CONE_RANGE_M = 30;
+/** Walls this low or lower are cover, not walls, and are drawn lighter. */
+export const LOW_WALL_M = 1.5;
 
 export interface View {
   width: number;
@@ -100,7 +102,6 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, s: Scene): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(tl.x, tl.y, map.bounds.width * v.scale, map.bounds.height * v.scale);
 
-  for (const c of map.callouts) text(c.name, cen(c.polygon), 'rgba(60,70,90,.32)', '12px system-ui');
   Object.entries(map.sites).forEach(([name, pts], i) => {
     const col = SITE_COLORS[i % SITE_COLORS.length];
     poly(pts);
@@ -137,23 +138,35 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, s: Scene): void {
     ctx.setLineDash([]);
   }
 
-  ctx.fillStyle = '#2a303b';
+  // Full-height walls are near black; low boxes (cover you can shoot over) are a clearly lighter grey with an outline.
   for (const w of map.walls) {
     poly(w.points);
-    ctx.fill();
+    if (w.height <= LOW_WALL_M) {
+      ctx.fillStyle = '#a9b0bc';
+      ctx.fill();
+      ctx.strokeStyle = '#4b5260';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    } else {
+      ctx.fillStyle = '#2b2f38';
+      ctx.fill();
+    }
   }
 
-  Object.entries(map.sites).forEach(([name, pts]) => {
-    const q = P(cen(pts));
-    ctx.font = 'bold 16px system-ui';
+  // Place names sit above the walls, faint but readable, with a pale halo so a box behind them does not eat them.
+  ctx.lineJoin = 'round';
+  for (const c of map.callouts) {
+    const q = P(cen(c.polygon));
+    ctx.font = '12px system-ui';
     ctx.textAlign = 'center';
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#fff';
-    ctx.strokeText(`Site ${name}`, q.x, q.y - 18);
-    ctx.fillStyle = '#2b3340';
-    ctx.fillText(`Site ${name}`, q.x, q.y - 18);
-    ctx.lineWidth = 1;
-  });
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,.75)';
+    ctx.strokeText(c.name, q.x, q.y);
+    ctx.fillStyle = 'rgba(55,65,85,.6)';
+    ctx.fillText(c.name, q.x, q.y);
+  }
+  ctx.lineWidth = 1;
 
   for (const sm of s.state.smokes) {
     const q = P(sm.pos);
@@ -299,6 +312,19 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, s: Scene): void {
     ctx.stroke();
     ctx.lineWidth = 1;
   }
+
+  // Site labels go on last, over boxes, smokes and people.
+  Object.entries(map.sites).forEach(([name, pts]) => {
+    const q = P(cen(pts));
+    ctx.font = 'bold 16px system-ui';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#fff';
+    ctx.strokeText(`Site ${name}`, q.x, q.y - 18);
+    ctx.fillStyle = '#2b3340';
+    ctx.fillText(`Site ${name}`, q.x, q.y - 18);
+    ctx.lineWidth = 1;
+  });
 
   if (s.flash > 0) {
     ctx.fillStyle = `rgba(214,45,45,${Math.min(0.35, s.flash * 0.35)})`;
