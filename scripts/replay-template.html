@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Drill replay</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;background:#f4f5f7;color:#1c2330;height:100vh;display:flex;flex-direction:column}
+#main{flex:1;display:flex;min-height:0}
+#left{flex:1;min-width:0;padding:10px;display:flex}
+#cv{width:100%;height:100%;background:#fff;border:1px solid #cdd2da;border-radius:6px}
+#right{width:430px;overflow:auto;padding:10px 12px;background:#fff;border-left:1px solid #cdd2da}
+h2{font-size:15px;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em;color:#5a6577}
+h2:first-child{margin-top:0}
+.f{margin:4px 0;padding:5px 7px;border-left:4px solid #888;background:#f4f5f7}
+.f small{display:block;color:#5a6577}
+#trace{height:190px;overflow:auto;border:1px solid #dde1e7;font:13px/1.35 ui-monospace,Menlo,monospace}
+#trace div{padding:1px 6px;white-space:nowrap}
+#trace div.cur{background:#ffe9a8}
+.ok{color:#14803c;font-weight:700}.bad{color:#c0262d;font-weight:700}
+#bar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border-top:1px solid #cdd2da;flex-wrap:wrap}
+#bar button,#bar select{font:inherit;padding:4px 10px}
+#scrub{flex:1;min-width:200px}
+.pill{padding:2px 8px;border-radius:10px;background:#eef0f4;font-variant-numeric:tabular-nums}
+</style></head><body>
+<div id="main">
+ <div id="left"><canvas id="cv"></canvas></div>
+ <div id="right">
+  <h2>Weakness report</h2><div id="report"></div>
+  <h2>Drill</h2><div id="drill"></div>
+  <h2>Bot behavior trace</h2><div id="trace"></div>
+  <h2>Outcome</h2><div id="outcome"></div>
+  <h2>Debrief</h2><div id="debrief"></div>
+ </div>
+</div>
+<div id="bar">
+ <button id="play">Pause</button>
+ <label>Speed <select id="speed"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>x</label>
+ <input id="scrub" type="range" min="0" value="0">
+ <label>Drill <select id="sel"></select></label>
+ <span class="pill" id="clock"></span><span class="pill" id="spike"></span>
+</div>
+<script>
+const D = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const cv = $('cv'), ctx = cv.getContext('2d');
+const M = D.map, FOV = 103 * Math.PI / 180, TR = D.tickRate;
+let di = 0, fi = 0, playing = true, speed = 1, acc = 0, last = 0, traceEls = [], traceRows = [];
+const sevColor = s => s >= .6 ? '#c0262d' : s >= .3 ? '#d98a00' : '#4a8f4a';
+
+// report
+$('report').innerHTML = D.report.findings.slice(0, 4).map(f => {
+  const e = f.evidence[0];
+  return `<div class="f" style="border-color:${sevColor(f.severity)}"><b>${esc(f.skill)}</b> severity ${f.severity.toFixed(2)} (rate ${f.rate.toFixed(2)} vs ${f.benchmark.toFixed(2)}, n=${f.sampleSize})<small>${esc(f.summary)}</small>${e ? `<small>evidence: round ${e.round}, tick ${e.tick}: ${esc(e.note)}</small>` : ''}</div>`;
+}).join('');
+D.drills.forEach((d, i) => $('sel').add(new Option(`${i + 1}. ${d.spec.title}`, i)));
+
+function setDrill(i) {
+  di = i; fi = 0; acc = 0; $('sel').value = i;
+  const d = D.drills[i], s = d.spec;
+  $('scrub').max = d.frames.length - 1;
+  $('drill').innerHTML = `<b>${esc(s.title)}</b> (${esc(s.skill)})<br>${esc(s.goal)}<br>Difficulty ${s.difficulty.toFixed(2)}<br>` +
+    s.bots.map(b => `Bot ${esc(b.id)}: ${esc(b.archetypeId)}, reaction ${b.traits.reactionMs} ms`).join('<br>') +
+    `<br>Player reaction ${d.playerTraits.reactionMs} ms`;
+  // trace: collapse repeats per bot
+  const prev = {}; traceRows = [];
+  for (const t of d.trace) { const k = t.node + '|' + t.reason; if (prev[t.botId] === k) continue; prev[t.botId] = k; traceRows.push(t); }
+  $('trace').innerHTML = traceRows.map(t => `<div>${(t.tick / TR).toFixed(1)}s ${esc(t.botId)} [${esc(t.node)}] ${esc(t.reason)}</div>`).join('');
+  traceEls = [...$('trace').children];
+  const key = d.events.filter(e => ['kill', 'plant', 'defuse', 'round_end'].includes(e.type));
+  $('outcome').innerHTML = `<span class="${d.success ? 'ok' : 'bad'}">${d.success ? 'SUCCESS' : 'FAILED'}</span> after ${(d.ticks / TR).toFixed(1)} s<br>` +
+    key.slice(0, 8).map(e => `${(e.tick / TR).toFixed(1)}s ${esc(describe(e))}`).join('<br>');
+  $('debrief').innerHTML = `<small>source: ${esc(d.debrief.source)}</small><br>${esc(d.debrief.text).replace(/\n/g, '<br>')}`;
+  render();
+}
+function describe(e) {
+  if (e.type === 'kill') return `${e.killer} killed ${e.victim} (${e.part})`;
+  if (e.type === 'plant') return `${e.agent} planted ${e.site}`;
+  if (e.type === 'defuse') return `${e.agent} defused`;
+  return `round end: ${e.winner} wins (${e.reason})`;
+}
+
+// map transform
+let sc = 1, ox = 0, oy = 0;
+function layout() {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pad = 14; sc = Math.min((r.width - 2 * pad) / M.bounds.width, (r.height - 2 * pad) / M.bounds.height);
+  ox = (r.width - M.bounds.width * sc) / 2; oy = (r.height - M.bounds.height * sc) / 2;
+  render();
+}
+const X = x => ox + x * sc, Y = y => oy + (M.bounds.height - y) * sc;
+function poly(pts) { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(X(p.x), Y(p.y)) : ctx.moveTo(X(p.x), Y(p.y))); ctx.closePath(); }
+const cen = pts => ({ x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length });
+function label(txt, p, color, font) { ctx.fillStyle = color; ctx.font = font; ctx.textAlign = 'center'; ctx.fillText(txt, X(p.x), Y(p.y)); }
+
+function render() {
+  const d = D.drills[di], f = d.frames[fi]; if (!f) return;
+  const r = cv.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height);
+  for (const c of M.callouts) label(c.name, cen(c.polygon), 'rgba(60,70,90,.35)', '12px system-ui');
+  for (const [k, col] of [['A', 'rgba(230,150,30,.22)'], ['B', 'rgba(40,150,200,.22)']]) {
+    poly(M.sites[k]); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = col.replace('.22', '.8'); ctx.stroke();
+    label('Site ' + k, cen(M.sites[k]), '#333', 'bold 15px system-ui');
+  }
+  ctx.fillStyle = '#2a303b'; for (const w of M.walls) { poly(w.points); ctx.fill(); }
+  for (const m of f.smokes) { ctx.beginPath(); ctx.arc(X(m.x), Y(m.y), m.radius * sc, 0, 7); ctx.fillStyle = 'rgba(130,130,140,.6)'; ctx.fill(); }
+  // spike
+  const sp = f.spike; let spPos = null;
+  if (sp.status === 'planted' || sp.status === 'dropped') spPos = sp.pos;
+  else if (sp.status === 'carried') { const c = f.agents.find(a => a.id === sp.carrierId); if (c) spPos = { x: c.x, y: c.y - 0 }; }
+  if (spPos) { ctx.fillStyle = sp.status === 'planted' ? '#d11' : '#e8a400'; ctx.fillRect(X(spPos.x) - 5, Y(spPos.y) - 5, 10, 10); }
+  // fov
+  for (const a of f.agents) if (a.alive) {
+    const R = 9 * sc; ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); ctx.arc(X(a.x), Y(a.y), R, -a.yaw - FOV / 2, -a.yaw + FOV / 2); ctx.closePath();
+    ctx.fillStyle = a.id === d.spec.player.id ? 'rgba(40,100,230,.12)' : 'rgba(220,40,40,.10)'; ctx.fill();
+  }
+  // tracers + kill markers
+  for (const e of d.events) {
+    if (e.type === 'damage' && e.tick <= f.tick && f.tick - e.tick <= 10) {
+      ctx.globalAlpha = 1 - (f.tick - e.tick) / 10; ctx.strokeStyle = '#ff7a00'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(X(e.attackerPos.x), Y(e.attackerPos.y)); ctx.lineTo(X(e.victimPos.x), Y(e.victimPos.y)); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+    }
+    if (e.type === 'kill' && e.tick <= f.tick) {
+      const x = X(e.victimPos.x), y = Y(e.victimPos.y);
+      ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.strokeStyle = '#c0262d'; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1;
+    }
+  }
+  for (const a of f.agents) {
+    const x = X(a.x), y = Y(a.y), col = a.id === d.spec.player.id ? '#1f5fe0' : '#d62d2d';
+    if (a.alive) { ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.stroke(); }
+    else { ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke(); ctx.lineWidth = 1; }
+    ctx.fillStyle = '#222'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(a.id + (a.alive ? ' ' + a.hp : ''), x, y + 19);
+  }
+  // hud
+  $('clock').textContent = `Round ${f.t.toFixed(1)} s left, tick ${f.tick}, ${f.phase}`;
+  $('spike').textContent = 'Spike: ' + (sp.status === 'planted' ? `planted ${sp.site}, defuse ${sp.defuseProgressS.toFixed(1)} s` : sp.status);
+  $('scrub').value = fi;
+  let c = -1; for (let i = 0; i < traceRows.length && traceRows[i].tick <= f.tick; i++) c = i;
+  traceEls.forEach((el, i) => el.classList.toggle('cur', i === c));
+  if (c >= 0 && traceEls[c]) { const t = $('trace'), el = traceEls[c]; if (el.offsetTop < t.scrollTop || el.offsetTop > t.scrollTop + t.clientHeight - 20) t.scrollTop = el.offsetTop - 60; }
+}
+function loop(ts) {
+  const d = D.drills[di];
+  if (playing && last) { acc += (ts - last) / 1000 * TR * speed; const n = Math.floor(acc); acc -= n; fi = Math.min(d.frames.length - 1, fi + n); if (fi === d.frames.length - 1) { playing = false; $('play').textContent = 'Play'; } render(); }
+  last = ts; requestAnimationFrame(loop);
+}
+$('play').onclick = () => { if (!playing && fi >= D.drills[di].frames.length - 1) fi = 0; playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; };
+$('speed').onchange = e => speed = Number(e.target.value);
+$('scrub').oninput = e => { fi = Number(e.target.value); render(); };
+$('sel').onchange = e => setDrill(Number(e.target.value));
+window.addEventListener('resize', layout);
+setDrill(0); layout(); requestAnimationFrame(loop);
+</script></body></html>

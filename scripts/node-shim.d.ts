@@ -4,6 +4,8 @@
  */
 declare module 'node:fs' {
   export function writeFileSync(path: string, data: string): void;
+  export function readFileSync(path: string, enc: 'utf8'): string;
+  export function mkdirSync(path: string, opts?: { recursive?: boolean }): void;
 }
 declare module 'node:url' {
   export function fileURLToPath(url: string): string;
