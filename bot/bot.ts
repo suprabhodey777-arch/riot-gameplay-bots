@@ -17,6 +17,8 @@ export interface BotOptions {
   rng: Rng;
   /** Mixed into the team's site choice so different matches pick different sites. */
   siteSeed?: number;
+  /** Stand here, facing `yaw`, until an enemy is seen (rehearsal drills). Overrides the role's own hold spot. */
+  hold?: { pos: Vec2; yaw: number };
 }
 
 export interface BotDecision {
@@ -176,6 +178,22 @@ export function createBot(opts: BotOptions): Bot {
       };
     }
     target = null;
+
+    if (opts.hold) {
+      const h = opts.hold;
+      const m = moveTo(me.pos, h.pos, tick);
+      if (m.left < 0.6) {
+        return {
+          node: 'hold_angle',
+          target: fmt(h.pos),
+          reason: `holding ${calloutAt(map, h.pos)}, the spot the situation was rebuilt around, no enemy in view`,
+          yaw: scan(h.yaw, tick),
+          crouch: traits.offAngle > 0.6,
+          holding: true,
+        };
+      }
+      return { node: 'hold_angle', target: fmt(h.pos), reason: `moving to ${calloutAt(map, h.pos)} (${m.left.toFixed(0)} m)`, move: m.dir, walk: true, yaw: Math.atan2(m.dir.y, m.dir.x) };
+    }
 
     const sp = view.spike;
     // 2. defuse

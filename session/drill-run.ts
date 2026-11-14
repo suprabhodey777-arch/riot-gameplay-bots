@@ -150,7 +150,7 @@ export function startDrill(spec: DrillSpec, opts: { maxTicks?: number } = {}): D
     map: sim.map,
     seed: sim.seed,
     scenario: sim.scenario,
-    agents: sim.agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot, traits: botTraits.get(a.id)?.traits })),
+    agents: sim.agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot, traits: botTraits.get(a.id)?.traits, hold: botTraits.get(a.id)?.hold })),
   });
   const maxTicks = opts.maxTicks ?? Math.round((spec.roundTimeLeftS + BUDGET_SLACK_S) * TICK_RATE);
   const judge = new DrillJudge(spec, sim.map.sites);
