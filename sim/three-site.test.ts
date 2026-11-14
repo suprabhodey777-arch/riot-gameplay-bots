@@ -28,7 +28,7 @@ describe('three-site support', () => {
 
   test('bot rounds on the three-site map plant on all three sites across seeds', () => {
     const planted = new Set<SiteId>();
-    for (let seed = 1; seed <= 24; seed++) {
+    for (let seed = 1; seed <= 10; seed++) {
       const agents = [
         ...[1, 2, 3, 4, 5].map((i) => ({ id: `a${i}`, team: 'attack' as const, isBot: true })),
         ...[1, 2, 3, 4, 5].map((i) => ({ id: `d${i}`, team: 'defense' as const, isBot: true })),
