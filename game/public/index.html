@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Rematch — Spike Protocol</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="ghost.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "socket.io": "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="game-canvas"></div>
+
+<!-- 로비 -->
+<div id="lobby">
+  <div class="lobby-card">
+    <h1>SPIKE <span>PROTOCOL</span></h1>
+    <div class="sub">5v5 TACTICAL FPS — ATTACK vs DEFENSE • FIRST TO 7</div>
+    <div class="nick-row">
+      <input id="nick" placeholder="Your name (kept the same every session)" maxlength="12" value="">
+      <input id="server-url" placeholder="Server (leave empty for this one)" style="max-width:220px">
+    </div>
+    <div class="agent-grid" id="agent-grid"></div>
+    <button id="start-btn">▶ &nbsp;Join the match</button>
+    <div class="help">
+      <b>WASD</b> move · <b>Mouse</b> aim · <b>Left click</b> fire · <b>Right click</b> aim down sights · <b>R</b> reload · <b>Shift</b> walk (quiet) · <b>Space</b> jump · <b>C</b> crouch<br>
+      <b>Q / E</b> abilities · <b>X</b> ultimate (6 kills) · <b>4</b> hold to plant or defuse · <b>B</b> shop · <b>Tab</b> scoreboard · <b>Enter</b> chat<br>
+      Attackers plant the Spike on A or B and hold it for 40 s. Defenders stop them or defuse in 7 s.
+    </div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="dmg-vignette"></div>
+  <div id="vignette-smoke"></div>
+  <div id="crosshair">
+    <div class="dot"></div>
+    <div class="l" id="ch-t"></div><div class="l" id="ch-b"></div>
+    <div class="l" id="ch-l"></div><div class="l" id="ch-r"></div>
+  </div>
+  <div id="hitmarker"><span style="left:0;top:0;width:10px;height:2px"></span><span style="right:0;top:0;width:10px;height:2px"></span><span style="left:0;bottom:0;width:10px;height:2px"></span><span style="right:0;bottom:0;width:10px;height:2px"></span></div>
+
+  <div id="topbar">
+    <div class="score atk" id="score-atk">0</div>
+    <div>
+      <div id="round-timer">0:20</div>
+      <div id="round-num">ROUND 1 • BUY PHASE</div>
+    </div>
+    <div class="score def" id="score-def">0</div>
+    <div id="phase-label">BUY</div>
+  </div>
+
+  <div id="killfeed"></div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="chat"></div>
+  <input id="chat-input" placeholder="Type and press Enter">
+
+  <div id="spike-hud">💣 SPIKE</div>
+  <div id="progress-wrap"><div id="progress-label">Planting...</div><div id="progress-bar"><div id="progress-fill"></div></div></div>
+  <div id="hint"></div>
+  <div id="kill-banner"></div>
+  <div id="round-banner"><h2></h2><p></p></div>
+  <div id="respawn-msg">You respawn next round...</div>
+
+  <div id="bottom">
+    <div id="hpbox">
+      <div><div id="hp-num">100</div><div id="hp-bar"><div id="hp-fill"></div></div><div id="armor-num">🛡 0</div></div>
+      <div id="abilities"></div>
+    </div>
+    <div id="ammo"><div id="weapon-name">RIVET</div><div id="ammo-num">25 / 75</div><div id="money-hud" style="color:#00e5cc;font-weight:800">$800</div></div>
+  </div>
+</div>
+
+<div id="flash-overlay"></div>
+
+<div id="shop">
+  <h2>BUY PHASE — <span id="money">$800</span></h2>
+  <div style="color:#8fa3b0;font-size:13px">Press B to close. You can only buy before the round starts.</div>
+  <div class="shop-grid" id="shop-grid"></div>
+</div>
+
+<div id="scoreboard"></div>
+
+<script type="module" src="js/config.js"></script>
+<script type="module" src="js/audio.js"></script>
+<script type="module" src="js/map.js"></script>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>

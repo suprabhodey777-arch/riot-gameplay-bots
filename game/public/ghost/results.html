@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ghost Rematch — evidence results</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17202a;
+        --muted: #55606b;
+        --line: #d5dbe1;
+        --accent: #145fa8;
+        --panel: #f6f8fa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px 20px 64px;
+        background: #ffffff;
+        color: var(--ink);
+        font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 860px; margin: 0 auto; }
+      h1 { font-size: 1.7rem; margin: 0 0 6px; }
+      h2 { font-size: 1.15rem; margin: 0 0 10px; }
+      .lede { color: var(--muted); margin: 0 0 18px; }
+      .bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
+      .bar .meta { margin: 0; }
+      .meta { color: var(--muted); font-size: 0.9rem; }
+      .headline { font-size: 1.15rem; margin: 0 0 8px; }
+      .headline strong { font-variant-numeric: tabular-nums; }
+      section {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px;
+        background: var(--panel);
+        margin-bottom: 18px;
+      }
+      section.empty { border-style: dashed; background: #ffffff; }
+      .empty-text { margin: 0; color: var(--muted); }
+      .error { color: #9b1c1c; margin: 0 0 18px; }
+      button {
+        font: inherit;
+        border: 1px solid var(--accent);
+        border-radius: 7px;
+        background: #ffffff;
+        color: var(--accent);
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+      button:hover { background: #e8f1fb; }
+      table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.95rem; }
+      caption { text-align: left; color: var(--muted); font-size: 0.9rem; padding-bottom: 6px; }
+      th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: right; }
+      th:first-child, td:first-child { text-align: left; }
+      thead th { color: var(--muted); font-weight: 600; }
+      tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+      .note { color: var(--muted); font-size: 0.85rem; margin: 14px 0 0; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Evidence results</h1>
+      <p class="lede">
+        Two human tests. Every figure is shown with its baseline and sample size; 95% intervals are
+        percentile bootstrap intervals of the mean, computed from the raw answers in
+        <code>evidence/data/</code>.
+      </p>
+      <div class="bar">
+        <button id="refresh" type="button">Refresh</button>
+        <span id="status" class="meta" role="status" aria-live="polite">Not loaded yet.</span>
+      </div>
+      <p id="load-error" class="error" role="alert" hidden></p>
+
+      <section id="guess-section" aria-labelledby="guess-heading">
+        <h2 id="guess-heading">Guess the ghost</h2>
+        <p id="guess-headline" class="headline"></p>
+        <p id="guess-empty" class="empty-text" hidden></p>
+        <table id="clip-table" hidden>
+          <caption>Answers per clip</caption>
+          <thead>
+            <tr><th scope="col">Clip</th><th scope="col">Answers (n)</th><th scope="col">Correct</th><th scope="col">Share correct</th></tr>
+          </thead>
+          <tbody id="clip-rows"></tbody>
+        </table>
+      </section>
+
+      <section id="transfer-section" aria-labelledby="transfer-heading">
+        <h2 id="transfer-heading">Transfer test</h2>
+        <p id="ghost-headline" class="headline"></p>
+        <p id="default-headline" class="headline"></p>
+        <p id="diff-headline" class="headline"></p>
+        <p id="transfer-empty" class="empty-text" hidden></p>
+      </section>
+
+      <p class="note">
+        Chance for the guess test is 1 / (number of distinct ghosts seen, at least 2). The p-value is the
+        one-sided exact binomial probability of at least this many correct guesses under chance. The
+        transfer test compares each group's mean share of rounds won against the real player; "ghost
+        minus default" is the difference of those group means.
+      </p>
+    </main>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+
+      function pct(x) {
+        return x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`;
+      }
+
+      function ciText(ci) {
+        return ci ? `[${pct(ci.lo)}, ${pct(ci.hi)}]` : '—';
+      }
+
+      function pText(p) {
+        if (p === null || p === undefined) return '—';
+        return p < 0.001 ? '< 0.001' : p.toFixed(3);
+      }
+
+      function diffText(x) {
+        if (x === null || x === undefined) return '—';
+        const points = Math.round(x * 100);
+        return `${points > 0 ? '+' : ''}${points} points`;
+      }
+
+      function render(data) {
+        const guess = data.guess;
+        const transfer = data.transfer;
+
+        $('guess-headline').textContent =
+          `Correct ${pct(guess.share)} (n = ${guess.n}) vs chance ${pct(guess.chance)}, p = ${pText(guess.pValue)}.`;
+        const guessEmpty = guess.n === 0;
+        $('guess-empty').hidden = !guessEmpty;
+        $('guess-empty').textContent = guessEmpty
+          ? 'No guesses recorded yet. Open /ghost/guess.html on this server to collect some.'
+          : '';
+
+        const rows = $('clip-rows');
+        rows.replaceChildren();
+        const clipIds = Object.keys(guess.byClip || {}).sort();
+        $('clip-table').hidden = clipIds.length === 0;
+        for (const clipId of clipIds) {
+          const entry = guess.byClip[clipId];
+          const tr = document.createElement('tr');
+          for (const text of [clipId, String(entry.n), String(entry.correct), pct(entry.share)]) {
+            const cell = document.createElement('td');
+            cell.textContent = text;
+            tr.append(cell);
+          }
+          rows.append(tr);
+        }
+
+        $('ghost-headline').textContent =
+          `Ghost group ${pct(transfer.ghost.mean)} ${ciText(transfer.ghost.ci)} (n = ${transfer.nGhost}).`;
+        $('default-headline').textContent =
+          `Default group ${pct(transfer.default.mean)} ${ciText(transfer.default.ci)} (n = ${transfer.nDefault}).`;
+        $('diff-headline').textContent =
+          `Ghost minus default: ${diffText(transfer.diff.mean)}, 95% CI ${ciText(transfer.diff.ci)} ` +
+          `(n = ${transfer.nGhost} vs ${transfer.nDefault}).`;
+        const transferEmpty = transfer.nGhost + transfer.nDefault === 0;
+        $('transfer-empty').hidden = !transferEmpty;
+        $('transfer-empty').textContent = transferEmpty
+          ? 'No transfer results recorded yet. Assign testers with POST /api/transfer/assign, then record their rounds with POST /api/transfer/result.'
+          : '';
+      }
+
+      async function refresh() {
+        $('load-error').hidden = true;
+        $('status').textContent = 'Loading…';
+        try {
+          const res = await fetch('/api/results', { cache: 'no-store' });
+          if (!res.ok) throw new Error(`/api/results returned HTTP ${res.status}`);
+          const data = await res.json();
+          render(data);
+          $('status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+          $('status').textContent = 'Load failed.';
+          $('load-error').textContent = `Could not load results: ${err.message}`;
+          $('load-error').hidden = false;
+        }
+      }
+
+      $('refresh').addEventListener('click', refresh);
+      refresh();
+    </script>
+  </body>
+</html>

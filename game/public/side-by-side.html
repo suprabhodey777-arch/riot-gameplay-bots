@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Rematch — Side by side</title>
+<style>
+  :root { --bg: #0f1923; --panel: #141f29; --line: #2a3d4d; --dim: #8fa3b0; --ink: #ece8e1; --ghost: #b98cff; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'Rajdhani', 'Segoe UI', sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  header { display: flex; gap: 10px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 18px; letter-spacing: 2px; margin-right: auto; }
+  input, button { font-family: inherit; font-size: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); padding: 5px 8px; }
+  button { cursor: pointer; font-weight: 700; }
+  button:hover { border-color: var(--ghost); }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--line); min-height: 0; }
+  .pane { display: grid; grid-template-rows: auto 1fr; background: var(--bg); min-height: 0; }
+  .pane h2 { font-size: 14px; letter-spacing: 2px; padding: 6px 12px; color: var(--dim); }
+  iframe { border: 0; width: 100%; height: 100%; }
+  .empty { padding: 30px; color: var(--dim); text-align: center; }
+  @media (max-width: 760px) { .panes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Side by side</h1>
+  <label>Left <input id="l" placeholder="match:seg:follow, e.g. t1:2:ann" size="22"></label>
+  <label>Right <input id="r" placeholder="match:seg:follow" size="22"></label>
+  <button id="load">Load</button>
+  <button id="play">Play both</button>
+</header>
+<div class="panes">
+  <div class="pane"><h2 id="lt">LEFT</h2><div class="empty" id="le">Enter a match, round segment and player, then Load.</div></div>
+  <div class="pane"><h2 id="rt">RIGHT</h2><div class="empty" id="re">For the video: a human's round on the left, their ghost in the same scenario on the right.</div></div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  $('l').value = q.get('l') || '';
+  $('r').value = q.get('r') || '';
+  function frame(side, spec) {
+    const [match, seg = '0', follow = ''] = spec.split(':');
+    const pane = $(side + 'e').parentElement;
+    pane.querySelector('iframe')?.remove();
+    if (!match) { $(side + 'e').style.display = 'block'; return; }
+    $(side + 'e').style.display = 'none';
+    $(side + 't').textContent = `${side === 'l' ? 'LEFT' : 'RIGHT'} · ${match} · ${follow || 'overview'}`;
+    const f = document.createElement('iframe');
+    f.src = `replay.html?embed=1&match=${encodeURIComponent(match)}&seg=${encodeURIComponent(seg)}&follow=${encodeURIComponent(follow)}&cam=${follow ? 'follow' : 'top'}`;
+    pane.appendChild(f);
+  }
+  $('load').onclick = () => { frame('l', $('l').value.trim()); frame('r', $('r').value.trim()); };
+  $('play').onclick = () => { for (const f of document.querySelectorAll('iframe')) f.contentWindow.postMessage({ gr: 'replay', cmd: 'play' }, location.origin); };
+  if (q.get('l') || q.get('r')) $('load').click();
+</script>
+</body>
+</html>

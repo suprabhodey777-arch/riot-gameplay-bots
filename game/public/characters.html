@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spike Protocol — Character review</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "socket.io": "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
+} }
+</script>
+<style>
+  :root { --red: #ff4655; --teal: #00e5cc; --bg: #0f1923; --panel: #141f29; --line: #2a3d4d; --dim: #8fa3b0; --ink: #ece8e1; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: 'Rajdhani', 'Segoe UI', sans-serif; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; margin-bottom: 6px; }
+  h1 { font-size: 24px; letter-spacing: 2px; }
+  header p { color: var(--dim); font-size: 14px; flex: 1 1 320px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+  button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); padding: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  button[aria-pressed="true"] { border-color: var(--ink); background: #1e2b37; }
+  h2 { font-size: 13px; letter-spacing: 3px; margin: 22px 0 8px; }
+  h2.attack { color: var(--red); } h2.defense { color: var(--teal); }
+  .row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); background: var(--panel); }
+  .view { height: 300px; background: #a9c7d6; }
+  .card .cap { padding: 8px 10px 10px; }
+  .card h3 { font-size: 18px; letter-spacing: 1px; }
+  .card .role { font-size: 11px; letter-spacing: 2px; color: var(--dim); }
+  .kits { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .kit { border: 1px solid var(--line); background: var(--panel); padding: 12px; border-top-width: 3px; }
+  .kit .slot { font-size: 11px; color: var(--dim); letter-spacing: 1px; }
+  .kit h3 { font-size: 20px; margin: 2px 0; }
+  .kit p { font-size: 13px; color: var(--dim); line-height: 1.4; margin: 4px 0 8px; }
+  .kit ul { list-style: none; font-size: 14px; line-height: 1.6; }
+  .kit li b { display: inline-block; width: 18px; color: var(--dim); }
+  .kit li span { color: var(--dim); }
+  .note { color: var(--dim); font-size: 13px; margin-top: 18px; line-height: 1.5; }
+  @media (max-width: 860px) {
+    .row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kits { grid-template-columns: 1fr; }
+    .view { height: 240px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<main>
+  <header>
+    <h1>CHARACTER REVIEW</h1>
+    <p>Four original low-poly characters, one per kit slot, plus the neutral recruit used in replays. Each is drawn exactly as the game draws it.</p>
+  </header>
+  <div class="controls">
+    <button id="spin" aria-pressed="true">Turntable</button>
+    <button id="far" aria-pressed="false">View from 30 m (game field of view)</button>
+    <button id="hit" aria-pressed="false">Show hit volumes</button>
+    <button id="dark" aria-pressed="false">Silhouette only</button>
+  </div>
+
+  <h2 class="attack">ATTACK</h2>
+  <div class="row" id="row-attack"></div>
+  <h2 class="defense">DEFENSE</h2>
+  <div class="row" id="row-defense"></div>
+
+  <h2>KITS</h2>
+  <div class="kits" id="kits"></div>
+  <p class="note">Hit volumes are unchanged: head sphere of radius 0.32 m centred at 1.62 m, body box 0.76 × 1.45 × 0.6 m. Torso and arms always carry the team colour; each character's own colour is only on its signature pieces.</p>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { AGENTS } from './js/config.js';
+import { buildCharacter, CHARACTER_INFO } from './js/characters.js';
+
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setScissorTest(true);
+
+const SLOTS = ['jett', 'omen', 'sova', 'sage', null];
+const views = [];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// Hit volumes, as in game.js rayPlayer.
+function hitVolumes() {
+  const g = new THREE.Group();
+  const m = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.55 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), m); head.position.y = 1.62;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.76, 1.45, 0.6), m); body.position.y = 0.725;
+  g.add(head, body);
+  return g;
+}
+
+for (const team of ['attack', 'defense']) {
+  const row = document.getElementById('row-' + team);
+  for (const id of SLOTS) {
+    const character = buildCharacter(id, team, id ? CHARACTER_INFO[id].name : 'Player');
+    const info = character.userData.info;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<div class="view"></div><div class="cap"><h3>${info.icon} ${esc(info.name)}</h3><div class="role">${esc(info.role || 'NEUTRAL · REPLAYS')}</div></div>`;
+    row.appendChild(card);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xa9c7d6);
+    scene.add(new THREE.HemisphereLight(0xe6f2ff, 0x5a6b5c, 0.95));
+    const sun = new THREE.DirectionalLight(0xfff2dc, 1.15); sun.position.set(3, 5, -2); scene.add(sun);
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.0, 0.08, 10),
+      new THREE.MeshStandardMaterial({ color: 0x9fae8c, flatShading: true, roughness: 1 }));
+    floor.position.y = -0.04; scene.add(floor);
+    const turn = new THREE.Group(); turn.add(character); scene.add(turn);
+    const hit = hitVolumes(); hit.visible = false; scene.add(hit);
+    views.push({ el: card.querySelector('.view'), scene, turn, hit, camera: new THREE.PerspectiveCamera(30, 1, 0.05, 200) });
+  }
+}
+
+const kits = document.getElementById('kits');
+for (const [id, a] of Object.entries(AGENTS)) {
+  const d = document.createElement('div');
+  d.className = 'kit';
+  d.style.borderTopColor = a.color;
+  d.innerHTML = `<div class="slot">${esc(a.role)} · slot <code>${esc(id)}</code></div><h3 style="color:${a.color}">${a.icon} ${esc(a.name)}</h3>
+    <p>${esc(a.desc)}<br>${esc(CHARACTER_INFO[id].silhouette)}.</p>
+    <ul>${['q', 'e', 'x'].map((k) => `<li><b>${k.toUpperCase()}</b> ${a[k].icon} ${esc(a[k].name)} <span>— ${esc(a[k].desc)}</span></li>`).join('')}</ul>`;
+  kits.appendChild(d);
+}
+
+const state = { spin: true, far: false, hit: false, dark: false };
+const black = new THREE.MeshBasicMaterial({ color: 0x10161c });
+for (const key of Object.keys(state)) {
+  const b = document.getElementById(key);
+  b.onclick = () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); };
+}
+
+let angle = Math.PI * 0.85, last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (state.spin) angle += dt * 0.8;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) renderer.setSize(w, h, false);
+  renderer.setScissor(0, 0, w, h); renderer.setClearColor(0x000000, 0); renderer.clear();
+  for (const v of views) {
+    const r = v.el.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > h || r.width < 2) continue;
+    v.turn.rotation.y = angle;
+    v.hit.visible = state.hit;
+    v.scene.overrideMaterial = state.dark ? black : null;
+    const cam = v.camera;
+    cam.aspect = r.width / r.height;
+    if (state.far) { cam.fov = 75 * (r.height / innerHeight); cam.position.set(0, 1.6, -30); cam.lookAt(0, 1.0, 0); }
+    else { cam.fov = 30; cam.position.set(0, 1.7, -6.0); cam.lookAt(0, 1.2, 0); }
+    cam.updateProjectionMatrix();
+    renderer.setViewport(r.left, h - r.bottom, r.width, r.height);
+    renderer.setScissor(r.left, h - r.bottom, r.width, r.height);
+    renderer.render(v.scene, cam);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

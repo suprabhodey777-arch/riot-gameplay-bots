@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Rematch — Replay</title>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<style>
+  :root { --red: #ff4655; --teal: #00e5cc; --ghost: #b98cff; --amber: #ffb547; --bg: #0f1923; --panel: #141f29; --line: #2a3d4d; --dim: #8fa3b0; --ink: #ece8e1; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'Rajdhani', 'Segoe UI', sans-serif; overflow: hidden; }
+  .app { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: auto 1fr auto; height: 100%; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 18px; letter-spacing: 2px; margin-right: auto; }
+  #view { position: relative; min-height: 0; }
+  #view canvas { display: block; }
+  aside { border-left: 1px solid var(--line); padding: 12px 14px; overflow: auto; font-size: 14px; }
+  aside h2 { font-size: 12px; letter-spacing: 2px; margin: 4px 0 6px; color: var(--dim); }
+  aside ul { list-style: none; margin-bottom: 14px; }
+  aside li { padding: 2px 0; }
+  .bot { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .doing { font-weight: 800; font-size: 16px; }
+  .badge { font-size: 11px; border: 1px solid var(--ghost); padding: 0 5px; }
+  .badge.warn { border-color: var(--amber); color: var(--amber); }
+  .hs { color: var(--red); font-weight: 800; }
+  .dim { color: var(--dim); }
+  footer { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--line); }
+  #scrub { flex: 1; accent-color: var(--ghost); }
+  select, button { font-family: inherit; font-size: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); padding: 5px 8px; }
+  button { cursor: pointer; font-weight: 700; min-width: 70px; }
+  button:hover { border-color: var(--ghost); }
+  #msg { position: absolute; inset: 0; display: none; padding: 40px; font-size: 18px; text-align: center; color: var(--dim); }
+  #msg code { color: var(--ink); }
+  #warn { color: var(--amber); font-size: 13px; }
+  body.embed .app { grid-template-columns: 1fr; }
+  body.embed aside, body.embed header { display: none; }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto auto; }
+    aside { grid-row: 4; border-left: 0; border-top: 1px solid var(--line); max-height: 30vh; }
+    header, footer { padding: 8px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 id="title">Replay</h1>
+    <label>Round <select id="seg"></select></label>
+    <label>Camera <select id="cam"><option value="top">Overview</option><option value="follow">Follow</option><option value="eyes">Eyes</option></select></label>
+    <label>Player <select id="follow"></select></label>
+    <span id="warn"></span>
+  </header>
+  <div id="view"><div id="msg"></div></div>
+  <aside>
+    <h2>BOT'S MIND</h2>
+    <div id="mind"></div>
+    <h2 style="margin-top:14px">EVENTS</h2>
+    <ul id="feed"></ul>
+  </aside>
+  <footer>
+    <button id="play">Play</button>
+    <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+    <input id="scrub" type="range" min="0" max="1" step="0.05" value="0">
+    <span id="time" class="dim">0:00 / 0:00</span>
+  </footer>
+</div>
+<script type="module" src="js/replay.js"></script>
+</body>
+</html>

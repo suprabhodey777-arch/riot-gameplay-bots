@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ghost Rematch — guess the ghost</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17202a;
+        --muted: #55606b;
+        --line: #d5dbe1;
+        --accent: #145fa8;
+        --accent-ink: #ffffff;
+        --panel: #f6f8fa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px 20px 64px;
+        background: #ffffff;
+        color: var(--ink);
+        font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 760px; margin: 0 auto; }
+      h1 { font-size: 1.7rem; margin: 0 0 6px; }
+      h2 { font-size: 1.2rem; margin: 0 0 8px; }
+      .lede { color: var(--muted); margin: 0 0 24px; }
+      .meta { color: var(--muted); font-size: 0.92rem; margin: 8px 0; }
+      section { border: 1px solid var(--line); border-radius: 10px; padding: 18px; background: var(--panel); }
+      label { display: block; font-weight: 600; margin-bottom: 6px; }
+      input {
+        width: 100%;
+        max-width: 360px;
+        padding: 9px 11px;
+        border: 1px solid #9aa5b1;
+        border-radius: 7px;
+        font: inherit;
+      }
+      button {
+        font: inherit;
+        border: 1px solid var(--accent);
+        border-radius: 7px;
+        background: #ffffff;
+        color: var(--accent);
+        padding: 9px 16px;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { background: #e8f1fb; }
+      button:disabled { cursor: not-allowed; opacity: 0.55; }
+      button.primary { background: var(--accent); color: var(--accent-ink); }
+      #start { margin-left: 8px; }
+      video {
+        display: block;
+        width: 100%;
+        max-height: 430px;
+        margin: 12px 0 4px;
+        background: #000000;
+        border-radius: 8px;
+      }
+      .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; }
+      .choice { padding: 13px 16px; }
+      .error { color: #9b1c1c; margin: 12px 0 0; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Guess the ghost</h1>
+      <p class="lede">
+        Each clip is a bot controlled by a "ghost": a clone of one of your teammates. Watch the clip and
+        pick the teammate whose play it copies. Your answers go into the evidence data.
+      </p>
+
+      <section id="intro" aria-labelledby="intro-heading">
+        <h2 id="intro-heading">Your tester name</h2>
+        <label for="tester">Name</label>
+        <input id="tester" name="tester" autocomplete="off" maxlength="60" />
+        <button id="start" class="primary" type="button">Start</button>
+        <p id="storage-note" class="meta" hidden></p>
+        <p id="intro-error" class="error" role="alert" hidden></p>
+      </section>
+
+      <section id="quiz" aria-labelledby="quiz-heading" hidden>
+        <h2 id="quiz-heading" class="meta">Clip</h2>
+        <p id="progress" class="meta" aria-live="polite"></p>
+        <video id="video" controls playsinline preload="metadata" aria-label="Clip of a ghost player"></video>
+        <p id="clip-note" class="meta"></p>
+        <div id="choices" class="choices" role="group" aria-label="Which teammate is the ghost copying?"></div>
+        <p id="quiz-error" class="error" role="alert" hidden></p>
+      </section>
+
+      <section id="empty" aria-labelledby="empty-heading" hidden>
+        <h2 id="empty-heading">No clips yet</h2>
+        <p id="empty-text">No clips yet: add them to clips.json</p>
+      </section>
+
+      <section id="end" aria-labelledby="end-heading" hidden>
+        <h2 id="end-heading">Done</h2>
+        <p id="end-text"></p>
+        <p class="meta">You can close this tab.</p>
+      </section>
+    </main>
+
+    <script type="module">
+      const TESTER_KEY = 'ghost-rematch-tester';
+      const $ = (id) => document.getElementById(id);
+      const sections = ['intro', 'quiz', 'empty', 'end'];
+
+      let clips = [];
+      let choices = [];
+      let index = 0;
+      let submitted = 0;
+      let tester = '';
+      let busy = false;
+
+      function show(name) {
+        for (const section of sections) $(section).hidden = section !== name;
+      }
+
+      function setError(id, message) {
+        const node = $(id);
+        node.textContent = message || '';
+        node.hidden = !message;
+      }
+
+      function rememberTester(name) {
+        try {
+          localStorage.setItem(TESTER_KEY, name);
+        } catch (err) {
+          const note = $('storage-note');
+          note.textContent = 'This browser blocked local storage; the name is still used for this session but will not be remembered.';
+          note.hidden = false;
+        }
+      }
+
+      function recallTester() {
+        try {
+          return localStorage.getItem(TESTER_KEY) || '';
+        } catch (err) {
+          const note = $('storage-note');
+          note.textContent = 'This browser blocked local storage; your name will not be remembered if you reload.';
+          note.hidden = false;
+          return '';
+        }
+      }
+
+      async function loadClips() {
+        const res = await fetch('clips.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`clips.json returned HTTP ${res.status}`);
+        const data = await res.json();
+        clips = Array.isArray(data.clips) ? data.clips : [];
+        choices = Array.isArray(data.choices) ? data.choices.filter((c) => typeof c === 'string' && c.trim()) : [];
+      }
+
+      function renderClip() {
+        if (index >= clips.length) {
+          $('end-text').textContent = `You submitted ${submitted} of ${clips.length} guesses. Thank you.`;
+          show('end');
+          return;
+        }
+        const clip = clips[index];
+        $('progress').textContent = `Clip ${index + 1} of ${clips.length} · ${submitted} answer${submitted === 1 ? '' : 's'} recorded`;
+        $('clip-note').textContent = clip.id ? `Clip ${clip.id}` : '';
+        const video = $('video');
+        video.src = clip.src || '';
+        video.load();
+
+        const box = $('choices');
+        box.replaceChildren();
+        for (const choice of choices) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'choice';
+          button.textContent = choice;
+          button.addEventListener('click', () => submitGuess(clip, choice));
+          box.append(button);
+        }
+        $('quiz-error').hidden = true;
+      }
+
+      async function submitGuess(clip, guess) {
+        if (busy) return;
+        busy = true;
+        const buttons = [...$('choices').querySelectorAll('button')];
+        for (const button of buttons) button.disabled = true;
+        setError('quiz-error', '');
+        try {
+          const res = await fetch('/api/guess', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              tester,
+              clipId: String(clip.id ?? ''),
+              guess,
+              truth: String(clip.truth ?? ''),
+            }),
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data || data.ok !== true) {
+            throw new Error((data && data.error) || `server returned HTTP ${res.status}`);
+          }
+          submitted += 1;
+          index += 1;
+          busy = false;
+          renderClip();
+        } catch (err) {
+          setError('quiz-error', `Could not record that answer: ${err.message}. Please try again.`);
+          for (const button of buttons) button.disabled = false;
+          busy = false;
+        }
+      }
+
+      async function start() {
+        const name = $('tester').value.trim();
+        if (!name) {
+          setError('intro-error', 'Enter a tester name first.');
+          return;
+        }
+        setError('intro-error', '');
+        tester = name;
+        rememberTester(name);
+        try {
+          await loadClips();
+        } catch (err) {
+          setError('intro-error', `Could not load clips.json: ${err.message}`);
+          return;
+        }
+        if (!clips.length) {
+          $('empty-text').textContent = 'No clips yet: add them to clips.json';
+          show('empty');
+          return;
+        }
+        if (!choices.length) {
+          $('empty-text').textContent = 'clips.json has clips but no choices: add player names to choices.';
+          show('empty');
+          return;
+        }
+        index = 0;
+        submitted = 0;
+        show('quiz');
+        renderClip();
+      }
+
+      $('start').addEventListener('click', start);
+      $('tester').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') start();
+      });
+      $('tester').value = recallTester();
+    </script>
+  </body>
+</html>
