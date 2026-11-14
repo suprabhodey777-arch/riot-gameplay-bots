@@ -182,12 +182,20 @@ export class Game {
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(200, Math.floor(box.width));
     const h = Math.max(200, Math.floor(box.height));
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
-    this.canvas.width = Math.round(w * dpr);
-    this.canvas.height = Math.round(h * dpr);
+    const bw = Math.round(w * dpr);
+    const bh = Math.round(h * dpr);
+    // Assigning canvas.width or height empties the bitmap, even to the same value, so only do it on a real change.
+    if (this.canvas.width !== bw || this.canvas.height !== bh) {
+      this.canvas.style.width = `${w}px`;
+      this.canvas.style.height = `${h}px`;
+      this.canvas.width = bw;
+      this.canvas.height = bh;
+    }
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.view = makeView(this.map, w, h);
+    // A resize empties the bitmap. ResizeObserver callbacks run after a frame's animation callbacks, so waiting
+    // for the next frame paints one blank frame first (and nothing at all if frames are throttled).
+    this.render();
   }
 
   private me(s: SimState) {
