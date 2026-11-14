@@ -1,0 +1,107 @@
+# Who does what
+
+Track 01, gameplay bots. Devpost closes **11 AM Sunday**, no extensions.
+
+## The product in one line
+
+A VALORANT-style practice bot that reads a player's match history, finds their
+weakest situation (entry as a duelist, clutches, time pressure, smokes), and
+plays the opponent that drills exactly that weakness, adapting as they improve.
+It is judged on whether the player improves, not on whether the bot wins.
+
+Second mode: **playstyle archetypes** (aggressive entry duelist, patient
+lurker, off-angle anchor) built from the same bot, the chess.com
+"play a personality" idea without cloning named streamers.
+
+This keeps the strongest parts of the Whetstone proposal on the
+`research-and-idea` branch: a held-out exam to measure transfer, a per-skill
+difficulty staircase, human limits (reaction delay, fog of war), a visible
+trace, and a circuit breaker to a simple bot. That branch's research
+(`docs/RESEARCH.md`) is our source list.
+
+## Two lanes
+
+The game is one deterministic simulation in TypeScript. The 3D client draws it
+and sends the player's input; it never decides who won a fight. That split lets
+both lanes work at the same time against a shared contract.
+
+```
+match history ─► analyzer ─► drill ─► sim + bot ◄─ player input ─┐
+                                        │                         │
+                                        └─► state, events, trace ─► 3D client
+                                                                  │
+                                         coach debrief ◄─ trace ──┘
+```
+
+### Suprabho: the brain (`shared/`, `sim/`, `bot/`, `coach/`, `evidence/`)
+
+- **Shared contract** (`shared/contract.ts`), written first and frozen by
+  2 PM: map, state, input, events, trace and match-log types (below).
+- **Simulation**: 20 ticks a second, seeded, headless. Movement and wall
+  collision on the 2D floor plan, line of sight blocked by walls and smokes,
+  gunfight resolution, spike plant and defuse, round timer.
+- **Bot**: behavior tree with tunable traits (aggression, angle choice, timing,
+  utility use, reaction delay). It sees only what a player in its position
+  would see.
+- **Weakness analyzer**: reads match logs and compares role stats against
+  benchmarks (first-death rate on entry, 1vX conversion, plant/defuse with low
+  time, smoke timing). Synthetic players with planted weaknesses prove it works.
+- **Drills**: each weakness becomes a scenario ("1v2 retake on B, 25 s on the
+  spike"), with a staircase that keeps the player near a target success rate.
+- **Coach**: the LLM writes the debrief from trace facts only. Any number it
+  writes is checked against the trace; on failure or delay a template is used.
+- **Circuit breaker**: stuck or degenerate bot behavior hands control to a
+  simple scripted bot, with a notice on screen.
+- **Evidence**: baseline generic bot against ours; held-out exam drills; a
+  pre-test, practice, post-test pilot with other hackers.
+
+### Teammates: the 3D client (`client3d/`)
+
+- **The map**: an original two-site layout (A site, B site, mid, chokes, spawns),
+  not a copy of a real VALORANT map. Authored as `shared/maps/<name>.json`
+  (floor plan plus wall heights) and built in 3D from that file, so the sim and
+  the renderer use the same walls.
+- **Rendering** with Three.js and Vite: agents, smokes, the spike, tracers,
+  death markers. Agents are simple original models (capsules are fine).
+- **Controls**: first-person movement and mouse look, crosshair, firing, smoke
+  placement, plant and defuse. The client raycasts the shot and sends the
+  result (`head`, `body`, `miss`) in the input.
+- **HUD**: health, round timer, spike state, kill feed.
+- **The bot's mind panel**: the live trace (what the bot saw, chose and why) and
+  the drill's goal.
+- **Debrief and replay screen**: the coach's text, the before/after score, and a
+  replay of the round from the recorded inputs.
+- **The demo video** capture, since it is all on screen.
+
+## The contract (draft, frozen at 2 PM)
+
+| Type | What it holds |
+| --- | --- |
+| `MapDef` | name, bounds in metres, walls as polygons with heights, site A/B polygons, attacker and defender spawns, named callout regions |
+| `SimState` | tick, round clock, spike state, agents (id, team, bot or human, position, yaw, health, alive, utility left), active smokes |
+| `PlayerInput` | per tick: move vector, yaw, walk/crouch, fire (target id and `head`/`body`/`miss`, or none), smoke position, plant/defuse held |
+| `SimEvent` | spotted, damage, kill, smoke, plant, defuse, round end |
+| `TraceEntry` | tick, bot id, behavior-tree node, reason, current traits |
+| `MatchLog` | rounds of events in a VALORANT-like shape, which the analyzer reads |
+
+The client calls `sim.step(inputs)` every tick and draws the returned state. It
+never mutates the state itself, so any round can be replayed exactly from its
+inputs.
+
+## Timeline (Saturday 1 PM to Sunday 11 AM)
+
+| By | Brain | 3D client |
+| --- | --- | --- |
+| Sat 2 PM | Contract frozen, sim stub that moves an agent | Vite + Three.js page, map JSON drafted |
+| Sat 6 PM | Bot fights one human in the sim | 1v1 playable in 3D against the bot |
+| Sat 10 PM | One weakness end to end (clutch under time pressure) | HUD, smokes, mind panel |
+| Sun 2 AM | Second weakness (entry), archetypes, breaker | Debrief and replay screen |
+| Sun 6 AM | Evidence runs and the hacker pilot | Polish, record demo footage |
+| Sun 10 AM | Devpost written | 3-minute video cut |
+
+## Rules for working together
+
+- Branch per lane (`brain/...`, `client3d/...`), pull requests into `main`.
+- Changing `shared/contract.ts` after 2 PM needs both lanes to agree.
+- If the brain lags, the client runs against a stub sim that returns canned
+  state; if the client lags, the brain is demoed headless with a 2D debug view.
