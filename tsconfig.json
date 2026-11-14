@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["shared", "sim"]
+  "include": ["shared", "sim", "coach"]
 }
