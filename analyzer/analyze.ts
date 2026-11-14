@@ -34,6 +34,7 @@
 import type { MapDef, MatchLog, SimEvent, Vec2 } from '../shared/contract.ts';
 import type { Skill, WeaknessEvidence, WeaknessFinding, WeaknessReport } from '../shared/coaching.ts';
 import { loadMap } from '../shared/maps/index.ts';
+import { sitePoly } from '../sim/geometry.ts';
 import { DETONATION_S, ROUND_TIME_S, TICK_RATE } from '../sim/sim.ts';
 import { BENCHMARKS, type Role } from './benchmarks.ts';
 import { calloutAt, centroid, dist } from './geo.ts';
@@ -205,7 +206,7 @@ function smokeSamples(log: MatchLog, r: Round, playerId: string, map: MapDef): S
   const plant = r.events.find((e): e is SimEvent & { type: 'plant' } => e.type === 'plant');
   const refs: Vec2[] = [];
   if (fight) refs.push(fight.victimPos);
-  if (plant) refs.push(centroid(map.sites[plant.site]));
+  if (plant) refs.push(centroid(sitePoly(map, plant.site)));
   for (const e of r.events) {
     if (e.type !== 'smoke' || e.agent !== playerId) continue;
     const early = contact === null || e.tick < contact;

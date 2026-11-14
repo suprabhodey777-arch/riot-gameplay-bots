@@ -11,10 +11,10 @@
  * Plausible but invented: this is not real match data and says nothing about
  * how real players behave.
  */
-import type { MapDef, MatchLog, SimEvent, Team, Vec2 } from '../shared/contract.ts';
+import type { MapDef, MatchLog, SimEvent, SiteId, Team, Vec2 } from '../shared/contract.ts';
 import type { Skill } from '../shared/coaching.ts';
-import { loadMap } from '../shared/maps/index.ts';
-import { pointInPolygon } from '../sim/geometry.ts';
+import { DEFAULT_MAP_ID, loadMap } from '../shared/maps/index.ts';
+import { pointInPolygon, siteIds, sitePoly } from '../sim/geometry.ts';
 import { createRng, type Rng } from '../sim/rng.ts';
 import { DETONATION_S, TICK_RATE } from '../sim/sim.ts';
 import { BENCHMARKS, type Role } from './benchmarks.ts';
@@ -48,7 +48,11 @@ export interface GenerateOptions {
 
 const ALLIES = ['a1', 'a2', 'a3', 'a4'];
 const ENEMIES = ['e1', 'e2', 'e3', 'e4', 'e5'];
-const FIGHT_CALLOUTS = ['Mid', 'A Site', 'B Site', 'South Lane', 'North Lane'];
+/** Callouts where fights are placed: every callout of the map that holds no spawn point. */
+function fightCallouts(map: MapDef): string[] {
+  const spawns = [...map.spawns.attack, ...map.spawns.defense];
+  return map.callouts.filter((c) => !spawns.some((p) => pointInPolygon(p, c.polygon))).map((c) => c.name);
+}
 const T = (s: number): number => Math.round(s * TICK_RATE);
 
 type Kind = 'entry' | 'clutch' | 'late' | 'standard' | 'retake_tight' | 'retake_easy';
@@ -57,12 +61,14 @@ class RoundBuilder {
   events: SimEvent[] = [];
   firstContact = 0;
   firstFightPos: Vec2 = { x: 0, y: 0 };
-  plantSite: 'A' | 'B' | null = null;
+  plantSite: SiteId | null = null;
+  readonly fightCallouts: string[];
   readonly rng: Rng;
   readonly map: MapDef;
   constructor(rng: Rng, map: MapDef) {
     this.rng = rng;
     this.map = map;
+    this.fightCallouts = fightCallouts(map);
   }
 
   u(a: number, b: number): number {
@@ -108,7 +114,7 @@ class RoundBuilder {
   }
 
   plant(agent: string, tick: number): void {
-    this.plantSite = this.chance(0.5) ? 'A' : 'B';
+    this.plantSite = this.pick(siteIds(this.map));
     this.events.push({ type: 'plant', tick, agent, site: this.plantSite });
   }
 
@@ -125,7 +131,7 @@ function finishAttack(b: RoundBuilder, t0: number, win: boolean, playerDead: boo
     let t = t0;
     for (const a of ALLIES) {
       t += Math.round(b.u(40, 160));
-      b.duel(b.pick(ENEMIES), a, t, b.pick(FIGHT_CALLOUTS));
+      b.duel(b.pick(ENEMIES), a, t, b.pick(b.fightCallouts));
     }
     return b.end(t + 5, 'defense', 'elimination').winner;
   }
@@ -142,7 +148,7 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
   const team: Team = index < half ? 'attack' : 'defense';
   const { rates } = profile;
   const tc = Math.round(b.u(T(8), T(30)));
-  const callout = b.pick(FIGHT_CALLOUTS);
+  const callout = b.pick(b.fightCallouts);
 
   const weights: [Kind, number][] =
     team === 'attack'
@@ -196,11 +202,11 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
     for (const o of order) {
       t += Math.round(b.u(30, 140));
       if (o.ally) {
-        b.duel(b.pick(survivors), o.victim, t, b.pick(FIGHT_CALLOUTS));
+        b.duel(b.pick(survivors), o.victim, t, b.pick(b.fightCallouts));
         deadAllies.add(o.victim);
       } else {
         const killers = ALLIES.filter((a) => !deadAllies.has(a)).concat(PLAYER_ID);
-        b.duel(b.pick(killers), o.victim, t, b.pick(FIGHT_CALLOUTS));
+        b.duel(b.pick(killers), o.victim, t, b.pick(b.fightCallouts));
       }
     }
     // Player must not be a killer after dying: they are alive here. Now the 1vK.
@@ -257,7 +263,7 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
     if (win) {
       for (const e of ENEMIES.slice(1)) {
         t += Math.round(b.u(40, 160));
-        b.duel(b.pick(['a2', 'a3', PLAYER_ID]), e, t, b.pick(FIGHT_CALLOUTS));
+        b.duel(b.pick(['a2', 'a3', PLAYER_ID]), e, t, b.pick(b.fightCallouts));
       }
       winner = b.end(t + 2, 'defense', 'elimination').winner;
     } else {
@@ -265,7 +271,7 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
       t = b.duel('e2', PLAYER_ID, t + Math.round(b.u(40, 160)), callout);
       for (const a of ['a2', 'a3', 'a4']) {
         t += Math.round(b.u(40, 160));
-        b.duel(b.pick(ENEMIES), a, t, b.pick(FIGHT_CALLOUTS));
+        b.duel(b.pick(ENEMIES), a, t, b.pick(b.fightCallouts));
       }
       winner = b.end(t + 2, 'attack', 'elimination').winner;
     }
@@ -280,7 +286,7 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
   // Smokes: any round, independent of its kind.
   const roundEnd = b.events.find((e) => e.type === 'round_end')?.tick ?? T(100);
   const nSmokes = rng.next() < 0.25 ? 0 : rng.next() < 0.5 ? 1 : 2;
-  const siteC = b.plantSite ? centroid(map.sites[b.plantSite]) : null;
+  const siteC = b.plantSite ? centroid(sitePoly(map, b.plantSite)) : null;
   const tcAct = b.firstContact;
   for (let i = 0; i < nSmokes; i++) {
     const good = b.chance(rates.smoke_usage);
@@ -320,7 +326,7 @@ function genRound(rng: Rng, profile: PlayerProfile, map: MapDef, index: number, 
 
 /** Deterministic match logs for one profile. Match i uses an RNG derived from `seed` and i. */
 export function generateMatches(profile: PlayerProfile, seed: number, opts: GenerateOptions = {}): MatchLog[] {
-  const { matches = 8, roundsPerMatch = 24, mapId = 'test-box' } = opts;
+  const { matches = 8, roundsPerMatch = 24, mapId = DEFAULT_MAP_ID } = opts;
   const map = loadMap(mapId);
   const logs: MatchLog[] = [];
   for (let m = 0; m < matches; m++) {

@@ -17,7 +17,7 @@
  */
 import type { Debrief, DrillResult, DrillSpec, Skill, WeaknessReport } from '../shared/coaching.ts';
 import type { MatchLog } from '../shared/contract.ts';
-import { loadMap } from '../shared/maps/index.ts';
+import { DEFAULT_MAP_ID, loadMap } from '../shared/maps/index.ts';
 import { analyze } from '../analyzer/analyze.ts';
 import { BENCHMARKS } from '../analyzer/benchmarks.ts';
 import { EXAM_SEED_BASE, examDrills, type NextDrill, type PlayedDrill, planNext } from '../analyzer/plan.ts';
@@ -101,7 +101,7 @@ export class CoachingSession {
   static fromHistory(logs: MatchLog[], playerId: string, opts: SessionOptions & { seed?: number; mapId?: string } = {}): CoachingSession {
     let report = analyze(logs, playerId);
     if (report.findings.length === 0) report = { ...emptyReport(playerId), matchesRead: report.matchesRead };
-    const mapId = opts.mapId ?? logs.find((l) => l.playerId === playerId)?.mapId ?? 'test-box';
+    const mapId = opts.mapId ?? logs.find((l) => l.playerId === playerId)?.mapId ?? DEFAULT_MAP_ID;
     return new CoachingSession(
       { version: 1, seed: opts.seed ?? 1, mapId, playerId, report, staircases: {}, history: [], current: null, practice: [], examBefore: null, examAfter: null },
       opts,

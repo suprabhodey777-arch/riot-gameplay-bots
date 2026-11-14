@@ -98,7 +98,8 @@ function render() {
   const d = D.drills[di], f = d.frames[fi]; if (!f) return;
   const r = cv.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height);
   for (const c of M.callouts) label(c.name, cen(c.polygon), 'rgba(60,70,90,.35)', '12px system-ui');
-  for (const [k, col] of [['A', 'rgba(230,150,30,.22)'], ['B', 'rgba(40,150,200,.22)']]) {
+  for (const [k, col] of [['A', 'rgba(230,150,30,.22)'], ['B', 'rgba(40,150,200,.22)'], ['C', 'rgba(150,90,200,.22)']]) {
+    if (!M.sites[k]) continue;
     poly(M.sites[k]); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = col.replace('.22', '.8'); ctx.stroke();
     label('Site ' + k, cen(M.sites[k]), '#333', 'bold 15px system-ui');
   }

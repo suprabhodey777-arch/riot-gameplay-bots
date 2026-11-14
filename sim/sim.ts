@@ -6,10 +6,11 @@ import type {
   SimState,
   SmokeState,
   StepResult,
+  SiteId,
   Team,
   Vec2,
 } from '../shared/contract.ts';
-import { AGENT_RADIUS, closestOnSegment, lineOfSight, pointInPolygon, resolveCircle } from './geometry.ts';
+import { AGENT_RADIUS, lineOfSight, resolveCircle, siteAt } from './geometry.ts';
 import { createRng, type Rng } from './rng.ts';
 
 export const TICK_RATE = 20;
@@ -37,7 +38,7 @@ export interface Scenario {
   /** Seconds on the round clock at tick 0 (default 100). */
   roundTimeLeftS?: number;
   /** Start already planted, in `post_plant`, with this long until detonation. */
-  spikePlanted?: { site: 'A' | 'B'; pos: Vec2; secondsLeft: number } | null;
+  spikePlanted?: { site: SiteId; pos: Vec2; secondsLeft: number } | null;
 }
 
 export interface CreateSimOptions {
@@ -118,8 +119,7 @@ export function createSim(opts: CreateSimOptions): Sim {
   let plantTicks = 0;
   let defuseTicks = 0;
 
-  const siteOf = (p: { x: number; y: number }): 'A' | 'B' | null =>
-    pointInPolygon(p, map.sites.A) ? 'A' : pointInPolygon(p, map.sites.B) ? 'B' : null;
+  const siteOf = (p: { x: number; y: number }): SiteId | null => siteAt(map, p);
 
   function endRound(events: SimEvent[], winner: Team, reason: 'elimination' | 'detonated' | 'defused' | 'time') {
     s.phase = 'ended';

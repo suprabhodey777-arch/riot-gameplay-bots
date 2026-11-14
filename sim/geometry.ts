@@ -1,9 +1,27 @@
-import type { SmokeState, Vec2 } from '../shared/contract.ts';
+import type { MapDef, SiteId, SmokeState, Vec2 } from '../shared/contract.ts';
 
 /** Agent collision radius in metres. */
 export const AGENT_RADIUS = 0.4;
 
 type Poly = { points: Vec2[] };
+
+/** The sites a map has, in order: A, B, and C when the map has a third. */
+export function siteIds(map: Pick<MapDef, 'sites'>): SiteId[] {
+  return map.sites.C ? ['A', 'B', 'C'] : ['A', 'B'];
+}
+
+/** The polygon of a site; throws when the map has no such site. */
+export function sitePoly(map: Pick<MapDef, 'sites'>, id: SiteId): Vec2[] {
+  const p = map.sites[id];
+  if (!p) throw new Error(`map has no site ${id}`);
+  return p;
+}
+
+/** Which site's polygon contains `p`, or null. */
+export function siteAt(map: Pick<MapDef, 'sites'>, p: Vec2): SiteId | null {
+  for (const id of siteIds(map)) if (pointInPolygon(p, map.sites[id] as Vec2[])) return id;
+  return null;
+}
 
 /** True when `p` is inside the polygon (even-odd rule). */
 export function pointInPolygon(p: Vec2, poly: Vec2[]): boolean {

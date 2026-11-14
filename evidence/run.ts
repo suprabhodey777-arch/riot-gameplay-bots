@@ -32,7 +32,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DrillSpec, Skill } from '../shared/coaching.ts';
 import type { PlayerInput, SimState } from '../shared/contract.ts';
-import { loadMap } from '../shared/maps/index.ts';
+import { DEFAULT_MAP_ID, loadMap } from '../shared/maps/index.ts';
 import { buildDrill, traitsFor } from '../analyzer/drills.ts';
 import { PRACTICE_SEED_MAX } from '../analyzer/plan.ts';
 import { newStaircase, type StaircaseState, update } from '../analyzer/staircase.ts';
@@ -164,7 +164,7 @@ export interface Results {
 }
 
 export async function runEvidence(cfg: Config = DEFAULTS): Promise<Results> {
-  const map = loadMap('test-box');
+  const map = loadMap(DEFAULT_MAP_ID);
   const fairness: Fairness = { fires: 0, tooEarly: 0 };
   let drillsPlayed = 0;
   const rows: Row[] = [];

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { MatchLog } from '../shared/contract.ts';
 import type { Skill } from '../shared/coaching.ts';
+import { loadMap } from '../shared/maps/index.ts';
 import { analyze, severityOf, wilson } from './analyze.ts';
 import { generateMatches, neutralProfile, PLAYER_ID, weakProfile } from './synthetic.ts';
 
@@ -100,7 +101,7 @@ describe('analyze', () => {
     const r = analyze(generateMatches(weakProfile('duelist', 'entry', 0.05), 7), PLAYER_ID);
     const note = r.findings[0].evidence[0].note;
     expect(note).toMatch(/died first|lost the opening duel/);
-    expect(note).toMatch(/(Mid|A Site|B Site|South Lane|North Lane)/);
+    expect(loadMap('saltworks').callouts.some((c) => note.includes(c.name))).toBe(true);
     expect(note).toMatch(/\d+(\.\d)? s after first contact/);
   });
 

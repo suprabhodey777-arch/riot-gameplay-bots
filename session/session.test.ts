@@ -10,7 +10,7 @@ const NO_KEY = { apiKey: null } as const;
 
 describe('CoachingSession', () => {
   test('fromHistory finds the planted weakness, and an empty history still gives a plannable report', () => {
-    const s = sessionWithWeakness('clutch', 4, NO_KEY);
+    const s = sessionWithWeakness('clutch', 5, NO_KEY);
     expect(s.report.findings[0].skill).toBe('clutch');
     const empty = CoachingSession.fromHistory([], 'me', NO_KEY);
     expect(empty.report.findings.map((f) => f.skill).length).toBe(4);

@@ -5,13 +5,16 @@
  * Yaw is in radians, 0 = +x, counter-clockwise.
  */
 
-export const CONTRACT_VERSION = 'v2';
+export const CONTRACT_VERSION = 'v3';
 
 /** A point or vector on the floor plan, in metres. */
 export interface Vec2 {
   x: number;
   y: number;
 }
+
+/** A bomb site. Maps have A and B; some also have C (v3). */
+export type SiteId = 'A' | 'B' | 'C';
 
 /** The two sides of a round. */
 export type Team = 'attack' | 'defense';
@@ -24,8 +27,8 @@ export interface MapDef {
   bounds: { width: number; height: number };
   /** Closed polygons that block movement and sight; `height` is for rendering. */
   walls: { id: string; points: Vec2[]; height: number }[];
-  /** Plant zones as polygons. */
-  sites: { A: Vec2[]; B: Vec2[] };
+  /** Plant zones as polygons. `C` is present only on three-site maps (v3). */
+  sites: { A: Vec2[]; B: Vec2[]; C?: Vec2[] };
   spawns: { attack: Vec2[]; defense: Vec2[] };
   /** Named regions, used for callouts and for the analyzer. */
   callouts: { name: string; polygon: Vec2[] }[];
@@ -61,7 +64,7 @@ export type SpikeState =
   | {
       status: 'planted';
       pos: Vec2;
-      site: 'A' | 'B';
+      site: SiteId;
       plantedAtTick: number;
       /** Seconds of defuse so far (0 when nobody is defusing). */
       defuseProgressS: number;
@@ -128,7 +131,7 @@ export type SimEvent =
       victimPos: Vec2;
     }
   | { type: 'smoke'; tick: number; agent: string; pos: Vec2 }
-  | { type: 'plant'; tick: number; agent: string; site: 'A' | 'B' }
+  | { type: 'plant'; tick: number; agent: string; site: SiteId }
   | { type: 'defuse'; tick: number; agent: string }
   | {
       type: 'round_end';

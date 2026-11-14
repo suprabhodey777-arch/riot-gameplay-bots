@@ -1,6 +1,6 @@
 import type { BotTraits } from '../shared/coaching.ts';
-import type { FireIntent, MapDef, PlayerInput, SimState, TraceEntry, Vec2 } from '../shared/contract.ts';
-import { lineOfSight, pointInPolygon } from '../sim/geometry.ts';
+import type { FireIntent, MapDef, PlayerInput, SimState, SiteId, TraceEntry, Vec2 } from '../shared/contract.ts';
+import { lineOfSight, pointInPolygon, siteAt, siteIds, sitePoly } from '../sim/geometry.ts';
 import type { Rng } from '../sim/rng.ts';
 import { TICK_RATE } from '../sim/sim.ts';
 import { calloutAt, centroid, clearSegment, hashStr, pathBetween, type Spot, spotsFor } from './nav.ts';
@@ -71,7 +71,8 @@ export function createBot(opts: BotOptions): Bot {
   const { id, map, rng } = opts;
   let traits: BotTraits = { ...opts.traits };
   const memory = createMemory();
-  const defenseSite: 'A' | 'B' = rng.next() < 0.5 ? 'A' : 'B';
+  const sites = siteIds(map);
+  const defenseSite: SiteId = sites[Math.floor(rng.next() * sites.length)];
   const holdRoll = rng.int(3);
 
   let lastKey = '';
@@ -113,7 +114,7 @@ export function createBot(opts: BotOptions): Bot {
     return { dir, left, ahead: path.slice(pathIdx) };
   }
 
-  function pickSpot(site: 'A' | 'B', toward: 'attack' | 'defense', role: string): Spot {
+  function pickSpot(site: SiteId, toward: 'attack' | 'defense', role: string): Spot {
     const key = `${site}-${toward}-${role}-${traits.offAngle.toFixed(2)}`;
     if (spotCache?.key === key) return spotCache.spot;
     const all = spotsFor(map, site, toward);
@@ -189,7 +190,7 @@ export function createBot(opts: BotOptions): Bot {
 
     // 3. plant
     if (me.carryingSpike) {
-      const inSite = pointInPolygon(me.pos, map.sites.A) ? 'A' : pointInPolygon(me.pos, map.sites.B) ? 'B' : null;
+      const inSite = siteAt(map, me.pos);
       if (inSite) {
         return { node: 'plant', target: inSite, reason: `on site ${inSite} with no enemy in view, holding plant`, plant: true, holding: true };
       }
@@ -244,7 +245,7 @@ export function createBot(opts: BotOptions): Bot {
 
     // attack
     const attackers = state.agents.filter((a) => a.team === 'attack').map((a) => a.id).sort();
-    const planSite: 'A' | 'B' = hashStr(`${opts.siteSeed ?? 0}:${attackers[0]}`) % 2 === 0 ? 'A' : 'B';
+    const planSite: SiteId = sites[hashStr(`${opts.siteSeed ?? 0}:${attackers[0]}`) % sites.length];
     const site = sp?.status === 'planted' ? sp.site : planSite;
 
     if (sp?.status === 'dropped') {
@@ -258,9 +259,9 @@ export function createBot(opts: BotOptions): Bot {
 
     const guard = pickSpot(site, 'defense', 'atk');
     const plantSpots = spotsFor(map, site, 'defense')
-      .filter((s) => pointInPolygon(s.pos, map.sites[site]))
+      .filter((s) => pointInPolygon(s.pos, sitePoly(map, site)))
       .sort((a, b) => b.common - a.common || a.pos.x - b.pos.x || a.pos.y - b.pos.y);
-    const plantSpot = plantSpots.length > 0 ? plantSpots[hashStr(id) % Math.min(3, plantSpots.length)].pos : centroid(map.sites[site]);
+    const plantSpot = plantSpots.length > 0 ? plantSpots[hashStr(id) % Math.min(3, plantSpots.length)].pos : centroid(sitePoly(map, site));
     let guardSpot: { pos: Vec2; facing: number } = guard;
     if (sp?.status === 'planted') {
       // Post-plant: stand a few metres from the spike with a clear view of it, so a defuser is caught in the open.

@@ -22,16 +22,16 @@
  *                  before first contact (the first `damage` or `kill` event; a
  *                  bare `spotted` does not count here, because on a small map the
  *                  watcher sees the player at tick 1 and nothing could succeed), and (2) the player reaches a plant site alive
- *                  (inside site A or B while alive, and not dead by the end),
+ *                  (inside any site while alive, and not dead by the end),
  *                  or wins the round outright (nobody left to smoke against).
  *                  If first contact comes before a good smoke, the drill is
  *                  ended as a failure (it can no longer succeed); so is the
  *                  player dying.
  */
-import type { PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
+import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
 import type { DrillResult, DrillSpec } from '../shared/coaching.ts';
 import { createMatch, type Match } from '../bot/match.ts';
-import { pointInPolygon } from '../sim/geometry.ts';
+import { siteAt } from '../sim/geometry.ts';
 import { TICK_RATE } from '../sim/sim.ts';
 import { drillSimOptions } from '../analyzer/drills.ts';
 
@@ -61,9 +61,9 @@ export class DrillJudge {
   verdict: Verdict = null;
 
   readonly spec: DrillSpec;
-  private sites: { A: Vec2[]; B: Vec2[] };
+  private sites: MapDef['sites'];
 
-  constructor(spec: DrillSpec, sites: { A: Vec2[]; B: Vec2[] }) {
+  constructor(spec: DrillSpec, sites: MapDef['sites']) {
     this.spec = spec;
     this.sites = sites;
   }
@@ -91,7 +91,7 @@ export class DrillJudge {
       }
     }
     this.lastAlive = !!me?.alive;
-    if (me?.alive && (pointInPolygon(me.pos, this.sites.A) || pointInPolygon(me.pos, this.sites.B))) this.reachedSite = true;
+    if (me?.alive && siteAt({ sites: this.sites }, me.pos)) this.reachedSite = true;
     return this.decide();
   }
 

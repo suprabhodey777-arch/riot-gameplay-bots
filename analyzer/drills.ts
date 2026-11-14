@@ -9,10 +9,10 @@
  * The archetype traits here are only plausible numbers so every spec carries a
  * valid BotTraits; the bot lane owns the canonical archetype tables.
  */
-import type { MapDef, Team, Vec2 } from '../shared/contract.ts';
+import type { MapDef, SiteId, Team, Vec2 } from '../shared/contract.ts';
 import type { BotTraits, DrillBot, DrillSpec, Skill, WeaknessFinding } from '../shared/coaching.ts';
 import { loadMap } from '../shared/maps/index.ts';
-import { AGENT_RADIUS, closestOnSegment, pointInPolygon } from '../sim/geometry.ts';
+import { AGENT_RADIUS, closestOnSegment, pointInPolygon, siteIds, sitePoly } from '../sim/geometry.ts';
 import { createRng, type Rng } from '../sim/rng.ts';
 import type { CreateSimOptions } from '../sim/sim.ts';
 import { bbox, centroid, dist } from './geo.ts';
@@ -112,8 +112,9 @@ export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed
   const d = clamp(difficultyIn);
   snapOffset = seed >= EXAM_SEED_BASE ? 0.05 : 0;
   const rng = createRng((seed * 2654435761 + skill.length * 97 + skill.charCodeAt(0)) >>> 0);
-  const siteName: 'A' | 'B' = rng.next() < 0.5 ? 'A' : 'B';
-  const site = map.sites[siteName];
+  const siteList = siteIds(map);
+  const siteName: SiteId = siteList[Math.floor(rng.next() * siteList.length)];
+  const site = sitePoly(map, siteName);
   const siteC = centroid(site);
   const attackSpawns = map.spawns.attack;
   const defenseSpawns = map.spawns.defense;

@@ -3,7 +3,7 @@
  * analyzer, the bot, the coach and the 3D client (which shows the drill goal
  * and the debrief). Type-only.
  */
-import type { SimEvent, Team, TraceEntry, Vec2 } from './contract.ts';
+import type { SimEvent, SiteId, Team, TraceEntry, Vec2 } from './contract.ts';
 
 /** The situations we measure and drill. */
 export type Skill = 'entry' | 'clutch' | 'time_pressure' | 'smoke_usage';
@@ -90,7 +90,7 @@ export interface DrillSpec {
   bots: DrillBot[];
   roundTimeLeftS: number;
   /** Set for retake and post-plant drills. */
-  spikePlanted: { site: 'A' | 'B'; pos: Vec2; secondsLeft: number } | null;
+  spikePlanted: { site: SiteId; pos: Vec2; secondsLeft: number } | null;
 }
 
 /** What happened when a drill was played. */
