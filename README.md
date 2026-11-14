@@ -31,3 +31,6 @@ Use case + original solution + evidence.
 ## Status
 
 Idea stage. Nothing built yet.
+
+- [docs/IDEA.md](docs/IDEA.md): the proposed idea, Whetstone
+- [docs/RESEARCH.md](docs/RESEARCH.md): what players and Riot say is wrong with bots, with sources
