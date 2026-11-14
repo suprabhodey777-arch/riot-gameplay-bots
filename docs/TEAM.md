@@ -1,5 +1,10 @@
 # Who does what
 
+> **Superseded at 3:15 PM Saturday.** We are building Ghost Rematch on
+> `jangerine/valorant-like-fps`, as the handoff says. The current plan and
+> work split are in [`PLAN.md`](PLAN.md). The text below is the old plan, kept
+> for reference; do not build new features from it.
+
 Track 01, gameplay bots. Devpost closes **11 AM Sunday**, no extensions.
 
 ## The product in one line
