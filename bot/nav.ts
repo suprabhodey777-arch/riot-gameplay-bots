@@ -1,5 +1,5 @@
 import type { MapDef, SiteId, Vec2 } from '../shared/contract.ts';
-import { closestOnSegment, pointInPolygon, segmentsIntersect, sitePoly } from '../sim/geometry.ts';
+import { closestOnSegment, pointInPolygon, segmentMissesBox, segmentsIntersect, sitePoly } from '../sim/geometry.ts';
 
 type Walls = MapDef['walls'];
 
@@ -26,6 +26,7 @@ export function minWallDist(p: Vec2, walls: Walls): number {
 export function clearSegment(a: Vec2, b: Vec2, walls: Walls, clr: number): boolean {
   for (const w of walls) {
     const pts = w.points;
+    if (segmentMissesBox(a, b, pts, clr)) continue;
     for (let i = 0; i < pts.length; i++) {
       const c = pts[i];
       const d = pts[(i + 1) % pts.length];

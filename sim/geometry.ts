@@ -36,6 +36,36 @@ export function pointInPolygon(p: Vec2, poly: Vec2[]): boolean {
   return inside;
 }
 
+type Box = { x0: number; y0: number; x1: number; y1: number };
+const boxes = new WeakMap<Vec2[], Box>();
+
+/** Axis-aligned bounds of a polygon, cached per points array. Used only to skip walls that cannot matter. */
+export function polyBox(pts: Vec2[]): Box {
+  let b = boxes.get(pts);
+  if (!b) {
+    b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const p of pts) {
+      b.x0 = Math.min(b.x0, p.x);
+      b.y0 = Math.min(b.y0, p.y);
+      b.x1 = Math.max(b.x1, p.x);
+      b.y1 = Math.max(b.y1, p.y);
+    }
+    boxes.set(pts, b);
+  }
+  return b;
+}
+
+/** True when the segment a-b, grown by `pad`, cannot reach the polygon's bounds. */
+export function segmentMissesBox(a: Vec2, b: Vec2, pts: Vec2[], pad = 0): boolean {
+  const q = polyBox(pts);
+  return (
+    Math.max(a.x, b.x) < q.x0 - pad ||
+    Math.min(a.x, b.x) > q.x1 + pad ||
+    Math.max(a.y, b.y) < q.y0 - pad ||
+    Math.min(a.y, b.y) > q.y1 + pad
+  );
+}
+
 const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
 
 /** True when segment a-b crosses segment c-d (touching counts). */
@@ -74,6 +104,7 @@ export function closestOnSegment(p: Vec2, a: Vec2, b: Vec2): { point: Vec2; dist
 export function lineOfSight(from: Vec2, to: Vec2, walls: Poly[], smokes: Pick<SmokeState, 'pos' | 'radius'>[] = []): boolean {
   for (const w of walls) {
     const pts = w.points;
+    if (segmentMissesBox(from, to, pts)) continue;
     for (let i = 0; i < pts.length; i++) {
       if (segmentsIntersect(from, to, pts[i], pts[(i + 1) % pts.length])) return false;
     }
@@ -100,6 +131,8 @@ export function resolveCircle(
     let moved = false;
     for (const w of walls) {
       const pts = w.points;
+      const q = polyBox(pts);
+      if (x < q.x0 - radius || x > q.x1 + radius || y < q.y0 - radius || y > q.y1 + radius) continue;
       const inside = pointInPolygon({ x, y }, pts);
       let best: { point: Vec2; dist: number } | null = null;
       for (let i = 0; i < pts.length; i++) {
