@@ -1,0 +1,1412 @@
+{
+  "config": {
+    "n": 30,
+    "budget": 20,
+    "forms": 5,
+    "weakLevel": 0.15,
+    "otherLevel": 0.7,
+    "bootstrap": 4000
+  },
+  "contractNote": "Simulated learners with a made-up learning rule (session/simulated-player.ts). Shows the mechanism, not human transfer.",
+  "rows": [
+    {
+      "seed": 1,
+      "weak": "clutch",
+      "analyzerTop": "clutch",
+      "pre": {
+        "weak": 0,
+        "overall": 0.3
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.2473266643670231,
+          "weakCompetence": 0.20407334400000002
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.27392387050871575,
+          "weakCompetence": 0.25941926400000004
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.5,
+          "weakShareTicks": 0.6080799666805498,
+          "weakCompetence": 0.3685883851245392
+        }
+      }
+    },
+    {
+      "seed": 2,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.2
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.1,
+          "weakShareTicks": 0.1390750670241287,
+          "weakCompetence": 0.17496
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.225
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999994,
+          "weakShareDrills": 0.4,
+          "weakShareTicks": 0.5643111337061515,
+          "weakCompetence": 0.3638061306291815
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.25
+          },
+          "gainWeak": 0.2,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.7448738170347003,
+          "weakCompetence": 0.4392961313988607
+        }
+      }
+    },
+    {
+      "seed": 3,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.09146135673304084,
+          "weakCompetence": 0.1889568
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.024943310657596373,
+          "weakCompetence": 0.25941926400000004
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.45,
+          "weakShareTicks": 0.28627450980392155,
+          "weakCompetence": 0.34430325390454297
+        }
+      }
+    },
+    {
+      "seed": 4,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.225
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.25
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.024999999999999994,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.44124938026772437,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.25
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.024999999999999994,
+          "weakShareDrills": 0.4,
+          "weakShareTicks": 0.4246861924686193,
+          "weakCompetence": 0.3638061306291815
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.225
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.85,
+          "weakShareTicks": 0.8022297624818225,
+          "weakCompetence": 0.580793210054562
+        }
+      }
+    },
+    {
+      "seed": 5,
+      "weak": "clutch",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0,
+        "overall": 0.225
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.05000000000000002,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.4530730897009967,
+          "weakCompetence": 0.23803114844160003
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999994,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.2505582849486378,
+          "weakCompetence": 0.23849920000000002
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.05000000000000002,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.4496124031007752,
+          "weakCompetence": 0.27866572288
+        }
+      }
+    },
+    {
+      "seed": 6,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.275
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.37833424060968973,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.24466519499632083,
+          "weakCompetence": 0.29588812288000005
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.3
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.65,
+          "weakShareTicks": 0.9090909090909091,
+          "weakCompetence": 0.4459498429357031
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0,
+        "overall": 0.225
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.275
+          },
+          "gainWeak": 0.1,
+          "gainOverall": 0.05000000000000002,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.023006134969325152,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.275
+          },
+          "gainWeak": 0.1,
+          "gainOverall": 0.05000000000000002,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.19442865264354747,
+          "weakCompetence": 0.28234572288000004
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.275
+          },
+          "gainWeak": 0.2,
+          "gainOverall": 0.05000000000000002,
+          "weakShareDrills": 0.8,
+          "weakShareTicks": 0.44820065430752454,
+          "weakCompetence": 0.4297421981579692
+        }
+      }
+    },
+    {
+      "seed": 8,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.25
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.22996982903117666,
+          "weakCompetence": 0.1889568
+        },
+        "random": {
+          "post": {
+            "weak": 0.5,
+            "overall": 0.3
+          },
+          "gainWeak": 0.2,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.22903225806451613,
+          "weakCompetence": 0.28266572288
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.275
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.8,
+          "weakShareTicks": 0.800570703868104,
+          "weakCompetence": 0.43742636693378284
+        }
+      }
+    },
+    {
+      "seed": 9,
+      "weak": "clutch",
+      "analyzerTop": "clutch",
+      "pre": {
+        "weak": 0,
+        "overall": 0.2
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.2
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.3776978417266187,
+          "weakCompetence": 0.23803114844160003
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.2
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.35,
+          "weakShareTicks": 0.5657229524772498,
+          "weakCompetence": 0.32723970720563206
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.2
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.65,
+          "weakShareTicks": 0.6399708773207136,
+          "weakCompetence": 0.39666318693570307
+        }
+      }
+    },
+    {
+      "seed": 10,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.3
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.325
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.4,
+          "weakShareTicks": 0.5695504664970313,
+          "weakCompetence": 0.27763953154228227
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.325
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.43617522373999057,
+          "weakCompetence": 0.31221707304960006
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.5,
+            "overall": 0.375
+          },
+          "gainWeak": 0.3,
+          "gainOverall": 0.07500000000000001,
+          "weakShareDrills": 0.85,
+          "weakShareTicks": 0.9555110220440882,
+          "weakCompetence": 0.4853001996210434
+        }
+      }
+    },
+    {
+      "seed": 11,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0.1,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.06959971150378651,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.20388349514563106,
+          "weakCompetence": 0.28266572288
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.35
+          },
+          "gainWeak": 0.1,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.576,
+          "weakCompetence": 0.39549450597297625
+        }
+      }
+    },
+    {
+      "seed": 12,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.25
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.35,
+          "weakShareTicks": 0.5893656716417911,
+          "weakCompetence": 0.25707364031692803
+        },
+        "random": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.275
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.35,
+          "weakShareTicks": 0.5813424345847554,
+          "weakCompetence": 0.31634266784563203
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.5,
+            "overall": 0.3
+          },
+          "gainWeak": 0.2,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.6861147327249022,
+          "weakCompetence": 0.44005099669043946
+        }
+      }
+    },
+    {
+      "seed": 13,
+      "weak": "clutch",
+      "analyzerTop": "clutch",
+      "pre": {
+        "weak": 0,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.44880715705765406,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.31607335490830635,
+          "weakCompetence": 0.28266572288
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.6,
+          "weakShareTicks": 0.6769641495041953,
+          "weakCompetence": 0.38478273826922077
+        }
+      }
+    },
+    {
+      "seed": 14,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.25
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.1,
+          "weakShareTicks": 0.29719161038037684,
+          "weakCompetence": 0.17496
+        },
+        "random": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.1,
+          "weakShareTicks": 0.15782122905027932,
+          "weakCompetence": 0.21576
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.55,
+          "weakShareTicks": 0.7268862911795961,
+          "weakCompetence": 0.38322393219222917
+        }
+      }
+    },
+    {
+      "seed": 15,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0.1,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.35,
+          "weakShareTicks": 0.20385818561001043,
+          "weakCompetence": 0.25707364031692803
+        },
+        "random": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.1610796691336526,
+          "weakCompetence": 0.26341926400000004
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.65,
+          "weakShareTicks": 0.4491525423728814,
+          "weakCompetence": 0.3900870717097568
+        }
+      }
+    },
+    {
+      "seed": 16,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.275
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.24263883712262393,
+          "weakCompetence": 0.20407334400000002
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.1,
+          "weakShareTicks": 0.2522452167122218,
+          "weakCompetence": 0.20424
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.3
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.5706695005313497,
+          "weakCompetence": 0.4207369469980331
+        }
+      }
+    },
+    {
+      "seed": 17,
+      "weak": "clutch",
+      "analyzerTop": "clutch",
+      "pre": {
+        "weak": 0,
+        "overall": 0.3
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.275
+          },
+          "gainWeak": 0,
+          "gainOverall": -0.024999999999999967,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.29364063166880067,
+          "weakCompetence": 0.20407334400000002
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.2708533077660594,
+          "weakCompetence": 0.25941926400000004
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.6,
+          "weakShareTicks": 0.7141104294478527,
+          "weakCompetence": 0.3887961521667169
+        }
+      }
+    },
+    {
+      "seed": 18,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.25
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.2,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.1,
+          "weakShareTicks": 0.23377670294236194,
+          "weakCompetence": 0.17496
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.275
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.35,
+          "weakShareTicks": 0.5582203684393465,
+          "weakCompetence": 0.32434266784563204
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.5,
+            "overall": 0.325
+          },
+          "gainWeak": 0.3,
+          "gainOverall": 0.07500000000000001,
+          "weakShareDrills": 0.75,
+          "weakShareTicks": 0.7186924493554327,
+          "weakCompetence": 0.4857485702960079
+        }
+      }
+    },
+    {
+      "seed": 19,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0,
+        "overall": 0.275
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.06499535747446611,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.13018760659465606,
+          "weakCompetence": 0.2963724650496
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.8,
+          "weakShareTicks": 0.6365131578947368,
+          "weakCompetence": 0.4241807953086733
+        }
+      }
+    },
+    {
+      "seed": 20,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.275
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.1804214223002634,
+          "weakCompetence": 0.20407334400000002
+        },
+        "random": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.3
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.5,
+          "weakShareTicks": 0.3847814355099838,
+          "weakCompetence": 0.39648730370599444
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.3
+          },
+          "gainWeak": 0.10000000000000003,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.8,
+          "weakShareTicks": 0.7892503536067893,
+          "weakCompetence": 0.4296326009979622
+        }
+      }
+    },
+    {
+      "seed": 21,
+      "weak": "clutch",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.46507666098807493,
+          "weakCompetence": 0.23803114844160003
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.34233853946813003,
+          "weakCompetence": 0.2997580650496
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.3849329205366357,
+          "weakCompetence": 0.2963724650496
+        }
+      }
+    },
+    {
+      "seed": 22,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.2
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.225
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999994,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.24262681871804956,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.225
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999994,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.403968253968254,
+          "weakCompetence": 0.23849920000000002
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.4,
+            "overall": 0.25
+          },
+          "gainWeak": 0.2,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.7775792764627065,
+          "weakCompetence": 0.41980356009174064
+        }
+      }
+    },
+    {
+      "seed": 23,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0,
+        "overall": 0.3
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.2611837577426015,
+          "weakCompetence": 0.23803114844160003
+        },
+        "random": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.325
+          },
+          "gainWeak": 0.1,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.21052631578947367,
+          "weakCompetence": 0.2963724650496
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.325
+          },
+          "gainWeak": 0.1,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.5881595881595881,
+          "weakCompetence": 0.4053804579729763
+        }
+      }
+    },
+    {
+      "seed": 24,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.2554223744292237,
+          "weakCompetence": 0.1889568
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.16990291262135923,
+          "weakCompetence": 0.250865536
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.65,
+          "weakShareTicks": 0.40732394366197183,
+          "weakCompetence": 0.4234508558683269
+        }
+      }
+    },
+    {
+      "seed": 25,
+      "weak": "clutch",
+      "analyzerTop": "clutch",
+      "pre": {
+        "weak": 0,
+        "overall": 0.325
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.375
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.21038495971351837,
+          "weakCompetence": 0.20407334400000002
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.35
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.22937293729372937,
+          "weakCompetence": 0.23849920000000002
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.85,
+          "weakShareTicks": 0.7918819188191882,
+          "weakCompetence": 0.45451159799287916
+        }
+      }
+    },
+    {
+      "seed": 26,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.25
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.07500000000000001,
+          "weakShareDrills": 0.3,
+          "weakShareTicks": 0.422810713210954,
+          "weakCompetence": 0.23803114844160003
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.25
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.532739654269251,
+          "weakCompetence": 0.30873983488
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.5,
+            "overall": 0.3
+          },
+          "gainWeak": 0.2,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.85,
+          "weakShareTicks": 0.9848293299620733,
+          "weakCompetence": 0.4386257219009977
+        }
+      }
+    },
+    {
+      "seed": 27,
+      "weak": "smoke_usage",
+      "analyzerTop": "smoke_usage",
+      "pre": {
+        "weak": 0.1,
+        "overall": 0.3
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.07854523227383862,
+          "weakCompetence": 0.20407334400000002
+        },
+        "random": {
+          "post": {
+            "weak": 0.1,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.15,
+          "weakShareTicks": 0.0741815167840862,
+          "weakCompetence": 0.23849920000000002
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.35
+          },
+          "gainWeak": 0.19999999999999998,
+          "gainOverall": 0.04999999999999999,
+          "weakShareDrills": 0.85,
+          "weakShareTicks": 0.6785340314136126,
+          "weakCompetence": 0.4299442042144688
+        }
+      }
+    },
+    {
+      "seed": 28,
+      "weak": "entry",
+      "analyzerTop": "entry",
+      "pre": {
+        "weak": 0.3,
+        "overall": 0.3
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.4273743016759777,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.3
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.33729953440248317,
+          "weakCompetence": 0.268388736
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.325
+          },
+          "gainWeak": 0,
+          "gainOverall": 0.025000000000000022,
+          "weakShareDrills": 0.7,
+          "weakShareTicks": 0.7145669291338582,
+          "weakCompetence": 0.41868692403352814
+        }
+      }
+    },
+    {
+      "seed": 29,
+      "weak": "clutch",
+      "analyzerTop": "clutch",
+      "pre": {
+        "weak": 0,
+        "overall": 0.225
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0,
+            "overall": 0.225
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.29924502402196296,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0,
+            "overall": 0.225
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.4251497005988024,
+          "weakCompetence": 0.27866572288
+        },
+        "targeted": {
+          "post": {
+            "weak": 0,
+            "overall": 0.225
+          },
+          "gainWeak": 0,
+          "gainOverall": 0,
+          "weakShareDrills": 0.8,
+          "weakShareTicks": 0.7657120127287191,
+          "weakCompetence": 0.44301632736189395
+        }
+      }
+    },
+    {
+      "seed": 30,
+      "weak": "time_pressure",
+      "analyzerTop": "time_pressure",
+      "pre": {
+        "weak": 0.2,
+        "overall": 0.275
+      },
+      "conditions": {
+        "baseline": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.3
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.25,
+          "weakShareTicks": 0.24414145717937794,
+          "weakCompetence": 0.22039921152000003
+        },
+        "random": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.3
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.2,
+          "weakShareTicks": 0.3145856767904012,
+          "weakCompetence": 0.294139264
+        },
+        "targeted": {
+          "post": {
+            "weak": 0.3,
+            "overall": 0.3
+          },
+          "gainWeak": 0.09999999999999998,
+          "gainOverall": 0.024999999999999967,
+          "weakShareDrills": 0.6,
+          "weakShareTicks": 0.6954397394136808,
+          "weakCompetence": 0.40902597345500114
+        }
+      }
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "gainWeak": {
+        "mean": 0.016666666666666666,
+        "lo": 0.0033333333333333344,
+        "hi": 0.030000000000000002
+      },
+      "gainOverall": {
+        "mean": 0.021666666666666664,
+        "lo": 0.014166666666666664,
+        "hi": 0.029166666666666667
+      },
+      "weakShareDrills": 0.23500000000000001,
+      "weakShareTicks": 0.28272835528608226,
+      "weakCompetence": 0.21673750445280465
+    },
+    "random": {
+      "gainWeak": {
+        "mean": 0.039999999999999994,
+        "lo": 0.02,
+        "hi": 0.06000000000000002
+      },
+      "gainOverall": {
+        "mean": 0.014999999999999996,
+        "lo": 0.009999999999999992,
+        "hi": 0.02083333333333333
+      },
+      "weakShareDrills": 0.25000000000000006,
+      "weakShareTicks": 0.30883334113474026,
+      "weakCompetence": 0.2846482880073218
+    },
+    "targeted": {
+      "gainWeak": {
+        "mean": 0.08333333333333336,
+        "lo": 0.05000000000000001,
+        "hi": 0.11666666666666671
+      },
+      "gainOverall": {
+        "mean": 0.024166666666666663,
+        "lo": 0.015833333333333328,
+        "hi": 0.032499999999999994
+      },
+      "weakShareDrills": 0.6783333333333335,
+      "weakShareTicks": 0.6659242640880959,
+      "weakCompetence": 0.41627602988300444
+    }
+  },
+  "targetedMinusBaseline": {
+    "gainWeak": {
+      "mean": 0.06666666666666668,
+      "lo": 0.03666666666666666,
+      "hi": 0.10000000000000003
+    },
+    "gainOverall": {
+      "mean": 0.0025000000000000005,
+      "lo": -0.007499999999999995,
+      "hi": 0.012499999999999999
+    }
+  },
+  "targetedMinusRandom": {
+    "gainWeak": {
+      "mean": 0.043333333333333335,
+      "lo": 0.01666666666666666,
+      "hi": 0.07333333333333333
+    },
+    "gainOverall": {
+      "mean": 0.009166666666666667,
+      "lo": 0.0008333333333333387,
+      "hi": 0.017499999999999998
+    }
+  },
+  "analyzerFoundWeakShare": 0.9333333333333333,
+  "preMeanWeak": 0.13666666666666666,
+  "fairness": {
+    "fires": 25106,
+    "tooEarly": 0,
+    "rule": "fire inputs issued earlier than reactionMs after the shooter first saw the target (must be 0)"
+  },
+  "drillsPlayed": 6600
+}
