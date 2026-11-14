@@ -112,12 +112,13 @@ describe('analyze', () => {
 });
 
 describe('skill definitions on hand-written rounds', () => {
+  const TEAMS: Record<string, 'attack' | 'defense'> = { [PLAYER_ID]: 'attack', a1: 'attack', a2: 'attack', a3: 'attack', a4: 'attack', e1: 'defense', e2: 'defense', e3: 'defense', e4: 'defense', e5: 'defense' };
   const log = (events: MatchLog['rounds'][number]['events'], o: Partial<MatchLog['rounds'][number]> = {}): MatchLog[] => [
     {
       matchId: 'm',
       mapId: 'test-box',
       playerId: PLAYER_ID,
-      rounds: [{ index: 0, playerTeam: 'attack', playerRole: 'duelist', events, winner: 'defense', ...o }],
+      rounds: [{ index: 0, playerTeam: 'attack', playerRole: 'duelist', teams: TEAMS, events, winner: 'defense', ...o }],
     },
   ];
   const p = { x: 30, y: 20 };

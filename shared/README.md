@@ -1,6 +1,6 @@
 # shared/
 
-`contract.ts` is the cross-lane contract (`CONTRACT_VERSION = 'v1'`): types only. Maps live in
+`contract.ts` is the cross-lane contract (`CONTRACT_VERSION = 'v2'`): types only. Maps live in
 `maps/*.json` and load through `maps/index.ts`. `maps/test-box.json` is a placeholder for tests;
 the real map is owned by the 3D team and is added the same way (`registerMap`).
 
