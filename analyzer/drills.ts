@@ -12,6 +12,8 @@
 import type { MapDef, SiteId, Team, Vec2 } from '../shared/contract.ts';
 import type { BotTraits, DrillBot, DrillSpec, Skill, WeaknessFinding } from '../shared/coaching.ts';
 import { loadMap } from '../shared/maps/index.ts';
+import { pathBetween } from '../bot/nav.ts';
+import { RUN_SPEED } from '../sim/sim.ts';
 import { AGENT_RADIUS, closestOnSegment, pointInPolygon, siteIds, sitePoly } from '../sim/geometry.ts';
 import { createRng, type Rng } from '../sim/rng.ts';
 import type { CreateSimOptions } from '../sim/sim.ts';
@@ -112,6 +114,22 @@ export function walkablePoint(map: MapDef, p: Vec2, seed: number): Vec2 {
   return freeNear(map, p, createRng(seed >>> 0));
 }
 
+/**
+ * Extra seconds a clock needs on a map bigger than the one the numbers were tuned on:
+ * the walking time beyond `freeM` metres. Zero on the small test map.
+ */
+function longWalkS(map: MapDef, from: Vec2, to: Vec2, freeM: number): number {
+  const path = pathBetween(map, from, to);
+  if (!path) return 0;
+  let len = 0;
+  let at = from;
+  for (const p of path) {
+    len += dist(at, p);
+    at = p;
+  }
+  return Math.max(0, Math.round(((len - freeM) / RUN_SPEED) * 10) / 10);
+}
+
 const secs = (s: number): number => Math.round(s * 10) / 10;
 
 export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed: number): DrillSpec {
@@ -165,8 +183,8 @@ export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed
 
   if (skill === 'time_pressure') {
     if (rng.next() < 0.5) {
-      const left = secs(30 - 12 * d);
       const spawn = freeNear(map, jitter(attackSpawns[rng.int(attackSpawns.length)], 1.5, rng), rng);
+      const left = secs(30 - 12 * d + longWalkS(map, spawn, siteC, 55));
       const bots = [bot(1, 'defense', inPoly(map, site, rng), 'off-angle-anchor', d)];
       if (d > 0.5) bots.push(bot(2, 'defense', inPoly(map, site, rng), 'baseline', d));
       return {
@@ -179,9 +197,9 @@ export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed
         spikePlanted: null,
       };
     }
-    const left = secs(18 - 7 * d);
     const pos = inPoly(map, site, rng);
     const spawn = freeNear(map, jitter(defenseSpawns[rng.int(defenseSpawns.length)], 1.5, rng), rng);
+    const left = secs(18 - 7 * d + longWalkS(map, spawn, pos, 15));
     const bots = [bot(1, 'attack', freeNear(map, jitter(pos, 6, rng), rng), 'patient-lurker', d)];
     if (d > 0.5) bots.push(bot(2, 'attack', freeNear(map, jitter(pos, 6, rng), rng), 'entry-duelist', d));
     return {
