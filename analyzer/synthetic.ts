@@ -58,10 +58,12 @@ class RoundBuilder {
   firstContact = 0;
   firstFightPos: Vec2 = { x: 0, y: 0 };
   plantSite: 'A' | 'B' | null = null;
-  constructor(
-    readonly rng: Rng,
-    readonly map: MapDef,
-  ) {}
+  readonly rng: Rng;
+  readonly map: MapDef;
+  constructor(rng: Rng, map: MapDef) {
+    this.rng = rng;
+    this.map = map;
+  }
 
   u(a: number, b: number): number {
     return a + this.rng.next() * (b - a);
