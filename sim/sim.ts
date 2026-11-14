@@ -174,10 +174,27 @@ export function createSim(opts: CreateSimOptions): Sim {
       const part = inp.fire.result;
       const amount = part === 'head' ? HEAD_DAMAGE : BODY_DAMAGE;
       target.hp = Math.max(0, target.hp - amount);
-      events.push({ type: 'damage', tick: s.tick, attacker: a.id, victim: target.id, amount, part });
+      events.push({
+        type: 'damage',
+        tick: s.tick,
+        attacker: a.id,
+        victim: target.id,
+        amount,
+        part,
+        attackerPos: { ...a.pos },
+        victimPos: { ...target.pos },
+      });
       if (target.hp <= 0) {
         target.alive = false;
-        events.push({ type: 'kill', tick: s.tick, killer: a.id, victim: target.id, part });
+        events.push({
+          type: 'kill',
+          tick: s.tick,
+          killer: a.id,
+          victim: target.id,
+          part,
+          killerPos: { ...a.pos },
+          victimPos: { ...target.pos },
+        });
         if (target.carryingSpike) {
           target.carryingSpike = false;
           s.spike = { status: 'dropped', pos: { ...target.pos } };

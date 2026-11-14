@@ -106,8 +106,27 @@ export interface PlayerInput {
 /** Something that happened during a step. */
 export type SimEvent =
   | { type: 'spotted'; tick: number; observer: string; target: string }
-  | { type: 'damage'; tick: number; attacker: string; victim: string; amount: number; part: 'head' | 'body' }
-  | { type: 'kill'; tick: number; killer: string; victim: string; part: 'head' | 'body' }
+  | {
+      type: 'damage';
+      tick: number;
+      attacker: string;
+      victim: string;
+      amount: number;
+      part: 'head' | 'body';
+      /** Positions at the moment of the hit. */
+      attackerPos: Vec2;
+      victimPos: Vec2;
+    }
+  | {
+      type: 'kill';
+      tick: number;
+      killer: string;
+      victim: string;
+      part: 'head' | 'body';
+      /** Positions at the moment of the kill. */
+      killerPos: Vec2;
+      victimPos: Vec2;
+    }
   | { type: 'smoke'; tick: number; agent: string; pos: Vec2 }
   | { type: 'plant'; tick: number; agent: string; site: 'A' | 'B' }
   | { type: 'defuse'; tick: number; agent: string }
@@ -134,7 +153,10 @@ export interface StepResult {
   trace: TraceEntry[];
 }
 
-/** A finished match in the shape the weakness analyzer reads. */
+/**
+ * A finished match in the shape the weakness analyzer reads. Each round is a
+ * fresh sim starting at tick 0, so event ticks are relative to the round start.
+ */
 export interface MatchLog {
   matchId: string;
   mapId: string;
