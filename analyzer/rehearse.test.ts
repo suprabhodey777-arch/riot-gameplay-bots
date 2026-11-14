@@ -9,7 +9,10 @@ import { DEFUSE_TIME_S, PLANT_TIME_S, RUN_SPEED } from '../sim/sim.ts';
 import { pathBetween } from '../bot/nav.ts';
 import { analyze } from './analyze.ts';
 import { EXAM_SEED_BASE } from './drills.ts';
-import { rehearsalDrill } from './rehearse.ts';
+import { HIDDEN_RADIUS_M, rehearsalDrill } from './rehearse.ts';
+import { CoachingSession } from '../session/session.ts';
+import type { DrillSpec } from '../shared/coaching.ts';
+import type { Vec2 } from '../shared/contract.ts';
 import { generateMatches, PLAYER_ID, weakProfile } from './synthetic.ts';
 
 const map = loadMap('saltworks');
@@ -196,5 +199,69 @@ describe('rehearsalDrill', () => {
         expect(d.roundTimeLeftS, `${d.id}`).toBeGreaterThanOrEqual(len / RUN_SPEED + job - 3);
       }
     }
+  });
+});
+
+// The play page's sample players (play/main.ts): the rehearsals a person actually gets.
+const SAMPLES: [Skill, number][] = [
+  ['entry', 11],
+  ['clutch', 12],
+  ['time_pressure', 13],
+  ['smoke_usage', 14],
+];
+const sampleRehearsals = (skill: Skill, seed: number): DrillSpec[] =>
+  CoachingSession.fromHistory(generateMatches(weakProfile('duelist', skill, 0.1), seed, { matches: 6 }), PLAYER_ID, { seed, ...NO_KEY }).rehearsals();
+
+/** Ticks until the first bot `engage` while the player runs with `steer`, or null within `ticks`. */
+function firstReaction(spec: DrillSpec, steer: (p: Vec2) => Vec2, ticks: number): number | null {
+  const run = startDrill(spec);
+  for (let t = 1; t <= ticks && !run.done(); t++) {
+    const me = run.state().agents.find((a) => a.id === spec.player.id);
+    const d = steer(me?.pos ?? spec.player.spawn);
+    const len = Math.hypot(d.x, d.y) || 1;
+    const r = run.step({ ...idleInput(spec.player.id), move: { x: d.x / len, y: d.y / len }, yaw: Math.atan2(d.y, d.x) });
+    if (r.trace.some((e) => e.node === 'engage')) return t;
+  }
+  return null;
+}
+
+describe('rehearsal starts stay hidden on the way out', () => {
+  // Found in the browser: a start out of sight at tick 0 was one step from a gap in the dock wall,
+  // and the holding bot reacted 0.3 s after the player moved.
+  const graceTicks = Math.floor((HIDDEN_RADIUS_M / RUN_SPEED) * 20);
+
+  test.each(SAMPLES)('no bot reacts while the player covers the first 3 m in any direction (%s sample)', (skill, seed) => {
+    for (const spec of sampleRehearsals(skill, seed)) {
+      const target = spec.bots[0]?.hold?.pos ?? spec.bots[0].spawn;
+      const route = [...(pathBetween(map, spec.player.spawn, target) ?? [target])];
+      const ways: Record<string, (p: Vec2) => Vec2> = {
+        route: (p) => {
+          while (route.length > 1 && Math.hypot(route[0].x - p.x, route[0].y - p.y) < 0.6) route.shift();
+          return { x: route[0].x - p.x, y: route[0].y - p.y };
+        },
+        north: () => ({ x: 0, y: 1 }),
+        south: () => ({ x: 0, y: -1 }),
+        east: () => ({ x: 1, y: 0 }),
+        west: () => ({ x: -1, y: 0 }),
+      };
+      for (const [way, steer] of Object.entries(ways)) {
+        expect(firstReaction(spec, steer, graceTicks), `${spec.id} moving ${way}`).toBeNull();
+      }
+    }
+  });
+
+  test.each(SAMPLES)('the player starts on their own side of the moment, not behind the enemy (%s sample)', (skill, seed) => {
+    const logs = generateMatches(weakProfile('duelist', skill, 0.1), seed, { matches: 6 });
+    const moments = (analyze(logs, PLAYER_ID).findings[0]?.evidence ?? []).filter((e) => e.situation).slice(0, 5);
+    const specs = sampleRehearsals(skill, seed);
+    expect(specs.length).toBe(moments.length);
+    specs.forEach((spec, i) => {
+      const moment = moments[i].situation?.playerPos as Vec2;
+      const own = map.spawns[spec.player.team];
+      const toOwn = (p: Vec2) => Math.min(...own.map((s) => Math.hypot(p.x - s.x, p.y - s.y)));
+      // No further from their own spawn than where it happened (2 m rule + snapping): they come at it from the front.
+      expect(toOwn(spec.player.spawn), spec.id).toBeLessThanOrEqual(toOwn(moment) + 4);
+      expect(spec.id, spec.id).toMatch(/-hide-(strict|fov)$/);
+    });
   });
 });
