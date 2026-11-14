@@ -18,6 +18,15 @@ import type { CreateSimOptions } from '../sim/sim.ts';
 import { bbox, centroid, dist } from './geo.ts';
 
 export const PLAYER_ID = 'player';
+/** Seeds from here up are the held-out exam; the planner only uses seeds below it. */
+export const EXAM_SEED_BASE = 9000;
+
+/**
+ * Positions snap to a 0.1 m grid. Exam positions are shifted 0.05 m off it, so an
+ * exam spawn can never equal a practice spawn, whatever the seed.
+ */
+let snapOffset = 0;
+const snap = (v: number): number => Math.round(v * 10) / 10 + snapOffset;
 
 const clamp = (v: number, lo = 0, hi = 1): number => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -74,7 +83,7 @@ function freeNear(map: MapDef, p: Vec2, rng: Rng): Vec2 {
   }
   return round(p);
 }
-const round = (p: Vec2): Vec2 => ({ x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 });
+const round = (p: Vec2): Vec2 => ({ x: snap(p.x), y: snap(p.y) });
 
 function inPoly(map: MapDef, poly: Vec2[], rng: Rng): Vec2 {
   const b = bbox(poly);
@@ -101,6 +110,7 @@ const secs = (s: number): number => Math.round(s * 10) / 10;
 
 export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed: number): DrillSpec {
   const d = clamp(difficultyIn);
+  snapOffset = seed >= EXAM_SEED_BASE ? 0.05 : 0;
   const rng = createRng((seed * 2654435761 + skill.length * 97 + skill.charCodeAt(0)) >>> 0);
   const siteName: 'A' | 'B' = rng.next() < 0.5 ? 'A' : 'B';
   const site = map.sites[siteName];

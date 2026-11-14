@@ -12,11 +12,11 @@
 import type { MapDef } from '../shared/contract.ts';
 import type { DrillSpec, Skill, WeaknessReport } from '../shared/coaching.ts';
 import { createRng } from '../sim/rng.ts';
-import { buildDrill } from './drills.ts';
+import { buildDrill, EXAM_SEED_BASE } from './drills.ts';
 import { newStaircase, type StaircaseState } from './staircase.ts';
 
 export const PRACTICE_SEED_MAX = 8999;
-export const EXAM_SEED_BASE = 9000;
+export { EXAM_SEED_BASE };
 /** Chance of drilling the second-worst skill instead of the worst. */
 export const SECOND_SKILL_SHARE = 0.3;
 
