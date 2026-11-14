@@ -31,7 +31,7 @@ const snap = (v: number): number => Math.round(v * 10) / 10 + snapOffset;
 const clamp = (v: number, lo = 0, hi = 1): number => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-type ArchetypeId = 'entry-duelist' | 'patient-lurker' | 'off-angle-anchor' | 'utility-controller' | 'baseline';
+export type ArchetypeId = 'entry-duelist' | 'patient-lurker' | 'off-angle-anchor' | 'utility-controller' | 'baseline';
 
 /** Placeholder personality, before difficulty is applied. */
 const STYLE: Record<ArchetypeId, Pick<BotTraits, 'aggression' | 'offAngle' | 'patience' | 'utility'>> = {
@@ -98,13 +98,19 @@ function jitter(p: Vec2, r: number, rng: Rng): Vec2 {
   return { x: p.x + (rng.next() * 2 - 1) * r, y: p.y + (rng.next() * 2 - 1) * r };
 }
 
-const bot = (
+export const bot = (
   n: number,
   team: Team,
   spawn: Vec2,
   archetype: ArchetypeId,
   difficulty: number,
 ): DrillBot => ({ id: `bot-${n}`, team, spawn, archetypeId: archetype, traits: traitsFor(archetype, difficulty) });
+
+/** A practice-grid (0.1 m) walkable point at or near `p`; rehearsals use this, never the exam's offset grid. */
+export function walkablePoint(map: MapDef, p: Vec2, seed: number): Vec2 {
+  snapOffset = 0;
+  return freeNear(map, p, createRng(seed >>> 0));
+}
 
 const secs = (s: number): number => Math.round(s * 10) / 10;
 

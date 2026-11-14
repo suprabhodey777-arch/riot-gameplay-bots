@@ -20,6 +20,7 @@ import type { MatchLog } from '../shared/contract.ts';
 import { DEFAULT_MAP_ID, loadMap } from '../shared/maps/index.ts';
 import { analyze } from '../analyzer/analyze.ts';
 import { BENCHMARKS } from '../analyzer/benchmarks.ts';
+import { rehearsalDrill } from '../analyzer/rehearse.ts';
 import { EXAM_SEED_BASE, examDrills, type NextDrill, type PlayedDrill, planNext } from '../analyzer/plan.ts';
 import { newStaircase, type StaircaseState, update } from '../analyzer/staircase.ts';
 import { debrief as writeDebrief } from '../coach/debrief.ts';
@@ -33,6 +34,8 @@ export interface SessionOptions {
   /** Key for the default model. Omit to read ANTHROPIC_API_KEY; null forces the template. */
   apiKey?: string | null;
   timeoutMs?: number;
+  /** Offer a rehearsal of each of the worst finding's failed moments before generated drills (default true). */
+  rehearsalsFirst?: boolean;
 }
 
 export interface PracticeRecord {
@@ -52,6 +55,8 @@ export interface SessionState {
   staircases: Partial<Record<Skill, StaircaseState>>;
   history: PlayedDrill[];
   current: DrillSpec | null;
+  /** Ids of the rehearsals already offered, so each moment comes up once. Absent in older saves. */
+  rehearsed?: string[];
   practice: PracticeRecord[];
   examBefore: number | null;
   examAfter: number | null;
@@ -134,9 +139,37 @@ export class CoachingSession {
     return [...this.s.practice];
   }
 
-  /** The next practice drill: worst skill (sometimes the second), at that skill's staircase difficulty. */
+  /**
+   * One rehearsal drill per failed moment of the worst finding (at most MAX_EVIDENCE = 5): the
+   * moment rebuilt with the same side, positions, enemies, clock and spike. Practice seeds only.
+   */
+  rehearsals(): DrillSpec[] {
+    const map = loadMap(this.s.mapId);
+    const finding = this.s.report.findings[0];
+    if (!finding || finding.sampleSize === 0) return [];
+    return finding.evidence
+      .filter((e) => e.situation)
+      .slice(0, 5)
+      .map((e, i) => rehearsalDrill(e, finding, map, 1 + ((this.s.seed * 7919 + (i + 1) * 104729) % (EXAM_SEED_BASE - 1))));
+  }
+
+  /**
+   * The next practice drill. A rehearsal of the worst finding's next unplayed moment comes first
+   * (unless `rehearsalsFirst` is false); after those, the worst skill (sometimes the second) at
+   * that skill's staircase difficulty.
+   */
   nextDrill(): NextDrill {
     const map = loadMap(this.s.mapId);
+    if (this.opts.rehearsalsFirst !== false) {
+      const done = new Set(this.s.rehearsed ?? []);
+      const next = this.rehearsals().find((d) => !done.has(d.id));
+      if (next) {
+        this.s.rehearsed = [...done, next.id];
+        this.s.history.push({ skill: next.skill, seed: next.seed });
+        this.s.current = next;
+        return { skill: next.skill, drill: next };
+      }
+    }
     const next = planNext(this.s.report, this.s.staircases, this.s.history, map, this.s.seed);
     this.s.history.push({ skill: next.skill, seed: next.drill.seed });
     this.s.current = next.drill;

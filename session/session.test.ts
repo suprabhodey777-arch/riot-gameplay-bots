@@ -98,3 +98,52 @@ describe('simulated player', () => {
     expect(await run()).toBe(await run());
   });
 });
+
+describe('rehearsals', () => {
+  test('rehearsals() gives at most five drills, one per failed moment of the worst finding, all practice', () => {
+    const s = sessionWithWeakness('entry', 5, NO_KEY);
+    const r = s.rehearsals();
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.length).toBeLessThanOrEqual(5);
+    expect(r.length).toBe(s.report.findings[0].evidence.filter((e) => e.situation).length);
+    for (const d of r) {
+      expect(d.skill).toBe(s.report.findings[0].skill);
+      expect(d.seed).toBeLessThan(EXAM_SEED_BASE);
+      expect(d.goal).toMatch(/^Round \d+: /);
+    }
+  });
+
+  test('nextDrill offers each rehearsal first, once, then generated drills; the exam stays disjoint', () => {
+    const s = sessionWithWeakness('entry', 5, NO_KEY);
+    const rs = s.rehearsals();
+    const offered = rs.map(() => s.nextDrill().drill);
+    expect(offered.map((d) => d.id)).toEqual(rs.map((d) => d.id));
+    expect(offered.every((d) => d.id.startsWith('rehearse-'))).toBe(true);
+    const after = s.nextDrill().drill;
+    expect(after.id.startsWith('rehearse-')).toBe(false);
+    const pSpawns = new Set(offered.map((d) => `${d.player.spawn.x},${d.player.spawn.y}`));
+    for (const e of [0, 3, 40].flatMap((f) => s.exam(f))) {
+      expect(e.seed).toBeGreaterThanOrEqual(EXAM_SEED_BASE);
+      expect(pSpawns.has(`${e.player.spawn.x},${e.player.spawn.y}`)).toBe(false);
+    }
+  });
+
+  test('rehearsalsFirst: false skips them, and a saved session does not offer a moment twice', () => {
+    const plain = sessionWithWeakness('entry', 5, { ...NO_KEY, rehearsalsFirst: false });
+    expect(plain.nextDrill().drill.id.startsWith('rehearse-')).toBe(false);
+    const a = sessionWithWeakness('entry', 5, NO_KEY);
+    const first = a.nextDrill().drill;
+    const b = CoachingSession.fromJSON(JSON.parse(JSON.stringify(a.toJSON())), NO_KEY);
+    expect(b.nextDrill().drill.id).not.toBe(first.id);
+  });
+
+  test('a rehearsal can be played and completed like any practice drill', async () => {
+    const s = sessionWithWeakness('entry', 5, NO_KEY);
+    const { drill, skill } = s.nextDrill();
+    const player = createSimulatedPlayer({ seed: 5, profile: profileWithWeakness(skill) });
+    const result = player.play(drill);
+    const debrief = await s.complete(result);
+    expect(debrief.text.length).toBeGreaterThan(10);
+    expect(s.practiceLog).toHaveLength(1);
+  });
+});
