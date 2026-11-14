@@ -1,5 +1,5 @@
 import type { BotTraits } from '../shared/coaching.ts';
-import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry } from '../shared/contract.ts';
+import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { createRng } from '../sim/rng.ts';
 import { createSim, type Scenario, type Sim } from '../sim/sim.ts';
 import { type Bot, createBot } from './bot.ts';
@@ -17,6 +17,8 @@ export interface MatchAgent {
   traits?: BotTraits;
   /** A named archetype from `traits.ts`, used when `traits` is not given. */
   archetypeId?: string;
+  /** Stand here facing `yaw` until an enemy is seen (see `BotOptions.hold`). */
+  hold?: { pos: Vec2; yaw: number };
 }
 
 export interface Match {
@@ -59,7 +61,7 @@ export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgen
   for (const a of opts.agents) {
     if (!a.isBot) continue;
     const rng = createRng((Math.imul(opts.seed >>> 0, 2654435761) ^ hashStr(a.id)) >>> 0);
-    bots.set(a.id, createBot({ id: a.id, map: opts.map, traits: a.traits ?? (a.archetypeId ? archetypeById(a.archetypeId).traits : DEFAULT_TRAITS), rng, siteSeed: opts.seed }));
+    bots.set(a.id, createBot({ id: a.id, map: opts.map, traits: a.traits ?? (a.archetypeId ? archetypeById(a.archetypeId).traits : DEFAULT_TRAITS), rng, siteSeed: opts.seed, hold: a.hold }));
     health.set(a.id, createHealth());
   }
   const faults = new Map<string, Fault>();

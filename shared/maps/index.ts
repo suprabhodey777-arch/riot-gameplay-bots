@@ -1,6 +1,7 @@
-// Maps are authored as JSON and loaded here. `test-box` is a small placeholder
-// for tests; the real map is owned by the 3D team and added as another JSON file.
+// Maps are authored as JSON and loaded here. `test-box` is a small two-site map for
+// unit tests; `saltworks` is the original three-site map used by default.
 import type { MapDef, Vec2 } from '../contract.ts';
+import saltworks from './saltworks.json' with { type: 'json' };
 import testBox from './test-box.json' with { type: 'json' };
 
 const isVec2 = (p: unknown): p is Vec2 =>
@@ -19,6 +20,7 @@ export function validateMap(m: unknown): MapDef {
   if (!Array.isArray(map.walls)) fail('walls must be an array');
   for (const w of map.walls) if (!isPoly(w.points) || !(w.height > 0)) fail(`bad wall ${w.id}`);
   if (!isPoly(map.sites?.A) || !isPoly(map.sites?.B)) fail('sites A and B need polygons');
+  if (map.sites.C !== undefined && !isPoly(map.sites.C)) fail('site C must be a polygon when present');
   for (const t of ['attack', 'defense'] as const) {
     const s = map.spawns?.[t];
     if (!Array.isArray(s) || s.length === 0 || !s.every(isVec2)) fail(`no ${t} spawns`);
@@ -29,7 +31,11 @@ export function validateMap(m: unknown): MapDef {
 
 const registry: Record<string, MapDef> = {
   'test-box': validateMap(testBox),
+  saltworks: validateMap(saltworks),
 };
+
+/** The map drills, sessions and demos use unless told otherwise. */
+export const DEFAULT_MAP_ID = 'saltworks';
 
 /** Registers a validated map (e.g. the real one) under its id. */
 export function registerMap(m: unknown): MapDef {
@@ -46,3 +52,4 @@ export function loadMap(id: string): MapDef {
 }
 
 export const testBoxMap: MapDef = registry['test-box'];
+export const saltworksMap: MapDef = registry.saltworks;

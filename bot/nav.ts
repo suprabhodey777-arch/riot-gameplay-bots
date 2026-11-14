@@ -1,5 +1,5 @@
-import type { MapDef, Vec2 } from '../shared/contract.ts';
-import { closestOnSegment, pointInPolygon, segmentsIntersect } from '../sim/geometry.ts';
+import type { MapDef, SiteId, Vec2 } from '../shared/contract.ts';
+import { closestOnSegment, pointInPolygon, segmentMissesBox, segmentsIntersect, sitePoly } from '../sim/geometry.ts';
 
 type Walls = MapDef['walls'];
 
@@ -26,6 +26,7 @@ export function minWallDist(p: Vec2, walls: Walls): number {
 export function clearSegment(a: Vec2, b: Vec2, walls: Walls, clr: number): boolean {
   for (const w of walls) {
     const pts = w.points;
+    if (segmentMissesBox(a, b, pts, clr)) continue;
     for (let i = 0; i < pts.length; i++) {
       const c = pts[i];
       const d = pts[(i + 1) % pts.length];
@@ -234,13 +235,13 @@ export interface Spot {
 const spotCache = new WeakMap<MapDef, Map<string, Spot[]>>();
 
 /** Candidate hold spots on or near a site, facing the opposing spawns. Deterministic from the map. */
-export function spotsFor(map: MapDef, site: 'A' | 'B', toward: 'attack' | 'defense'): Spot[] {
+export function spotsFor(map: MapDef, site: SiteId, toward: 'attack' | 'defense'): Spot[] {
   let perMap = spotCache.get(map);
   if (!perMap) spotCache.set(map, (perMap = new Map()));
   const key = `${site}-${toward}`;
   const hit = perMap.get(key);
   if (hit) return hit;
-  const poly = map.sites[site];
+  const poly = sitePoly(map, site);
   const c = centroid(poly);
   const threat = centroid(map.spawns[toward]);
   const xs = poly.map((p) => p.x);

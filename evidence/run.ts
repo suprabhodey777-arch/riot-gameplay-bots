@@ -32,7 +32,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DrillSpec, Skill } from '../shared/coaching.ts';
 import type { PlayerInput, SimState } from '../shared/contract.ts';
-import { loadMap } from '../shared/maps/index.ts';
+import { DEFAULT_MAP_ID, loadMap } from '../shared/maps/index.ts';
 import { buildDrill, traitsFor } from '../analyzer/drills.ts';
 import { PRACTICE_SEED_MAX } from '../analyzer/plan.ts';
 import { newStaircase, type StaircaseState, update } from '../analyzer/staircase.ts';
@@ -164,7 +164,7 @@ export interface Results {
 }
 
 export async function runEvidence(cfg: Config = DEFAULTS): Promise<Results> {
-  const map = loadMap('test-box');
+  const map = loadMap(DEFAULT_MAP_ID); // Saltworks, the three-site map
   const fairness: Fairness = { fires: 0, tooEarly: 0 };
   let drillsPlayed = 0;
   const rows: Row[] = [];
@@ -196,7 +196,7 @@ export async function runEvidence(cfg: Config = DEFAULTS): Promise<Results> {
 
     for (const cond of CONDITIONS) {
       const player = makePlayer();
-      const session = sessionWithWeakness(weak, seed, { apiKey: null });
+      const session = sessionWithWeakness(weak, seed, { apiKey: null, rehearsalsFirst: false });
       const rng = createRng(seed * 7919 + CONDITIONS.indexOf(cond) * 104729 + 3);
       const stairs: Partial<Record<Skill, StaircaseState>> = {};
       let weakDrills = 0;
@@ -298,7 +298,7 @@ export function markdown(r: Results): string {
     lines.push(`| ${sk} | ${rs.length} | ${g('baseline')} | ${g('random')} | ${g('targeted')} | ${mean(rs.map((x) => x.conditions.targeted.weakCompetence)).toFixed(2)} (from ${r.config.weakLevel}) |`);
   }
   lines.push('');
-  lines.push('Clutch caveat: on the placeholder test-box map a 1v2 or 1v3 in open sight is almost unwinnable at the exam difficulties whatever the simulated player\'s competence, so the exam cannot show a clutch gain; the staircase trains it at 1v1 where it can.', '');
+  lines.push('Clutch caveat: the exam\'s clutch drills are 1v2 and 1v3 post-plant fights, and the simulated player almost never wins one at those difficulties even with the weak skill trained (about 0% before, 3% after on Saltworks, the three-site map), so the exam barely moves on clutch; the staircase trains it at 1v1 where it can. Saltworks is a long map: the late-plant and late-defuse clocks are stretched by the extra walking time (`longWalkS` in `analyzer/drills.ts`), without which the time-pressure exam is almost all failures. Rehearsal drills are not part of this comparison (`rehearsalsFirst: false`).', '');
   lines.push(`The analyzer put the planted weak skill first for ${pc(r.analyzerFoundWeakShare)}% of players (from 6 synthetic matches each). Mean pre-test pass rate on the weak skill: ${pc(r.preMeanWeak)}%.`, '');
   lines.push(`Fairness: ${r.fairness.fires} fire inputs checked over ${r.drillsPlayed} drills; ${r.fairness.tooEarly} earlier than the shooter's reactionMs after first sight (must be 0).`, '');
   return `${lines.join('\n')}\n`;

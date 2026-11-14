@@ -3,7 +3,7 @@
  * analyzer, the bot, the coach and the 3D client (which shows the drill goal
  * and the debrief). Type-only.
  */
-import type { SimEvent, Team, TraceEntry, Vec2 } from './contract.ts';
+import type { SimEvent, SiteId, Team, TraceEntry, Vec2 } from './contract.ts';
 
 /** The situations we measure and drill. */
 export type Skill = 'entry' | 'clutch' | 'time_pressure' | 'smoke_usage';
@@ -15,6 +15,30 @@ export interface WeaknessEvidence {
   tick: number;
   /** Plain words, e.g. "first death on entry, 3 s after first contact". */
   note: string;
+  /** Where everyone was at that moment, so a drill can rebuild it (see `analyzer/rehearse.ts`). */
+  situation?: Situation;
+}
+
+/**
+ * A moment of a round, rebuilt from the log (v3, optional). Logs only carry positions on
+ * damage and kill events, so a position is the agent's latest known one at or before the
+ * moment; an agent with no known position is placed near the centre of the callout the
+ * action happened in (an approximation). Enemies are listed killer-first where there is one.
+ */
+export interface Situation {
+  /** The player's side. */
+  side: Team;
+  /** The site the moment is about: where the spike was planted, else the site nearest the action. */
+  site?: SiteId;
+  playerPos: Vec2;
+  /** Enemies still alive at the moment. */
+  enemies: { pos: Vec2 }[];
+  /** Living teammates (not the player) with a known position. */
+  allies: { pos: Vec2 }[];
+  roundTimeLeftS: number;
+  /** Set when the spike was already down; `pos` is the site's centre (the log has no plant position). */
+  spikePlanted: { site: SiteId; pos: Vec2; secondsLeft: number } | null;
+  playerHasSpike: boolean;
 }
 
 /** How a player does at one skill against a benchmark for their role. */
@@ -73,6 +97,11 @@ export interface DrillBot {
   spawn: Vec2;
   archetypeId: string;
   traits: BotTraits;
+  /**
+   * Optional (rehearsal drills): the bot stands at `pos` facing `yaw` until it sees an enemy,
+   * instead of walking to its role's usual spot.
+   */
+  hold?: { pos: Vec2; yaw: number };
 }
 
 /** A scenario built to practise one skill. */
@@ -90,7 +119,7 @@ export interface DrillSpec {
   bots: DrillBot[];
   roundTimeLeftS: number;
   /** Set for retake and post-plant drills. */
-  spikePlanted: { site: 'A' | 'B'; pos: Vec2; secondsLeft: number } | null;
+  spikePlanted: { site: SiteId; pos: Vec2; secondsLeft: number } | null;
 }
 
 /** What happened when a drill was played. */

@@ -9,10 +9,12 @@
  * The archetype traits here are only plausible numbers so every spec carries a
  * valid BotTraits; the bot lane owns the canonical archetype tables.
  */
-import type { MapDef, Team, Vec2 } from '../shared/contract.ts';
+import type { MapDef, SiteId, Team, Vec2 } from '../shared/contract.ts';
 import type { BotTraits, DrillBot, DrillSpec, Skill, WeaknessFinding } from '../shared/coaching.ts';
 import { loadMap } from '../shared/maps/index.ts';
-import { AGENT_RADIUS, closestOnSegment, pointInPolygon } from '../sim/geometry.ts';
+import { pathBetween } from '../bot/nav.ts';
+import { RUN_SPEED } from '../sim/sim.ts';
+import { AGENT_RADIUS, closestOnSegment, pointInPolygon, siteIds, sitePoly } from '../sim/geometry.ts';
 import { createRng, type Rng } from '../sim/rng.ts';
 import type { CreateSimOptions } from '../sim/sim.ts';
 import { bbox, centroid, dist } from './geo.ts';
@@ -31,7 +33,7 @@ const snap = (v: number): number => Math.round(v * 10) / 10 + snapOffset;
 const clamp = (v: number, lo = 0, hi = 1): number => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-type ArchetypeId = 'entry-duelist' | 'patient-lurker' | 'off-angle-anchor' | 'utility-controller' | 'baseline';
+export type ArchetypeId = 'entry-duelist' | 'patient-lurker' | 'off-angle-anchor' | 'utility-controller' | 'baseline';
 
 /** Placeholder personality, before difficulty is applied. */
 const STYLE: Record<ArchetypeId, Pick<BotTraits, 'aggression' | 'offAngle' | 'patience' | 'utility'>> = {
@@ -98,7 +100,7 @@ function jitter(p: Vec2, r: number, rng: Rng): Vec2 {
   return { x: p.x + (rng.next() * 2 - 1) * r, y: p.y + (rng.next() * 2 - 1) * r };
 }
 
-const bot = (
+export const bot = (
   n: number,
   team: Team,
   spawn: Vec2,
@@ -106,14 +108,37 @@ const bot = (
   difficulty: number,
 ): DrillBot => ({ id: `bot-${n}`, team, spawn, archetypeId: archetype, traits: traitsFor(archetype, difficulty) });
 
+/** A practice-grid (0.1 m) walkable point at or near `p`; rehearsals use this, never the exam's offset grid. */
+export function walkablePoint(map: MapDef, p: Vec2, seed: number): Vec2 {
+  snapOffset = 0;
+  return freeNear(map, p, createRng(seed >>> 0));
+}
+
+/**
+ * Extra seconds a clock needs on a map bigger than the one the numbers were tuned on:
+ * the walking time beyond `freeM` metres. Zero on the small test map.
+ */
+function longWalkS(map: MapDef, from: Vec2, to: Vec2, freeM: number): number {
+  const path = pathBetween(map, from, to);
+  if (!path) return 0;
+  let len = 0;
+  let at = from;
+  for (const p of path) {
+    len += dist(at, p);
+    at = p;
+  }
+  return Math.max(0, Math.round(((len - freeM) / RUN_SPEED) * 10) / 10);
+}
+
 const secs = (s: number): number => Math.round(s * 10) / 10;
 
 export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed: number): DrillSpec {
   const d = clamp(difficultyIn);
   snapOffset = seed >= EXAM_SEED_BASE ? 0.05 : 0;
   const rng = createRng((seed * 2654435761 + skill.length * 97 + skill.charCodeAt(0)) >>> 0);
-  const siteName: 'A' | 'B' = rng.next() < 0.5 ? 'A' : 'B';
-  const site = map.sites[siteName];
+  const siteList = siteIds(map);
+  const siteName: SiteId = siteList[Math.floor(rng.next() * siteList.length)];
+  const site = sitePoly(map, siteName);
   const siteC = centroid(site);
   const attackSpawns = map.spawns.attack;
   const defenseSpawns = map.spawns.defense;
@@ -158,8 +183,8 @@ export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed
 
   if (skill === 'time_pressure') {
     if (rng.next() < 0.5) {
-      const left = secs(30 - 12 * d);
       const spawn = freeNear(map, jitter(attackSpawns[rng.int(attackSpawns.length)], 1.5, rng), rng);
+      const left = secs(30 - 12 * d + longWalkS(map, spawn, siteC, 55));
       const bots = [bot(1, 'defense', inPoly(map, site, rng), 'off-angle-anchor', d)];
       if (d > 0.5) bots.push(bot(2, 'defense', inPoly(map, site, rng), 'baseline', d));
       return {
@@ -172,9 +197,9 @@ export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed
         spikePlanted: null,
       };
     }
-    const left = secs(18 - 7 * d);
     const pos = inPoly(map, site, rng);
     const spawn = freeNear(map, jitter(defenseSpawns[rng.int(defenseSpawns.length)], 1.5, rng), rng);
+    const left = secs(18 - 7 * d + longWalkS(map, spawn, pos, 15));
     const bots = [bot(1, 'attack', freeNear(map, jitter(pos, 6, rng), rng), 'patient-lurker', d)];
     if (d > 0.5) bots.push(bot(2, 'attack', freeNear(map, jitter(pos, 6, rng), rng), 'entry-duelist', d));
     return {
