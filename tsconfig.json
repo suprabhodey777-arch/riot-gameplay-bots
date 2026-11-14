@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["shared", "sim", "bot", "coach", "analyzer", "session", "evidence", "scripts"]
+  "include": ["shared", "sim", "bot", "coach", "analyzer", "session", "evidence", "scripts", "bridge"]
 }

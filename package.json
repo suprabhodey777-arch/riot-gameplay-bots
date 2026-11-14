@@ -6,7 +6,8 @@
     "typecheck": "tsc && tsc -p play",
     "test": "vitest run",
     "play": "vite play --port 5181 --strictPort",
-    "play:build": "vite build play"
+    "play:build": "vite build play",
+    "bridge": "node bridge/server.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

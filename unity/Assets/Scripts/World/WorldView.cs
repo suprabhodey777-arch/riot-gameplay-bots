@@ -1,0 +1,481 @@
+// Everything in the world that the sim moves: bots (interpolated between
+// steps), smokes, the spike and shot tracers. Read-only view of SimState.
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace Saltworks
+{
+    /// <summary>Marks a bot collider so the shot raycast knows what it hit.</summary>
+    public class BotPart : MonoBehaviour
+    {
+        public BotView Bot;
+        public bool Head;
+    }
+
+    public class BotView
+    {
+        public const float Radius = 0.4f;
+        public const float Height = 1.8f;
+        public const float HeadY = 1.65f;
+        public const float HeadRadius = 0.15f;
+
+        public string Id;
+        public string Team;
+        public string Archetype;
+        public string Thought = "";
+        public bool Alive = true;
+        public GameObject Root;
+        public CapsuleCollider BodyCollider;
+        public SphereCollider HeadCollider;
+
+        Transform tilt;
+        float deathStart = -1f;
+
+        public Vector3 HeadPos => Root.transform.position + Vector3.up * HeadY;
+        public Vector3 ChestPos => Root.transform.position + Vector3.up * 1.2f;
+
+        static GameObject Part(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Material mat, bool keepCollider)
+        {
+            GameObject go = GameObject.CreatePrimitive(type);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = pos;
+            go.transform.localScale = scale;
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            if (!keepCollider)
+            {
+                Collider c = go.GetComponent<Collider>();
+                if (c != null) Object.DestroyImmediate(c);
+            }
+            return go;
+        }
+
+        public BotView(string id, string team, string archetype, Transform parent)
+        {
+            Id = id;
+            Team = team;
+            Archetype = archetype;
+            Color tc = Palette.Team(team);
+            Root = new GameObject("Bot " + id);
+            Root.transform.SetParent(parent, false);
+            tilt = new GameObject("Tilt").transform;
+            tilt.SetParent(Root.transform, false);
+
+            // Capsule primitive: radius 0.5, height 2. Scaled to radius 0.4, height 1.8.
+            GameObject body = Part(PrimitiveType.Capsule, tilt, new Vector3(0f, Height / 2f, 0f), new Vector3(Radius * 2f, Height / 2f, Radius * 2f), Mats.Lit(Color.Lerp(tc, Color.white, 0.15f)), true);
+            body.name = "Body";
+            BodyCollider = body.GetComponent<CapsuleCollider>();
+            body.AddComponent<BotPart>().Bot = this;
+
+            // Sphere primitive: radius 0.5. Scaled to radius 0.15 at y 1.65.
+            GameObject head = Part(PrimitiveType.Sphere, tilt, new Vector3(0f, HeadY, 0f), Vector3.one * HeadRadius * 2f, Mats.Lit(Color.Lerp(tc, Color.white, 0.55f)), true);
+            head.name = "Head";
+            HeadCollider = head.GetComponent<SphereCollider>();
+            var hp = head.AddComponent<BotPart>();
+            hp.Bot = this;
+            hp.Head = true;
+
+            Material dark = Mats.Lit(new Color(0.18f, 0.19f, 0.23f));
+            Part(PrimitiveType.Cube, tilt, new Vector3(0f, HeadY + 0.01f, 0.13f), new Vector3(0.22f, 0.07f, 0.06f), Mats.Emissive(new Color(0.95f, 0.98f, 1f), 0.6f), false).name = "Visor";
+            Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.25f, 0.0f), new Vector3(0.84f, 0.12f, 0.84f), Mats.Lit(tc * 0.8f), false).name = "Band";
+            Part(PrimitiveType.Cube, tilt, new Vector3(0.18f, 1.25f, 0.5f), new Vector3(0.08f, 0.1f, 0.55f), dark, false).name = "Gun";
+            Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.45f, -0.4f), new Vector3(0.4f, 0.45f, 0.14f), dark, false).name = "Pack";
+        }
+
+        public void SetPose(Vector3 pos, float headingDeg)
+        {
+            Root.transform.SetPositionAndRotation(pos, Quaternion.Euler(0f, headingDeg, 0f));
+        }
+
+        public void SetAlive(bool alive)
+        {
+            if (alive == Alive) return;
+            Alive = alive;
+            BodyCollider.enabled = alive;
+            HeadCollider.enabled = alive;
+            if (!alive) deathStart = Time.time;
+            else
+            {
+                deathStart = -1f;
+                tilt.localRotation = Quaternion.identity;
+                tilt.localPosition = Vector3.zero;
+            }
+        }
+
+        public void Animate()
+        {
+            if (Alive || deathStart < 0f) return;
+            float t = Mathf.Clamp01((Time.time - deathStart) / 0.55f);
+            float e = t * t * (3f - 2f * t);
+            // Falls backwards around the feet and settles on the floor.
+            tilt.localRotation = Quaternion.Euler(-88f * e, 0f, 12f * e);
+            tilt.localPosition = new Vector3(0f, Radius * e * 0.9f, -0.1f * e);
+        }
+
+        public void Destroy()
+        {
+            if (Root != null) Object.Destroy(Root);
+        }
+    }
+
+    class SmokeView
+    {
+        public GameObject Go;
+        public Material Mat;
+        public float Born;
+        public SmokeState State;
+    }
+
+    class TracerView
+    {
+        public LineRenderer Line;
+        public float Born;
+        public float Life;
+        public Color Color;
+    }
+
+    /// <summary>Runs before GameController so the shot raycast sees the bots where this frame draws them.</summary>
+    [DefaultExecutionOrder(-50)]
+    public class WorldView : MonoBehaviour
+    {
+        public SimState Prev;
+        public SimState Curr;
+        public float TickInterval = 0.05f;
+        public string PlayerId = "player";
+        public readonly Dictionary<string, BotView> Bots = new Dictionary<string, BotView>();
+
+        float stepTime;
+        readonly Dictionary<string, AgentState> prevMap = new Dictionary<string, AgentState>();
+        readonly Dictionary<string, AgentState> currMap = new Dictionary<string, AgentState>();
+        readonly Dictionary<string, SmokeView> smokes = new Dictionary<string, SmokeView>();
+        readonly List<TracerView> tracers = new List<TracerView>();
+        Transform botsRoot;
+        Transform fxRoot;
+
+        GameObject spike;
+        Light spikeLight;
+        AudioSource spikeAudio;
+        AudioClip beep;
+        Material spikeGlow;
+        float nextBeep;
+        float pulse;
+        Material lineMat;
+
+        static readonly Color SpikeGlowColor = Palette.Spike;
+
+        void Awake()
+        {
+            botsRoot = new GameObject("Bots").transform;
+            fxRoot = new GameObject("Effects").transform;
+            lineMat = Mats.Line();
+            BuildSpike();
+        }
+
+        void BuildSpike()
+        {
+            spike = new GameObject("Spike");
+            spike.transform.SetParent(fxRoot, false);
+            Material shell = Mats.Lit(new Color(0.25f, 0.26f, 0.30f));
+            spikeGlow = Mats.Emissive(SpikeGlowColor, 1.5f);
+            Make(PrimitiveType.Cylinder, spike.transform, new Vector3(0f, 0.08f, 0f), new Vector3(0.36f, 0.08f, 0.36f), shell);
+            Make(PrimitiveType.Cylinder, spike.transform, new Vector3(0f, 0.2f, 0f), new Vector3(0.22f, 0.06f, 0.22f), spikeGlow);
+            Make(PrimitiveType.Cube, spike.transform, new Vector3(0f, 0.34f, 0f), new Vector3(0.06f, 0.18f, 0.06f), spikeGlow);
+            var lgo = new GameObject("Spike light");
+            lgo.transform.SetParent(spike.transform, false);
+            lgo.transform.localPosition = new Vector3(0f, 0.6f, 0f);
+            spikeLight = lgo.AddComponent<Light>();
+            spikeLight.type = LightType.Point;
+            spikeLight.color = SpikeGlowColor;
+            spikeLight.range = 5f;
+            spikeLight.intensity = 1.5f;
+            spikeLight.shadows = LightShadows.None;
+            spikeAudio = spike.AddComponent<AudioSource>();
+            spikeAudio.playOnAwake = false;
+            spikeAudio.spatialBlend = 1f;
+            spikeAudio.rolloffMode = AudioRolloffMode.Linear;
+            spikeAudio.minDistance = 4f;
+            spikeAudio.maxDistance = 70f;
+            beep = Synth.Beep();
+            spike.SetActive(false);
+        }
+
+        static GameObject Make(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Material m)
+        {
+            GameObject go = GameObject.CreatePrimitive(type);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = pos;
+            go.transform.localScale = scale;
+            go.GetComponent<MeshRenderer>().sharedMaterial = m;
+            go.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            Collider c = go.GetComponent<Collider>();
+            if (c != null) Object.Destroy(c);
+            return go;
+        }
+
+        public void Clear()
+        {
+            foreach (BotView b in Bots.Values) b.Destroy();
+            Bots.Clear();
+            foreach (SmokeView s in smokes.Values)
+            {
+                Object.Destroy(s.Go);
+                Object.Destroy(s.Mat);
+            }
+            smokes.Clear();
+            Prev = Curr = null;
+            prevMap.Clear();
+            currMap.Clear();
+            if (spike != null) spike.SetActive(false);
+        }
+
+        public void StartDrill(DrillMsg d, float tickInterval)
+        {
+            Clear();
+            TickInterval = tickInterval;
+            PlayerId = d.playerId ?? "player";
+            var arch = new Dictionary<string, string>();
+            if (d.bots != null) foreach (DrillBotInfo b in d.bots) arch[b.id] = b.archetype;
+            if (d.spec != null && d.spec.bots != null)
+                foreach (DrillBotSpec b in d.spec.bots)
+                    if (!arch.ContainsKey(b.id)) arch[b.id] = b.archetypeId;
+            SimState s = d.state ?? new SimState();
+            foreach (AgentState a in s.agents)
+            {
+                if (a.id == PlayerId) continue;
+                arch.TryGetValue(a.id, out string archetype);
+                var bv = new BotView(a.id, a.team, archetype ?? "bot", botsRoot);
+                bv.SetPose(Geo.ToWorld(a.pos), Geo.YawToHeading(a.yaw));
+                Bots[a.id] = bv;
+            }
+            Prev = s;
+            Curr = s;
+            Index(prevMap, s);
+            Index(currMap, s);
+            stepTime = Time.time;
+            SyncAlive();
+        }
+
+        static void Index(Dictionary<string, AgentState> map, SimState s)
+        {
+            map.Clear();
+            if (s?.agents == null) return;
+            foreach (AgentState a in s.agents) map[a.id] = a;
+        }
+
+        public void ApplyStep(SimState s, Dictionary<string, string> thoughts)
+        {
+            if (s == null) return;
+            Prev = Curr ?? s;
+            Curr = s;
+            Index(prevMap, Prev);
+            Index(currMap, Curr);
+            stepTime = Time.time;
+            if (thoughts != null)
+                foreach (KeyValuePair<string, string> kv in thoughts)
+                    if (Bots.TryGetValue(kv.Key, out BotView b)) b.Thought = kv.Value ?? "";
+            SyncAlive();
+        }
+
+        void SyncAlive()
+        {
+            foreach (BotView b in Bots.Values)
+                if (currMap.TryGetValue(b.Id, out AgentState a)) b.SetAlive(a.alive);
+        }
+
+        /// <summary>0 at the moment a step arrived, 1 one tick later.</summary>
+        public float Alpha => TickInterval <= 0f ? 1f : Mathf.Clamp01((Time.time - stepTime) / TickInterval);
+
+        public AgentState Agent(string id)
+        {
+            return id != null && currMap.TryGetValue(id, out AgentState a) ? a : null;
+        }
+
+        /// <summary>Interpolated sim position of an agent, in Unity floor coordinates.</summary>
+        public Vector3 InterpPos(string id)
+        {
+            if (id == null || !currMap.TryGetValue(id, out AgentState c)) return Vector3.zero;
+            if (!prevMap.TryGetValue(id, out AgentState p)) p = c;
+            return Vector3.Lerp(Geo.ToWorld(p.pos), Geo.ToWorld(c.pos), Alpha);
+        }
+
+        float InterpHeading(string id)
+        {
+            if (!currMap.TryGetValue(id, out AgentState c)) return 0f;
+            if (!prevMap.TryGetValue(id, out AgentState p)) p = c;
+            return Mathf.LerpAngle(Geo.YawToHeading(p.yaw), Geo.YawToHeading(c.yaw), Alpha);
+        }
+
+        public void Tracer(Vector3 from, Vector3 to, Color color, float life)
+        {
+            TracerView t = null;
+            foreach (TracerView x in tracers)
+                if (!x.Line.gameObject.activeSelf) { t = x; break; }
+            if (t == null)
+            {
+                var go = new GameObject("Tracer");
+                go.transform.SetParent(fxRoot, false);
+                var lr = go.AddComponent<LineRenderer>();
+                lr.sharedMaterial = lineMat;
+                lr.positionCount = 2;
+                lr.useWorldSpace = true;
+                lr.widthMultiplier = 0.03f;
+                lr.shadowCastingMode = ShadowCastingMode.Off;
+                lr.receiveShadows = false;
+                t = new TracerView { Line = lr };
+                tracers.Add(t);
+            }
+            t.Line.gameObject.SetActive(true);
+            t.Line.SetPosition(0, from);
+            t.Line.SetPosition(1, to);
+            t.Born = Time.time;
+            t.Life = life;
+            t.Color = color;
+        }
+
+        /// <summary>How deep `p` is inside a live smoke, 0 (outside) to 1 (centre).</summary>
+        public float SmokeDensityAt(Vector3 p)
+        {
+            float best = 0f;
+            foreach (SmokeView s in smokes.Values)
+            {
+                Vector3 c = Geo.ToWorld(s.State.pos, 0f);
+                float r = Mathf.Max(0.1f, s.State.radius);
+                float d = new Vector2(p.x - c.x, p.z - c.z).magnitude / r;
+                if (d < 1f) best = Mathf.Max(best, Mathf.Clamp01((1f - d) * 2.5f) * s.Mat.color.a / 0.82f);
+            }
+            return Mathf.Clamp01(best);
+        }
+
+        /// <summary>Does the segment pass through any live smoke?</summary>
+        public bool SmokeBlocks(Vector3 a, Vector3 b)
+        {
+            if (Curr?.smokes == null) return false;
+            foreach (SmokeState s in Curr.smokes)
+            {
+                // The sim's smoke is a circle on the floor plan; test it as a tall cylinder.
+                Vector3 a2 = new Vector3(a.x, 0f, a.z), b2 = new Vector3(b.x, 0f, b.z);
+                if (Geo.SegmentHitsSphere(a2, b2, Geo.ToWorld(s.pos), s.radius)) return true;
+            }
+            return false;
+        }
+
+        void Update()
+        {
+            if (Curr == null) return;
+            foreach (BotView b in Bots.Values)
+            {
+                if (!currMap.ContainsKey(b.Id)) continue;
+                if (b.Alive) b.SetPose(InterpPos(b.Id), InterpHeading(b.Id));
+                b.Animate();
+            }
+            UpdateSmokes();
+            UpdateSpike();
+            UpdateTracers();
+        }
+
+        void UpdateSmokes()
+        {
+            var live = new HashSet<string>();
+            float tickRate = Curr.tickRate > 0 ? Curr.tickRate : 20f;
+            if (Curr.smokes != null)
+            {
+                foreach (SmokeState s in Curr.smokes)
+                {
+                    live.Add(s.id);
+                    if (!smokes.TryGetValue(s.id, out SmokeView v))
+                    {
+                        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                        go.name = "Smoke " + s.id;
+                        go.transform.SetParent(fxRoot, false);
+                        // Immediate, so this frame's shot raycast cannot hit the cloud.
+                        Collider c = go.GetComponent<Collider>();
+                        if (c != null) Object.DestroyImmediate(c);
+                        var mr = go.GetComponent<MeshRenderer>();
+                        Material m = Mats.Transparent(new Color(Palette.Smoke.r, Palette.Smoke.g, Palette.Smoke.b, 0f), 3200);
+                        mr.sharedMaterial = m;
+                        mr.shadowCastingMode = ShadowCastingMode.Off;
+                        v = new SmokeView { Go = go, Mat = m, Born = Time.time };
+                        smokes[s.id] = v;
+                    }
+                    v.State = s;
+                    float grow = Mathf.Clamp01((Time.time - v.Born) / 0.5f);
+                    float leftS = (s.endsAtTick - (Curr.tick + Alpha)) / tickRate;
+                    float alpha = 0.82f * Mathf.Clamp01(leftS / 1.5f) * Mathf.Clamp01((Time.time - v.Born) / 0.35f);
+                    float d = s.radius * 2f * Mathf.Lerp(0.55f, 1f, 1f - (1f - grow) * (1f - grow));
+                    // A dome centred on the floor: its footprint is exactly the sim's smoke circle.
+                    v.Go.transform.localPosition = Geo.ToWorld(s.pos, 0f);
+                    v.Go.transform.localScale = new Vector3(d, d, d);
+                    Color col = v.Mat.color;
+                    col.a = alpha;
+                    v.Mat.color = col;
+                }
+            }
+            List<string> gone = null;
+            foreach (string id in smokes.Keys)
+                if (!live.Contains(id)) (gone ??= new List<string>()).Add(id);
+            if (gone != null)
+                foreach (string id in gone)
+                {
+                    Object.Destroy(smokes[id].Go);
+                    Object.Destroy(smokes[id].Mat);
+                    smokes.Remove(id);
+                }
+        }
+
+        void UpdateSpike()
+        {
+            SpikeState sp = Curr.spike;
+            bool planted = sp != null && sp.status == "planted" && sp.pos != null;
+            bool dropped = sp != null && sp.status == "dropped" && sp.pos != null;
+            if (!planted && !dropped)
+            {
+                if (spike.activeSelf) spike.SetActive(false);
+                return;
+            }
+            if (!spike.activeSelf)
+            {
+                spike.SetActive(true);
+                nextBeep = Time.time;
+            }
+            spike.transform.position = Geo.ToWorld(sp.pos, 0f);
+            pulse = Mathf.Max(0f, pulse - Time.deltaTime * 4f);
+            if (planted)
+            {
+                float left = Mathf.Max(0f, Curr.roundTimeLeftS);
+                if (Time.time >= nextBeep && Curr.phase != "ended")
+                {
+                    spikeAudio.PlayOneShot(beep);
+                    pulse = 1f;
+                    nextBeep = Time.time + Mathf.Lerp(0.12f, 1.0f, Mathf.Clamp01(left / 45f));
+                }
+                spikeLight.intensity = 0.8f + pulse * 4f;
+                spikeGlow.SetColor("_EmissionColor", SpikeGlowColor * (0.6f + pulse * 3f));
+            }
+            else
+            {
+                spike.transform.Rotate(0f, 60f * Time.deltaTime, 0f, Space.World);
+                spikeLight.intensity = 1.2f + Mathf.Sin(Time.time * 3f) * 0.3f;
+                spikeGlow.SetColor("_EmissionColor", SpikeGlowColor * 1.2f);
+            }
+        }
+
+        void UpdateTracers()
+        {
+            foreach (TracerView t in tracers)
+            {
+                if (!t.Line.gameObject.activeSelf) continue;
+                float k = (Time.time - t.Born) / Mathf.Max(0.01f, t.Life);
+                if (k >= 1f)
+                {
+                    t.Line.gameObject.SetActive(false);
+                    continue;
+                }
+                Color c = t.Color;
+                c.a *= 1f - k;
+                t.Line.startColor = c;
+                t.Line.endColor = new Color(c.r, c.g, c.b, c.a * 0.4f);
+            }
+        }
+    }
+}
