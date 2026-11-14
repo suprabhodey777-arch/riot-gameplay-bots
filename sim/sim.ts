@@ -7,7 +7,7 @@ import type {
   SmokeState,
   StepResult,
   Team,
-} from '../contract.ts';
+} from '../shared/contract.ts';
 import { AGENT_RADIUS, closestOnSegment, lineOfSight, pointInPolygon, resolveCircle } from './geometry.ts';
 import { createRng, type Rng } from './rng.ts';
 
@@ -44,12 +44,14 @@ export interface Sim {
   rng: Rng;
 }
 
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
 export function createSim(opts: CreateSimOptions): Sim {
   const { map } = opts;
   const rng = createRng(opts.seed);
   const walls = map.walls;
 
-  const used = { attack: 0, defense: 0 };
+  const used: Record<Team, number> = { attack: 0, defense: 0 };
   const agents: AgentState[] = opts.agents.map((a) => {
     const spawns = map.spawns[a.team];
     const pos = spawns[used[a.team]++ % spawns.length];
@@ -100,7 +102,7 @@ export function createSim(opts: CreateSimOptions): Sim {
 
   function step(inputs: PlayerInput[]): StepResult {
     const events: SimEvent[] = [];
-    if (s.phase === 'ended') return { state: structuredClone(s), events, trace: [] };
+    if (s.phase === 'ended') return { state: clone(s), events, trace: [] };
 
     s.tick++;
     s.smokes = s.smokes.filter((k) => k.endsAtTick > s.tick);
@@ -259,8 +261,8 @@ export function createSim(opts: CreateSimOptions): Sim {
       if (s.roundTimeLeftS <= 0) endRound(events, 'defense', 'time');
     }
 
-    return { state: structuredClone(s), events, trace: [] };
+    return { state: clone(s), events, trace: [] };
   }
 
-  return { state: () => structuredClone(s), step, rng };
+  return { state: () => clone(s), step, rng };
 }

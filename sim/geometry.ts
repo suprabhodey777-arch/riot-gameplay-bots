@@ -1,4 +1,4 @@
-import type { SmokeState, Vec2 } from '../contract.ts';
+import type { SmokeState, Vec2 } from '../shared/contract.ts';
 
 /** Agent collision radius in metres. */
 export const AGENT_RADIUS = 0.4;
