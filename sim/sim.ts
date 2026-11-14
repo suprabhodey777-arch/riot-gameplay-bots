@@ -7,6 +7,7 @@ import type {
   SmokeState,
   StepResult,
   Team,
+  Vec2,
 } from '../shared/contract.ts';
 import { AGENT_RADIUS, closestOnSegment, lineOfSight, pointInPolygon, resolveCircle } from './geometry.ts';
 import { createRng, type Rng } from './rng.ts';
@@ -29,10 +30,21 @@ export const DEFUSE_RANGE = 2;
 /** How close an attacker must be to a dropped spike to pick it up. */
 export const PICKUP_RANGE = 1;
 
+/** Optional starting conditions, for drills. Everything left out keeps the normal round start. */
+export interface Scenario {
+  /** Per agent id: where it starts, its health, whether it holds the spike, which way it faces. */
+  agents?: Record<string, { spawn?: Vec2; hp?: number; carryingSpike?: boolean; yaw?: number }>;
+  /** Seconds on the round clock at tick 0 (default 100). */
+  roundTimeLeftS?: number;
+  /** Start already planted, in `post_plant`, with this long until detonation. */
+  spikePlanted?: { site: 'A' | 'B'; pos: Vec2; secondsLeft: number } | null;
+}
+
 export interface CreateSimOptions {
   map: MapDef;
   seed: number;
   agents: { id: string; team: Team; isBot: boolean }[];
+  scenario?: Scenario;
 }
 
 export interface Sim {
@@ -51,17 +63,20 @@ export function createSim(opts: CreateSimOptions): Sim {
   const rng = createRng(opts.seed);
   const walls = map.walls;
 
+  const sc = opts.scenario;
+  const roundLimitS = sc?.roundTimeLeftS ?? ROUND_TIME_S;
   const used: Record<Team, number> = { attack: 0, defense: 0 };
   const agents: AgentState[] = opts.agents.map((a) => {
     const spawns = map.spawns[a.team];
-    const pos = spawns[used[a.team]++ % spawns.length];
+    const over = sc?.agents?.[a.id];
+    const pos = over?.spawn ?? spawns[used[a.team]++ % spawns.length];
     return {
       id: a.id,
       team: a.team,
       isBot: a.isBot,
       pos: { x: pos.x, y: pos.y },
-      yaw: a.team === 'attack' ? 0 : Math.PI,
-      hp: 100,
+      yaw: over?.yaw ?? (a.team === 'attack' ? 0 : Math.PI),
+      hp: over?.hp ?? 100,
       alive: true,
       smokesLeft: SMOKES_PER_AGENT,
       carryingSpike: false,
@@ -71,20 +86,32 @@ export function createSim(opts: CreateSimOptions): Sim {
     attack: agents.some((a) => a.team === 'attack'),
     defense: agents.some((a) => a.team === 'defense'),
   };
-  const carrier = agents.find((a) => a.team === 'attack');
+  const planted0 = sc?.spikePlanted ?? null;
+  const carrier = planted0
+    ? undefined
+    : (agents.find((a) => sc?.agents?.[a.id]?.carryingSpike === true) ??
+      agents.find((a) => a.team === 'attack' && sc?.agents?.[a.id]?.carryingSpike !== false));
   if (carrier) carrier.carryingSpike = true;
 
   const s: SimState = {
     tick: 0,
     tickRate: TICK_RATE,
-    roundTimeLeftS: ROUND_TIME_S,
-    phase: 'live',
+    roundTimeLeftS: planted0 ? planted0.secondsLeft : roundLimitS,
+    phase: planted0 ? 'post_plant' : 'live',
     agents,
     smokes: [],
     spike: carrier ? { status: 'carried', carrierId: carrier.id } : { status: 'detonated' },
     winner: null,
   };
-  if (!carrier) s.spike = { status: 'dropped', pos: { x: map.bounds.width / 2, y: map.bounds.height / 2 } };
+  if (planted0) {
+    s.spike = {
+      status: 'planted',
+      pos: { ...planted0.pos },
+      site: planted0.site,
+      plantedAtTick: -Math.round((DETONATION_S - planted0.secondsLeft) * TICK_RATE),
+      defuseProgressS: 0,
+    };
+  } else if (!carrier) s.spike = { status: 'dropped', pos: { x: map.bounds.width / 2, y: map.bounds.height / 2 } };
 
   const spotted = new Set<string>();
   let smokeCounter = 0;
@@ -274,7 +301,7 @@ export function createSim(opts: CreateSimOptions): Sim {
         endRound(events, 'attack', 'detonated');
       }
     } else {
-      s.roundTimeLeftS = Math.max(0, ROUND_TIME_S - s.tick / TICK_RATE);
+      s.roundTimeLeftS = Math.max(0, roundLimitS - s.tick / TICK_RATE);
       if (s.roundTimeLeftS <= 0) endRound(events, 'defense', 'time');
     }
 
