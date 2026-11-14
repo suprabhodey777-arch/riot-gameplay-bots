@@ -16,8 +16,9 @@
  * the planner rotates by its own interleaving rather than throwing.
  */
 import type { Debrief, DrillResult, DrillSpec, Skill, WeaknessReport } from '../shared/coaching.ts';
-import type { MatchLog } from '../shared/contract.ts';
+import type { AgentId, MatchLog } from '../shared/contract.ts';
 import { DEFAULT_MAP_ID, loadMap } from '../shared/maps/index.ts';
+import { withPlayerAgent } from '../analyzer/drills.ts';
 import { analyze } from '../analyzer/analyze.ts';
 import { BENCHMARKS } from '../analyzer/benchmarks.ts';
 import { rehearsalDrill } from '../analyzer/rehearse.ts';
@@ -50,6 +51,9 @@ export interface SessionState {
   version: 1;
   seed: number;
   mapId: string;
+  playerAgent?: AgentId;
+  historyMapId?: string;
+  historyMaps?: Record<string, string>;
   playerId: string;
   report: WeaknessReport;
   staircases: Partial<Record<Skill, StaircaseState>>;
@@ -108,7 +112,7 @@ export class CoachingSession {
     if (report.findings.length === 0) report = { ...emptyReport(playerId), matchesRead: report.matchesRead };
     const mapId = opts.mapId ?? logs.find((l) => l.playerId === playerId)?.mapId ?? DEFAULT_MAP_ID;
     return new CoachingSession(
-      { version: 1, seed: opts.seed ?? 1, mapId, playerId, report, staircases: {}, history: [], current: null, practice: [], examBefore: null, examAfter: null },
+      { version: 1, seed: opts.seed ?? 1, mapId, historyMaps: Object.fromEntries(logs.map(l => [l.matchId, l.mapId])), historyMapId: logs.find(l => l.playerId === playerId)?.mapId ?? mapId, playerId, report, staircases: {}, history: [], current: null, practice: [], examBefore: null, examAfter: null },
       opts,
     );
   }
@@ -149,9 +153,9 @@ export class CoachingSession {
     // Only a credible weakness has mistakes to rehearse; a severity of 0 means the evidence is not there.
     if (!finding || finding.sampleSize === 0 || finding.severity <= 0) return [];
     return finding.evidence
-      .filter((e) => e.situation)
+      .filter((e) => e.situation && (this.s.historyMaps?.[e.matchId] ?? this.s.historyMapId ?? this.s.mapId) === this.s.mapId)
       .slice(0, 5)
-      .map((e, i) => rehearsalDrill(e, finding, map, 1 + ((this.s.seed * 7919 + (i + 1) * 104729) % (EXAM_SEED_BASE - 1))));
+      .map((e, i) => withPlayerAgent(rehearsalDrill(e, finding, map, 1 + ((this.s.seed * 7919 + (i + 1) * 104729) % (EXAM_SEED_BASE - 1))), this.s.playerAgent));
   }
 
   /**
@@ -172,6 +176,7 @@ export class CoachingSession {
       }
     }
     const next = planNext(this.s.report, this.s.staircases, this.s.history, map, this.s.seed);
+    next.drill = withPlayerAgent(next.drill, this.s.playerAgent);
     this.s.history.push({ skill: next.skill, seed: next.drill.seed });
     this.s.current = next.drill;
     return next;
@@ -204,7 +209,7 @@ export class CoachingSession {
 
   /** The held-out exam drills (eight per form; forms 0-99). */
   exam(form = 0): DrillSpec[] {
-    return examDrills(loadMap(this.s.mapId), form);
+    return examDrills(loadMap(this.s.mapId), form).map(d => withPlayerAgent(d, this.s.playerAgent));
   }
 
   /** Pass rate per skill and overall. With `phase`, also remembers the overall rate for later debriefs. */

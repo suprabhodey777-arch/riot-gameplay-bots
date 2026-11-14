@@ -198,8 +198,10 @@ describe('circuit breaker', () => {
 });
 
 describe('archetypes', () => {
+  // Keep the defender stationary so its new loud footsteps do not turn this
+  // approach-speed comparison into a noise-investigation test.
   const firstContact = (atk: string, seed: number) => {
-    const r = runHeadless(createMatch({ map: testBoxMap, seed, agents: bothBots(atk, 'baseline') }), 2400);
+    const r = runHeadless(createMatch({ map: testBoxMap, seed, agents: bothBots(atk, 'baseline').map((a, i) => i === 1 ? { ...a, isBot: false } : a) }), 2400);
     return r.trace.find((t) => t.node === 'engage')?.tick ?? 2400;
   };
   const mean = (atk: string) => {

@@ -23,14 +23,46 @@ namespace Saltworks
         public string Id;
         public string Team;
         public string Archetype;
+        public string Agent;
         public string Thought = "";
         public bool Alive = true;
+        public bool Revealed;
+        public bool Blind;
         public GameObject Root;
         public CapsuleCollider BodyCollider;
         public SphereCollider HeadCollider;
 
         Transform tilt;
         float deathStart = -1f;
+        GameObject revealShell;
+        Transform dazed;
+        float blindSince;
+        MeshRenderer bodyR, headR, bandR;
+        /// <summary>Cached HUD strings (built once per bot, or when their input changes).</summary>
+        public string LabelLine;
+        public string ThoughtShown;
+        string thoughtSource;
+        public int RevealLabelM = -1;
+        public string RevealLabel;
+
+        /// <summary>The bot's thought with underscores as spaces, rebuilt only when it changes.</summary>
+        public string ThoughtText()
+        {
+            if (!ReferenceEquals(thoughtSource, Thought))
+            {
+                thoughtSource = Thought;
+                ThoughtShown = string.IsNullOrEmpty(Thought) ? "" : Thought.Replace('_', ' ');
+            }
+            return ThoughtShown;
+        }
+
+        /// <summary>Re-tints body, head and band (enemy highlight or ally colour from the settings).</summary>
+        public void Recolor(Color tc)
+        {
+            if (bodyR != null) bodyR.sharedMaterial = Mats.Lit(Color.Lerp(tc, Color.white, 0.15f));
+            if (headR != null) headR.sharedMaterial = Mats.Lit(Color.Lerp(tc, Color.white, 0.55f));
+            if (bandR != null) bandR.sharedMaterial = Mats.Lit(tc * 0.8f);
+        }
 
         public Vector3 HeadPos => Root.transform.position + Vector3.up * HeadY;
         public Vector3 ChestPos => Root.transform.position + Vector3.up * 1.2f;
@@ -51,12 +83,12 @@ namespace Saltworks
             return go;
         }
 
-        public BotView(string id, string team, string archetype, Transform parent)
+        public BotView(string id, string team, string archetype, string agent, Transform parent, Material revealMat, Color tc)
         {
             Id = id;
             Team = team;
             Archetype = archetype;
-            Color tc = Palette.Team(team);
+            Agent = agent;
             Root = new GameObject("Bot " + id);
             Root.transform.SetParent(parent, false);
             tilt = new GameObject("Tilt").transform;
@@ -67,20 +99,72 @@ namespace Saltworks
             body.name = "Body";
             BodyCollider = body.GetComponent<CapsuleCollider>();
             body.AddComponent<BotPart>().Bot = this;
+            bodyR = body.GetComponent<MeshRenderer>();
 
             // Sphere primitive: radius 0.5. Scaled to radius 0.15 at y 1.65.
             GameObject head = Part(PrimitiveType.Sphere, tilt, new Vector3(0f, HeadY, 0f), Vector3.one * HeadRadius * 2f, Mats.Lit(Color.Lerp(tc, Color.white, 0.55f)), true);
             head.name = "Head";
             HeadCollider = head.GetComponent<SphereCollider>();
+            headR = head.GetComponent<MeshRenderer>();
             var hp = head.AddComponent<BotPart>();
             hp.Bot = this;
             hp.Head = true;
 
             Material dark = Mats.Lit(new Color(0.18f, 0.19f, 0.23f));
             Part(PrimitiveType.Cube, tilt, new Vector3(0f, HeadY + 0.01f, 0.13f), new Vector3(0.22f, 0.07f, 0.06f), Mats.Emissive(new Color(0.95f, 0.98f, 1f), 0.6f), false).name = "Visor";
-            Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.25f, 0.0f), new Vector3(0.84f, 0.12f, 0.84f), Mats.Lit(tc * 0.8f), false).name = "Band";
+            GameObject bandGo = Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.25f, 0.0f), new Vector3(0.84f, 0.12f, 0.84f), Mats.Lit(tc * 0.8f), false);
+            bandGo.name = "Band";
+            bandR = bandGo.GetComponent<MeshRenderer>();
             Part(PrimitiveType.Cube, tilt, new Vector3(0.18f, 1.25f, 0.5f), new Vector3(0.08f, 0.1f, 0.55f), dark, false).name = "Gun";
-            Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.45f, -0.4f), new Vector3(0.4f, 0.45f, 0.14f), dark, false).name = "Pack";
+            // The pack carries the agent's colour, so Rook, Haze, Wren and Pike read apart at a glance.
+            Material pack = string.IsNullOrEmpty(agent) ? dark : Mats.Lit(Color.Lerp(Agents.ColorOf(agent), dark.color, 0.25f));
+            Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.45f, -0.4f), new Vector3(0.4f, 0.45f, 0.14f), pack, false).name = "Pack";
+
+            // Recon silhouette: a slightly larger shell drawn through walls, off until revealed.
+            revealShell = new GameObject("Reveal");
+            revealShell.transform.SetParent(tilt, false);
+            Shell(PrimitiveType.Capsule, revealShell.transform, new Vector3(0f, Height / 2f, 0f), new Vector3(Radius * 2.15f, Height / 2f * 1.04f, Radius * 2.15f), revealMat);
+            Shell(PrimitiveType.Sphere, revealShell.transform, new Vector3(0f, HeadY, 0f), Vector3.one * HeadRadius * 2.5f, revealMat);
+            revealShell.SetActive(false);
+
+            // Dazed: small glints circling the head while blinded.
+            dazed = new GameObject("Dazed").transform;
+            dazed.SetParent(tilt, false);
+            dazed.localPosition = new Vector3(0f, HeadY + 0.32f, 0f);
+            Material glint = Mats.Emissive(new Color(1f, 0.96f, 0.7f), 2.5f);
+            for (int i = 0; i < 3; i++)
+            {
+                float a = i * Mathf.PI * 2f / 3f;
+                Shell(PrimitiveType.Sphere, dazed, new Vector3(Mathf.Cos(a) * 0.22f, 0f, Mathf.Sin(a) * 0.22f), Vector3.one * 0.06f, glint);
+            }
+            dazed.gameObject.SetActive(false);
+        }
+
+        static void Shell(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Material m)
+        {
+            GameObject go = Part(type, parent, pos, scale, m, false);
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+        }
+
+        /// <summary>Shows or hides the through-walls silhouette and the dazed glints. Call every frame.</summary>
+        public void SetEffects(bool revealed, bool blind)
+        {
+            bool showReveal = revealed && Alive;
+            if (revealShell != null && revealShell.activeSelf != showReveal) revealShell.SetActive(showReveal);
+            Revealed = revealed;
+            bool showDaze = blind && Alive;
+            if (showDaze && !Blind) blindSince = Time.time;
+            Blind = blind;
+            if (dazed == null) return;
+            if (dazed.gameObject.activeSelf != showDaze) dazed.gameObject.SetActive(showDaze);
+            if (showDaze)
+            {
+                float t = Time.time - blindSince;
+                dazed.localRotation = Quaternion.Euler(Mathf.Sin(t * 5f) * 12f, t * 320f, 0f);
+                dazed.localScale = Vector3.one * (0.8f + 0.2f * Mathf.Sin(t * 9f));
+            }
         }
 
         public void SetPose(Vector3 pos, float headingDeg)
@@ -143,6 +227,7 @@ namespace Saltworks
         public SimState Curr;
         public float TickInterval = 0.05f;
         public string PlayerId = "player";
+        public string PlayerTeam = "attack";
         public readonly Dictionary<string, BotView> Bots = new Dictionary<string, BotView>();
 
         float stepTime;
@@ -150,8 +235,12 @@ namespace Saltworks
         readonly Dictionary<string, AgentState> currMap = new Dictionary<string, AgentState>();
         readonly Dictionary<string, SmokeView> smokes = new Dictionary<string, SmokeView>();
         readonly List<TracerView> tracers = new List<TracerView>();
+        /// <summary>Reveal timers from `revealed` events, in case a state lacks revealedUntilTick.</summary>
+        readonly Dictionary<string, int> revealedByEvent = new Dictionary<string, int>();
         Transform botsRoot;
         Transform fxRoot;
+        Material revealMat;
+        static readonly Color RevealColor = new Color(1f, 0.25f, 0.42f, 0.95f);
 
         GameObject spike;
         Light spikeLight;
@@ -169,6 +258,7 @@ namespace Saltworks
             botsRoot = new GameObject("Bots").transform;
             fxRoot = new GameObject("Effects").transform;
             lineMat = Mats.Line();
+            revealMat = Mats.Reveal(RevealColor);
             BuildSpike();
         }
 
@@ -223,6 +313,7 @@ namespace Saltworks
                 Object.Destroy(s.Mat);
             }
             smokes.Clear();
+            revealedByEvent.Clear();
             Prev = Curr = null;
             prevMap.Clear();
             currMap.Clear();
@@ -234,8 +325,15 @@ namespace Saltworks
             Clear();
             TickInterval = tickInterval;
             PlayerId = d.playerId ?? "player";
+            PlayerTeam = d.playerTeam ?? "attack";
             var arch = new Dictionary<string, string>();
-            if (d.bots != null) foreach (DrillBotInfo b in d.bots) arch[b.id] = b.archetype;
+            var agentOf = new Dictionary<string, string>();
+            if (d.bots != null)
+                foreach (DrillBotInfo b in d.bots)
+                {
+                    arch[b.id] = b.archetype;
+                    if (!string.IsNullOrEmpty(b.agent)) agentOf[b.id] = b.agent;
+                }
             if (d.spec != null && d.spec.bots != null)
                 foreach (DrillBotSpec b in d.spec.bots)
                     if (!arch.ContainsKey(b.id)) arch[b.id] = b.archetypeId;
@@ -244,7 +342,9 @@ namespace Saltworks
             {
                 if (a.id == PlayerId) continue;
                 arch.TryGetValue(a.id, out string archetype);
-                var bv = new BotView(a.id, a.team, archetype ?? "bot", botsRoot);
+                if (!agentOf.TryGetValue(a.id, out string agent)) agent = a.agent;
+                var bv = new BotView(a.id, a.team, archetype ?? "bot", agent, botsRoot, revealMat, Palette.Relation(a.team, PlayerTeam));
+                bv.LabelLine = GameController.ArchetypeName(bv.Archetype) + (string.IsNullOrEmpty(agent) ? "" : "  |  " + Agents.NameOf(agent));
                 bv.SetPose(Geo.ToWorld(a.pos), Geo.YawToHeading(a.yaw));
                 Bots[a.id] = bv;
             }
@@ -289,6 +389,39 @@ namespace Saltworks
         public AgentState Agent(string id)
         {
             return id != null && currMap.TryGetValue(id, out AgentState a) ? a : null;
+        }
+
+        /// <summary>The sim tick with the interpolation fraction added, for smooth countdowns.</summary>
+        public float TickNow => Curr == null ? 0f : Curr.tick + Alpha;
+
+        public void NoteRevealed(string id, int untilTick)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            revealedByEvent.TryGetValue(id, out int old);
+            revealedByEvent[id] = Mathf.Max(old, untilTick);
+        }
+
+        /// <summary>Is this agent revealed by recon right now (state timer, or a `revealed` event)?</summary>
+        public bool IsRevealed(string id)
+        {
+            if (Curr == null || id == null) return false;
+            AgentState a = Agent(id);
+            if (a != null && a.revealedUntilTick > Curr.tick) return true;
+            return revealedByEvent.TryGetValue(id, out int until) && until > Curr.tick;
+        }
+
+        public bool IsBlind(string id)
+        {
+            AgentState a = Agent(id);
+            return a != null && Curr != null && a.blindUntilTick > Curr.tick;
+        }
+
+        /// <summary>Where the agent's hand is: the bot's chest, or for the player a point below and right of the eye.</summary>
+        public Vector3 HandPos(string id, Transform playerEye)
+        {
+            if (id == PlayerId && playerEye != null)
+                return playerEye.position + playerEye.right * 0.18f - playerEye.up * 0.15f + playerEye.forward * 0.3f;
+            return InterpPos(id) + Vector3.up * 1.4f;
         }
 
         /// <summary>Interpolated sim position of an agent, in Unity floor coordinates.</summary>
@@ -363,20 +496,38 @@ namespace Saltworks
         void Update()
         {
             if (Curr == null) return;
+            if (colorVersion != Settings.Version)
+            {
+                colorVersion = Settings.Version;
+                foreach (BotView b in Bots.Values) b.Recolor(Palette.Relation(b.Team, PlayerTeam));
+            }
             foreach (BotView b in Bots.Values)
             {
                 if (!currMap.ContainsKey(b.Id)) continue;
                 if (b.Alive) b.SetPose(InterpPos(b.Id), InterpHeading(b.Id));
                 b.Animate();
+                // Only enemies revealed for the player's team are drawn through walls.
+                b.SetEffects(b.Team != PlayerTeam && IsRevealed(b.Id), IsBlind(b.Id));
+            }
+            if (revealMat != null)
+            {
+                Color rc = Settings.Enemy;
+                rc.a = RevealColor.a * (0.75f + 0.25f * Mathf.Sin(Time.time * 10f));
+                revealMat.color = rc;
             }
             UpdateSmokes();
             UpdateSpike();
             UpdateTracers();
         }
 
+        int colorVersion = -1;
+        readonly HashSet<string> liveSmokes = new HashSet<string>();
+        readonly List<string> goneSmokes = new List<string>();
+
         void UpdateSmokes()
         {
-            var live = new HashSet<string>();
+            HashSet<string> live = liveSmokes;
+            live.Clear();
             float tickRate = Curr.tickRate > 0 ? Curr.tickRate : 20f;
             if (Curr.smokes != null)
             {
@@ -411,16 +562,15 @@ namespace Saltworks
                     v.Mat.color = col;
                 }
             }
-            List<string> gone = null;
+            goneSmokes.Clear();
             foreach (string id in smokes.Keys)
-                if (!live.Contains(id)) (gone ??= new List<string>()).Add(id);
-            if (gone != null)
-                foreach (string id in gone)
-                {
-                    Object.Destroy(smokes[id].Go);
-                    Object.Destroy(smokes[id].Mat);
-                    smokes.Remove(id);
-                }
+                if (!live.Contains(id)) goneSmokes.Add(id);
+            foreach (string id in goneSmokes)
+            {
+                Object.Destroy(smokes[id].Go);
+                Object.Destroy(smokes[id].Mat);
+                smokes.Remove(id);
+            }
         }
 
         void UpdateSpike()

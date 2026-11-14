@@ -3,7 +3,7 @@
  * analyzer, the bot, the coach and the 3D client (which shows the drill goal
  * and the debrief). Type-only.
  */
-import type { SimEvent, SiteId, Team, TraceEntry, Vec2 } from './contract.ts';
+import type { AgentId, SimEvent, SiteId, Team, TraceEntry, Vec2 } from './contract.ts';
 
 /** The situations we measure and drill. */
 export type Skill = 'entry' | 'clutch' | 'time_pressure' | 'smoke_usage';
@@ -115,7 +115,8 @@ export interface DrillSpec {
   seed: number;
   /** 0 (easiest) to 1 (hardest); set by the staircase. */
   difficulty: number;
-  player: { id: string; team: Team; spawn: Vec2; hp: number; carryingSpike: boolean };
+  /** Agent is filled by drill builders; optional only for older serialized drills. */
+  player: { agent?: AgentId; id: string; team: Team; spawn: Vec2; hp: number; carryingSpike: boolean };
   bots: DrillBot[];
   roundTimeLeftS: number;
   /** Set for retake and post-plant drills. */

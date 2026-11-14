@@ -313,6 +313,13 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, s: Scene): void {
     ctx.lineWidth = 1;
   }
 
+  for (const a of s.agents) {
+    if (!a.alive || a.team === s.playerTeam || a.revealedUntilTick <= s.state.tick) continue;
+    const q = P(a.pos);
+    ctx.beginPath(); ctx.arc(q.x, q.y, 12, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffb000'; ctx.stroke();
+  }
+
   // Site labels go on last, over boxes, smokes and people.
   Object.entries(map.sites).forEach(([name, pts]) => {
     const q = P(cen(pts));
@@ -326,6 +333,10 @@ export function draw(ctx: CanvasRenderingContext2D, v: View, s: Scene): void {
     ctx.lineWidth = 1;
   });
 
+  if (me && me.blindUntilTick > s.state.tick) {
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.fillRect(0, 0, v.width, v.height);
+  }
   if (s.flash > 0) {
     ctx.fillStyle = `rgba(214,45,45,${Math.min(0.35, s.flash * 0.35)})`;
     ctx.fillRect(0, 0, v.width, v.height);

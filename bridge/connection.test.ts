@@ -106,3 +106,67 @@ describe('Unity bridge connection handler (in memory)', () => {
     expect((await c.next('drill')).spec.id).not.toBe(drill.spec.id);
   }, 60000);
 });
+
+describe('wire v2 additions', () => {
+  it('lists maps, preserves picks across history loading, and generates on the picked map', async () => {
+    const c = stream();
+    c.send({ type: 'hello', protocol: 'bots-wire.2' });
+    const hello = await c.next('hello');
+    expect(hello.rules).toMatchObject({ flashFuseS: .6, flashBlindS: 1.75, dashDistanceM: 6, runHearingM: 15, walkSpeedMps: 3, crouchSpeedMps: 2 });
+    expect(Object.keys(hello.rules.agents ?? {})).toEqual(['rook', 'haze', 'wren', 'pike']);
+    c.send({ type: 'maps' });
+    expect((await c.next('maps')).maps.map(m => m.id)).toEqual(['saltworks', 'ironvale']);
+    c.send({ type: 'pick_map', map: 'ironvale' });
+    expect((await c.next('map')).map.id).toBe('ironvale');
+    c.send({ type: 'pick_agent', agent: 'pike' });
+    expect(await c.next('agent')).toMatchObject({ agent: 'pike', kit: { smoke: 1, recon: 2 } });
+    c.send(load);
+    const report = await c.next('report');
+    expect(report.rehearsals).toEqual([]);
+    c.send({ type: 'next_drill' });
+    const drill = await c.next('drill');
+    expect(drill.spec.mapId).toBe('ironvale');
+    expect(drill.playerAgent).toBe('pike');
+    expect(drill.spec.player.agent).toBe('pike');
+    expect(drill.bots.every(b => b.agent)).toBe(true);
+    expect(drill.state.agents.find(a => a.id === drill.playerId)?.abilities).toEqual({ smoke: 1, flash: 0, dash: 0, recon: 2 });
+    c.send({ type: 'input', input: { ...idleInput('ignored'), reconAt: drill.state.agents.find(a => a.id === drill.playerId)!.pos } });
+    expect((await c.next('step')).events.some(e => e.type === 'recon')).toBe(true);
+  }, 60000);
+
+  it('wire v1 strips all v4 fields and new events, including nested result events', async () => {
+    const c = stream();
+    c.send({ type: 'hello', protocol: 'bots-wire.1' });
+    const hello = await c.next('hello');
+    expect(hello.protocol).toBe('bots-wire.1');
+    expect(hello.rules.flashFuseS).toBeUndefined();
+    expect(hello.rules.agents).toBeUndefined();
+    c.send({ type: 'versus', archetype: 'entry-duelist', skill: 'entry' });
+    const drill = await c.next('drill');
+    expect(drill.playerAgent).toBeUndefined();
+    expect(drill.spec.player.agent).toBeUndefined();
+    expect(drill.bots[0].agent).toBeUndefined();
+    expect(drill.state.agents[0].agent).toBeUndefined();
+    expect(drill.state.agents[0].abilities).toBeUndefined();
+    c.send({ type: 'input', input: { ...idleInput('ignored'), move: { x: 1, y: 0 }, dash: true } });
+    const step = await c.next('step');
+    expect(step.state.agents[0].blindUntilTick).toBeUndefined();
+    expect(step.events.some(e => e.type === 'footstep' || e.type === 'flash' || e.type === 'dash')).toBe(false);
+    c.send({ type: 'abandon' });
+    expect((await c.next('result')).result.events.some(e => e.type === 'footstep')).toBe(false);
+  }, 60000);
+
+  it('rejects invalid maps, agents and optional input fields without stepping', async () => {
+    const c = stream();
+    c.raw('{"type":"pick_map","map":"missing"}\n{"type":"pick_agent","agent":"missing"}\n');
+    await c.next('error'); await c.next('error');
+    c.send({ type: 'versus', archetype: 'baseline', skill: 'entry' });
+    await c.next('drill');
+    for (const extra of [{ flashAt: { x: 'bad', y: 0 } }, { reconAt: [] }, { dash: 1 }]) {
+      c.raw(JSON.stringify({ type: 'input', input: { ...idleInput('player'), ...extra } }) + '\n');
+      await c.next('error');
+    }
+    c.send({ type: 'input', input: idleInput('player') });
+    expect((await c.next('step')).state.tick).toBe(1);
+  }, 60000);
+});

@@ -1,11 +1,11 @@
 /**
  * Cross-lane contract between the simulation (brain) and the 3D client.
- * Dependency-free and type-only, apart from the version constant.
+ * Dependency-free, with the version and agent loadouts shared by every lane.
  * All coordinates are metres on a 2D floor plan: x east, y north.
  * Yaw is in radians, 0 = +x, counter-clockwise.
  */
 
-export const CONTRACT_VERSION = 'v3';
+export const CONTRACT_VERSION = 'v4';
 
 /** A point or vector on the floor plan, in metres. */
 export interface Vec2 {
@@ -34,6 +34,18 @@ export interface MapDef {
   callouts: { name: string; polygon: Vec2[] }[];
 }
 
+export type AgentId = 'rook' | 'haze' | 'wren' | 'pike';
+export interface AbilityCharges { smoke: number; flash: number; dash: number; recon: number }
+export const AGENTS: Record<AgentId, { role: 'duelist' | 'controller' | 'initiator' | 'sentinel'; kit: AbilityCharges }> = {
+  rook: { role: 'duelist', kit: { smoke: 0, flash: 1, dash: 1, recon: 0 } },
+  haze: { role: 'controller', kit: { smoke: 3, flash: 0, dash: 0, recon: 0 } },
+  wren: { role: 'initiator', kit: { smoke: 0, flash: 2, dash: 0, recon: 1 } },
+  pike: { role: 'sentinel', kit: { smoke: 1, flash: 0, dash: 0, recon: 2 } },
+};
+export const agentForArchetype = (id: string): AgentId => ({
+  'entry-duelist': 'rook', 'utility-controller': 'haze', 'patient-lurker': 'pike', 'off-angle-anchor': 'pike', baseline: 'wren',
+} as Record<string, AgentId>)[id] ?? 'wren';
+
 /** One player or bot as the sim currently sees it. */
 export interface AgentState {
   id: string;
@@ -44,6 +56,10 @@ export interface AgentState {
   /** 0-100. */
   hp: number;
   alive: boolean;
+  agent: AgentId;
+  abilities: AbilityCharges;
+  blindUntilTick: number;
+  revealedUntilTick: number;
   smokesLeft: number;
   carryingSpike: boolean;
 }
@@ -102,6 +118,9 @@ export interface PlayerInput {
   fire: FireIntent | null;
   /** Throw a smoke at this point, or null. */
   smokeAt: Vec2 | null;
+  flashAt?: Vec2 | null;
+  dash?: boolean;
+  reconAt?: Vec2 | null;
   plantHeld: boolean;
   defuseHeld: boolean;
 }
@@ -130,6 +149,12 @@ export type SimEvent =
       killerPos: Vec2;
       victimPos: Vec2;
     }
+  | { type: 'flash'; thrower: string; pos: Vec2; tick: number }
+  | { type: 'blinded'; agent: string; untilTick: number; by: string; tick: number }
+  | { type: 'dash'; agent: string; from: Vec2; to: Vec2; tick: number }
+  | { type: 'recon'; thrower: string; pos: Vec2; tick: number }
+  | { type: 'revealed'; target: string; by: string; untilTick: number; tick: number }
+  | { type: 'footstep'; agent: string; pos: Vec2; loud: boolean; tick: number }
   | { type: 'smoke'; tick: number; agent: string; pos: Vec2 }
   | { type: 'plant'; tick: number; agent: string; site: SiteId }
   | { type: 'defuse'; tick: number; agent: string }

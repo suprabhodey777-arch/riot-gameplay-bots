@@ -5,7 +5,7 @@
  * shot and draws.
  */
 import type { DrillResult, DrillSpec } from '../shared/coaching.ts';
-import type { PlayerInput, SimEvent, SimState, TraceEntry, Vec2 } from '../shared/contract.ts';
+import type { AbilityCharges, AgentId, PlayerInput, SimEvent, SimState, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { loadMap } from '../shared/maps/index.ts';
 import { lineOfSight, pointInPolygon } from '../sim/geometry.ts';
 import { DEFUSE_TIME_S, PLANT_TIME_S, TICK_RATE } from '../sim/sim.ts';
@@ -17,6 +17,8 @@ import { classifyShot } from './ray.ts';
 const TICK_MS = 1000 / TICK_RATE;
 
 export interface HudInfo {
+  agent: AgentId;
+  abilities: AbilityCharges;
   hp: number;
   alive: boolean;
   clockS: number;
@@ -58,6 +60,9 @@ export class Game {
   private mouseDown = false;
   private fireQueued = false;
   private smokeQueued = false;
+  private flashQueued = false;
+  private dashQueued = false;
+  private reconQueued = false;
   private lastShotTick = -100;
   private plantTicks = 0;
   private aimYaw = 0;
@@ -149,7 +154,10 @@ export class Game {
       if (GAME_KEYS.has(e.code) && !e.metaKey) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
-      if (e.code === 'KeyQ') this.smokeQueued = true;
+      if (e.code === 'KeyC') this.smokeQueued = true;
+      if (e.code === 'KeyQ') this.flashQueued = true;
+      if (e.code === 'KeyE') this.dashQueued = true;
+      if (e.code === 'KeyX') this.reconQueued = true;
     });
     this.on('keyup', (e) => {
       this.keys.delete(e.code);
@@ -255,7 +263,8 @@ export class Game {
         };
       }
     }
-    const input = buildInput({ agentId: spec.player.id, team: spec.player.team, keys: this.keys, yaw: this.aimYaw, fire, smokeAt });
+    const input = buildInput({ agentId: spec.player.id, team: spec.player.team, keys: this.keys, yaw: this.aimYaw, fire, smokeAt, flashAt: this.flashQueued ? this.mouse : null, dash: this.dashQueued, reconAt: this.reconQueued ? this.mouse : null });
+    this.flashQueued = this.dashQueued = this.reconQueued = false;
     const r = this.run.step(input);
     this.prev = state;
     this.curr = r.state;
@@ -268,7 +277,7 @@ export class Game {
     // plant progress, mirrored from the sim's rule so the ring matches
     const me = this.me(this.curr);
     const onSite = !!me && Object.values(this.map.sites).some((p) => pointInPolygon(me.pos, p));
-    if (me?.alive && me.carryingSpike && onSite && this.keys.has('KeyE') && this.spec.player.team === 'attack') this.plantTicks++;
+    if (me?.alive && me.carryingSpike && onSite && this.keys.has('KeyF') && this.spec.player.team === 'attack') this.plantTicks++;
     else this.plantTicks = 0;
     for (const e of events) {
       if (e.type === 'damage' && e.victim === pid) this.flash = 1;
@@ -328,7 +337,7 @@ export class Game {
         let diff = Math.abs(ang - this.aimYaw) % (Math.PI * 2);
         if (diff > Math.PI) diff = Math.PI * 2 - diff;
         const inView = d <= 3 || diff <= (103 * Math.PI) / 360;
-        if (inView && lineOfSight(mePos, e.pos, this.map.walls, this.curr.smokes)) {
+        if ((e.revealedUntilTick > this.curr.tick) || (me.blindUntilTick <= this.curr.tick && inView && lineOfSight(mePos, e.pos, this.map.walls, this.curr.smokes))) {
           this.seen.add(e.id);
           this.lastSeen.set(e.id, { pos: { ...e.pos }, dead: !e.alive, atS: this.curr.roundTimeLeftS });
         }
@@ -368,6 +377,8 @@ export class Game {
     else if (sp.status === 'defused') spike = 'Spike defused';
     else spike = 'Spike detonated or not in play';
     this.cb.onHud({
+      agent: me?.agent ?? 'rook',
+      abilities: me?.abilities ?? { smoke: 0, flash: 0, dash: 0, recon: 0 },
       hp: me ? Math.round(me.hp) : 0,
       alive: !!me?.alive,
       clockS: s.roundTimeLeftS,

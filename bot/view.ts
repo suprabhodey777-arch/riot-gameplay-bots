@@ -1,10 +1,8 @@
-import type { AgentState, MapDef, SimState, SmokeState, SpikeState, Vec2 } from '../shared/contract.ts';
+import type { AgentState, MapDef, SimEvent, SimState, SmokeState, SpikeState, Vec2 } from '../shared/contract.ts';
+import { FOV_RAD, HEARING_RANGE, RUN_HEARING_M } from '../sim/sim.ts';
 import { lineOfSight } from '../sim/geometry.ts';
 
-/** Horizontal field of view in radians (103 degrees). */
-export const FOV_RAD = (103 * Math.PI) / 180;
-/** Enemies this close are heard even behind a wall or behind the bot. */
-export const HEARING_RANGE = 3;
+export { FOV_RAD, HEARING_RANGE } from '../sim/sim.ts';
 /** An enemy lost for longer than this many ticks counts as newly seen when it comes back. */
 export const REACQUIRE_TICKS = 6;
 
@@ -58,7 +56,7 @@ const angleDiff = (a: number, b: number): number => {
 };
 
 /** Fog of war: builds what `botId` is allowed to know, updating `memory` with what it sees now. */
-export function botView(state: SimState, botId: string, map: MapDef, memory: BotMemory): BotView {
+export function botView(state: SimState, botId: string, map: MapDef, memory: BotMemory, events: SimEvent[] = []): BotView {
   const self = state.agents.find((a) => a.id === botId);
   if (!self) throw new Error(`Unknown agent ${botId}`);
   const visible: SeenEnemy[] = [];
@@ -75,15 +73,19 @@ export function botView(state: SimState, botId: string, map: MapDef, memory: Bot
     if (!self.alive) continue;
     const dx = e.pos.x - self.pos.x;
     const dy = e.pos.y - self.pos.y;
+    const step = events.slice().reverse().find(ev => ev.type === 'footstep' && ev.agent === e.id && ev.loud && Math.hypot(ev.pos.x - self.pos.x, ev.pos.y - self.pos.y) <= RUN_HEARING_M);
+    if (step?.type === 'footstep') memory.lastSeen[e.id] = { pos: { ...step.pos }, tick: step.tick };
+    const revealed = e.revealedUntilTick > state.tick;
+    const blinded = self.blindUntilTick > state.tick;
     const heard = Math.hypot(dx, dy) <= HEARING_RANGE;
     const los = lineOfSight(self.pos, e.pos, map.walls, state.smokes);
     const inFov = angleDiff(Math.atan2(dy, dx), self.yaw) <= FOV_RAD / 2;
-    if (!((los && inFov) || heard)) continue;
+    if (blinded || !((los && inFov) || heard || revealed)) continue;
     const prev = memory.lastVisible[e.id];
     if (prev === undefined || state.tick - prev > REACQUIRE_TICKS) memory.visibleSince[e.id] = state.tick;
     memory.lastVisible[e.id] = state.tick;
     memory.lastSeen[e.id] = { pos: { x: e.pos.x, y: e.pos.y }, tick: state.tick };
-    visible.push({ id: e.id, pos: { x: e.pos.x, y: e.pos.y }, los, since: memory.visibleSince[e.id] });
+    visible.push({ id: e.id, pos: { x: e.pos.x, y: e.pos.y }, los: los && !blinded, since: memory.visibleSince[e.id] });
   }
   const seenNow = new Set(visible.map((v) => v.id));
   const remembered: Remembered[] = Object.entries(memory.lastSeen)

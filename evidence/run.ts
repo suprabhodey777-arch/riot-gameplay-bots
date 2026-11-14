@@ -1,5 +1,5 @@
 /**
- * Evidence harness. Run: `node evidence/run.ts [--n 30] [--budget 20] [--forms 5]`.
+ * Evidence harness. Run: `node evidence/run.ts [--n 120] [--budget 20] [--forms 5]`.
  *
  * For each of N seeds, a simulated player with ONE planted weak skill takes the
  * held-out exam (pre-test), practises for a fixed budget of drills under each of
@@ -58,7 +58,7 @@ export interface Config {
   otherLevel: number;
   bootstrap: number;
 }
-export const DEFAULTS: Config = { n: 30, budget: 20, forms: 5, weakLevel: 0.15, otherLevel: 0.7, bootstrap: 4000 };
+export const DEFAULTS: Config = { n: 120, budget: 20, forms: 5, weakLevel: 0.15, otherLevel: 0.7, bootstrap: 4000 };
 
 export interface Fairness {
   fires: number;
@@ -81,7 +81,7 @@ function fairnessHook(f: Fairness, player: () => SimulatedPlayer | null) {
     const map = loadMap(spec.mapId);
     // Update who sees whom at this decision tick (same rule as bot/view.ts).
     for (const o of before.agents) {
-      if (!o.alive) continue;
+      if (!o.alive || o.blindUntilTick > before.tick) continue;
       for (const e of before.agents) {
         if (!e.alive || e.team === o.team) continue;
         const dx = e.pos.x - o.pos.x;
@@ -91,7 +91,7 @@ function fairnessHook(f: Fairness, player: () => SimulatedPlayer | null) {
         let d = (Math.atan2(dy, dx) - o.yaw) % (2 * Math.PI);
         if (d > Math.PI) d -= 2 * Math.PI;
         if (d < -Math.PI) d += 2 * Math.PI;
-        if (!((los && Math.abs(d) <= FOV_RAD / 2) || heard)) continue;
+        if (!((los && Math.abs(d) <= FOV_RAD / 2) || heard || e.revealedUntilTick > before.tick)) continue;
         const key = `${o.id}>${e.id}`;
         const prev = t.get(key);
         if (!prev || before.tick - prev.last > REACQUIRE_TICKS) t.set(key, { since: before.tick, last: before.tick });

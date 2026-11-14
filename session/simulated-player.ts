@@ -117,7 +117,9 @@ export function createSimulatedPlayer(opts: { seed: number; profile: SkillProfil
     const traits: BotTraits = panics
       ? { ...base, reactionMs: base.reactionMs + PANIC_EXTRA_REACTION_MS, headAccuracy: r2(base.headAccuracy * PANIC_AIM), bodyAccuracy: r2(base.bodyAccuracy * PANIC_AIM), aggression: 1, patience: 0 }
       : base;
-    const bot = createBot({ id: pid, map, traits, rng: botRng, siteSeed: spec.seed });
+    // The learner plays without team behaviour or bot utility: those are the bots' own habits
+    // (flash, turn away, freeze), not the skill profile this player models.
+    const bot = createBot({ id: pid, map, traits, rng: botRng, siteSeed: spec.seed, teamPlay: false });
     const ditherTicks = spec.skill === 'time_pressure' ? Math.round((1 - c) * 12 * TICK_RATE) : 0;
     const smokeRoll = rng.next();
     const smokeAtTick = 1 + rng.int(10);

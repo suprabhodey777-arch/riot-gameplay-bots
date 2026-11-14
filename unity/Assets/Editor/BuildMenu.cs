@@ -61,6 +61,9 @@ namespace Saltworks.EditorTools
             Write("UnlitColor", "Unlit/Color", null);
             Write("UnlitTexture", "Unlit/Texture", null);
             Write("WorldText", "Saltworks/WorldText", null);
+            Write("RevealThroughWalls", "Saltworks/RevealThroughWalls", null);
+            Write("Overlay", "Saltworks/Overlay", null);
+            Write("SkyboxProcedural", "Skybox/Procedural", null);
             AssetDatabase.SaveAssets();
         }
 

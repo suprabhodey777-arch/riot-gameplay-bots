@@ -1,3 +1,4 @@
+import { AGENTS, agentForArchetype, type AgentId } from '../shared/contract.ts';
 /**
  * Drill generators: one per skill. A drill is a DrillSpec (the shared shape the
  * bot, coach and 3D client read) and `drillSimOptions` turns it into the sim
@@ -132,7 +133,7 @@ function longWalkS(map: MapDef, from: Vec2, to: Vec2, freeM: number): number {
 
 const secs = (s: number): number => Math.round(s * 10) / 10;
 
-export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed: number): DrillSpec {
+function buildDrillBase(skill: Skill, difficultyIn: number, map: MapDef, seed: number): DrillSpec {
   const d = clamp(difficultyIn);
   snapOffset = seed >= EXAM_SEED_BASE ? 0.05 : 0;
   const rng = createRng((seed * 2654435761 + skill.length * 97 + skill.charCodeAt(0)) >>> 0);
@@ -232,6 +233,15 @@ export function buildDrill(skill: Skill, difficultyIn: number, map: MapDef, seed
   };
 }
 
+/** Apply a player selection; smoke drills always supply a usable smoke. */
+export function withPlayerAgent(spec: DrillSpec, selected: AgentId = spec.player.agent ?? 'rook'): DrillSpec {
+  const agent = spec.skill === 'smoke_usage' && !AGENTS[selected].kit.smoke ? 'haze' : selected;
+  return { ...spec, player: { ...spec.player, agent } };
+}
+export function buildDrill(...args: Parameters<typeof buildDrillBase>): DrillSpec {
+  return withPlayerAgent(buildDrillBase(...args));
+}
+
 /** The drill for a finding at a difficulty. */
 export function drillFor(finding: WeaknessFinding, difficulty: number, map: MapDef, seed: number): DrillSpec {
   return buildDrill(finding.skill, difficulty, map, seed);
@@ -241,8 +251,8 @@ export function drillFor(finding: WeaknessFinding, difficulty: number, map: MapD
 export function drillSimOptions(spec: DrillSpec): CreateSimOptions {
   const map = loadMap(spec.mapId);
   const agents: CreateSimOptions['agents'] = [
-    { id: spec.player.id, team: spec.player.team, isBot: false },
-    ...spec.bots.map((b) => ({ id: b.id, team: b.team, isBot: true })),
+    { id: spec.player.id, team: spec.player.team, isBot: false, agent: withPlayerAgent(spec).player.agent },
+    ...spec.bots.map((b) => ({ id: b.id, team: b.team, isBot: true, agent: agentForArchetype(b.archetypeId) })),
   ];
   const scenarioAgents: NonNullable<NonNullable<CreateSimOptions['scenario']>['agents']> = {
     [spec.player.id]: { spawn: spec.player.spawn, hp: spec.player.hp, carryingSpike: spec.player.carryingSpike },

@@ -175,9 +175,9 @@ const KEYS: [string, string][] = [
   ['Mouse', 'Aim'],
   ['Left click', 'Fire (5 shots a second at most)'],
   ['Shift', 'Walk (quiet, accurate)'],
-  ['Ctrl or C', 'Crouch'],
-  ['Q', 'Throw a smoke at the cursor'],
-  ['Hold E', 'Plant (attack, on a site) or defuse (defense, at the spike)'],
+  ['Ctrl', 'Crouch'],
+  ['C / Q / E / X', 'Smoke / flash / dash / recon'],
+  ['Hold F', 'Plant (attack, on a site) or defuse (defense, at the spike)'],
   ['Esc', 'Pause'],
   ['R', 'Restart this drill'],
 ];
@@ -197,7 +197,7 @@ function playSpec(spec: DrillSpec): void {
         <span class="muted">Health</span><b id="hpn"></b>
         <span class="muted">Round clock</span><b id="clock"></b>
         <span class="muted">Spike</span><b id="spike"></b>
-        <span class="muted">Smokes left</span><b id="smokes"></b>
+        <span class="muted">Kit charges</span><b id="smokes"></b>
       </div>
       <h2>The bot's mind</h2>
       <div id="mind"></div>
@@ -242,7 +242,7 @@ function paintHud(h: HudInfo): void {
   el('hpn')!.textContent = h.alive ? `${h.hp} / 100` : 'down';
   el('clock')!.textContent = `${Math.max(0, h.clockS).toFixed(1)} s (${h.phase.replace('_', ' ')})`;
   el('spike')!.textContent = h.spike;
-  el('smokes')!.textContent = String(h.smokesLeft);
+  el('smokes')!.textContent = `${h.agent}: C ${h.abilities.smoke} · Q ${h.abilities.flash} · E ${h.abilities.dash} · X ${h.abilities.recon}`;
   if (!h.paused || h.started) el('pause')!.textContent = h.paused ? 'Resume' : 'Pause';
   el('mind')!.innerHTML = h.mind.length
     ? h.mind.map((t) => `<div>${(t.tick / 20).toFixed(1)}s ${esc(t.botId)} [${esc(t.node)}] ${esc(t.reason)}</div>`).join('')

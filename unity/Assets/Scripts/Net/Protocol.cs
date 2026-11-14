@@ -1,6 +1,7 @@
-// Wire protocol bots-wire.1 (docs/unity-bridge.md). DTO field names match the
-// JSON keys exactly, so Newtonsoft maps them without attributes. Unknown keys
-// are ignored, missing keys keep their defaults.
+// Wire protocol bots-wire.2 (docs/unity-bridge.md, "Round 2 additions"), which
+// still reads a bots-wire.1 bridge. DTO field names match the JSON keys exactly,
+// so Newtonsoft maps them without attributes. Unknown keys are ignored, missing
+// keys keep their defaults, so every round-2 field degrades to "not there".
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -9,7 +10,8 @@ namespace Saltworks
 {
     public static class Wire
     {
-        public const string Protocol = "bots-wire.1";
+        public const string Protocol = "bots-wire.2";
+        public const string LegacyProtocol = "bots-wire.1";
 
         static readonly JsonSerializer Serializer = JsonSerializer.Create(new JsonSerializerSettings
         {
@@ -28,9 +30,9 @@ namespace Saltworks
         }
 
         // ---- client -> bridge -------------------------------------------------
-        public static JObject Hello()
+        public static JObject Hello(string protocol = Protocol)
         {
-            return new JObject { ["type"] = "hello", ["protocol"] = Protocol };
+            return new JObject { ["type"] = "hello", ["protocol"] = protocol };
         }
 
         public static JObject LoadSample(string skill, int seed)
@@ -62,6 +64,21 @@ namespace Saltworks
             return new JObject { ["type"] = "abandon" };
         }
 
+        public static JObject Maps()
+        {
+            return new JObject { ["type"] = "maps" };
+        }
+
+        public static JObject PickMap(string id)
+        {
+            return new JObject { ["type"] = "pick_map", ["map"] = id };
+        }
+
+        public static JObject PickAgent(string id)
+        {
+            return new JObject { ["type"] = "pick_agent", ["agent"] = id };
+        }
+
         public static JObject Input(PlayerInputMsg i)
         {
             JToken fire = JValue.CreateNull();
@@ -69,21 +86,22 @@ namespace Saltworks
                 fire = new JObject { ["targetId"] = i.fireTargetId, ["result"] = i.fireResult };
             JToken smoke = JValue.CreateNull();
             if (i.hasSmoke) smoke = V2(i.smokeX, i.smokeY);
-            return new JObject
+            var input = new JObject
             {
-                ["type"] = "input",
-                ["input"] = new JObject
-                {
-                    ["move"] = V2(i.moveX, i.moveY),
-                    ["yaw"] = i.yaw,
-                    ["walk"] = i.walk,
-                    ["crouch"] = i.crouch,
-                    ["fire"] = fire,
-                    ["smokeAt"] = smoke,
-                    ["plantHeld"] = i.plantHeld,
-                    ["defuseHeld"] = i.defuseHeld,
-                },
+                ["move"] = V2(i.moveX, i.moveY),
+                ["yaw"] = i.yaw,
+                ["walk"] = i.walk,
+                ["crouch"] = i.crouch,
+                ["fire"] = fire,
+                ["smokeAt"] = smoke,
+                ["plantHeld"] = i.plantHeld,
+                ["defuseHeld"] = i.defuseHeld,
             };
+            // Round-2 fields are optional: absent means "not used this tick".
+            if (i.hasFlash) input["flashAt"] = V2(i.flashX, i.flashY);
+            if (i.dash) input["dash"] = true;
+            if (i.hasRecon) input["reconAt"] = V2(i.reconX, i.reconY);
+            return new JObject { ["type"] = "input", ["input"] = input };
         }
     }
 
@@ -97,6 +115,41 @@ namespace Saltworks
         public string fireResult;
         public bool hasSmoke;
         public float smokeX, smokeY;
+        public bool hasFlash;
+        public float flashX, flashY;
+        public bool dash;
+        public bool hasRecon;
+        public float reconX, reconY;
+    }
+
+    public enum Ability
+    {
+        Smoke,
+        Flash,
+        Dash,
+        Recon,
+    }
+
+    /// <summary>Charges per ability (contract v4 AbilityCharges); also the shape of an agent's kit.</summary>
+    public class AbilityCharges
+    {
+        public int smoke;
+        public int flash;
+        public int dash;
+        public int recon;
+
+        public int Get(Ability a)
+        {
+            switch (a)
+            {
+                case Ability.Smoke: return smoke;
+                case Ability.Flash: return flash;
+                case Ability.Dash: return dash;
+                default: return recon;
+            }
+        }
+
+        public int Total => smoke + flash + dash + recon;
     }
 
     // ---- shared/contract.ts -----------------------------------------------------
@@ -166,6 +219,34 @@ namespace Saltworks
         public float plantTimeS = 4f;
         public float defuseTimeS = 7f;
         public float moveSpeedMps = 5.4f;
+
+        // bots-wire.2 (defaults are the sim/sim.ts constants, used when an older bridge leaves them out).
+        public float flashMaxRangeM = 20f;
+        public float flashFuseS = 0.6f;
+        public float flashBlindS = 1.75f;
+        public float dashDistanceM = 6f;
+        public float reconMaxRangeM = 30f;
+        public float reconRadiusM = 10f;
+        public float reconRevealS = 2f;
+        public float runHearingM = 15f;
+        public float walkSpeedMps = 3f;
+        public float crouchSpeedMps = 2f;
+        /// <summary>The four agents with role and kit; shape read leniently by Agents.MergeFromRules.</summary>
+        public JToken agents;
+
+        /// <summary>Not in rules: sim/sim.ts RECON_FUSE_S.</summary>
+        public const float ReconFuseS = 0.5f;
+
+        public float MaxRange(Ability a)
+        {
+            switch (a)
+            {
+                case Ability.Smoke: return smokeMaxRangeM;
+                case Ability.Flash: return flashMaxRangeM;
+                case Ability.Recon: return reconMaxRangeM;
+                default: return dashDistanceM;
+            }
+        }
     }
 
     public class AgentState
@@ -179,6 +260,18 @@ namespace Saltworks
         public bool alive = true;
         public int smokesLeft;
         public bool carryingSpike;
+        // contract v4; absent from a bots-wire.1 bridge.
+        public string agent;
+        public AbilityCharges abilities;
+        public int blindUntilTick;
+        public int revealedUntilTick;
+
+        /// <summary>Charges left; without v4 abilities only the smoke count (smokesLeft) is known.</summary>
+        public int Charges(Ability a)
+        {
+            if (abilities != null) return abilities.Get(a);
+            return a == Ability.Smoke ? smokesLeft : 0;
+        }
     }
 
     public class SmokeState
@@ -241,6 +334,13 @@ namespace Saltworks
         public Vec2 attackerPos;
         public Vec2 victimPos;
         public Vec2 killerPos;
+        // contract v4 events: flash, blinded, dash, recon, revealed, footstep.
+        public string thrower;
+        public string by;
+        public int untilTick;
+        public Vec2 from;
+        public Vec2 to;
+        public bool loud;
     }
 
     // ---- shared/coaching.ts -----------------------------------------------------
@@ -278,6 +378,8 @@ namespace Saltworks
         public Vec2 spawn;
         public float hp = 100f;
         public bool carryingSpike;
+        /// <summary>Possibly present in v4 drill specs; DrillMsg.playerAgent wins.</summary>
+        public string agent;
     }
 
     public class DrillBotSpec
@@ -346,6 +448,58 @@ namespace Saltworks
         public List<RehearsalInfo> rehearsals = new List<RehearsalInfo>();
         public Dictionary<string, StaircaseInfo> staircases = new Dictionary<string, StaircaseInfo>();
         public int played;
+        /// <summary>Absent on an older bridge (then the "Recommended for you" panel is hidden).</summary>
+        public AgentAdvice agentAdvice;
+    }
+
+    // ---- round 3: agent advice on the report -------------------------------------------------
+    public class AdviceAgent
+    {
+        public string id;
+        public string name;
+        public string role;
+        /// <summary>A string ("3 Smokes") per the spec; read leniently in case it arrives as a charges object.</summary>
+        public JToken kit;
+        public List<string> valorantLike = new List<string>();
+
+        public string KitText()
+        {
+            if (kit == null || kit.Type == JTokenType.Null) return Agents.KitText(Agents.Get(id)?.Kit);
+            if (kit.Type == JTokenType.String) return (string)kit;
+            return Agents.KitText(Agents.ReadKit(kit));
+        }
+    }
+
+    public class AdvicePick
+    {
+        public AdviceAgent agent;
+        public string why;
+    }
+
+    public class AdviceFit
+    {
+        public AdviceAgent agent;
+        public float fit;
+    }
+
+    public class Playstyle
+    {
+        public int rounds;
+        public float firstDuelShare;
+        public float firstDuelWinRate;
+        public float meanKillDistanceM;
+        public float smokesPerRound;
+        public float objectiveShare;
+        public int kills;
+        public int deaths;
+    }
+
+    public class AgentAdvice
+    {
+        public AdvicePick main;
+        public AdvicePick practice;
+        public List<AdviceFit> ranked = new List<AdviceFit>();
+        public Playstyle playstyle;
     }
 
     public class DrillBotInfo
@@ -353,6 +507,7 @@ namespace Saltworks
         public string id;
         public string team;
         public string archetype;
+        public string agent;
     }
 
     public class DrillMsg
@@ -361,6 +516,7 @@ namespace Saltworks
         public string intro;
         public string playerId = "player";
         public string playerTeam = "attack";
+        public string playerAgent;
         public List<DrillBotInfo> bots = new List<DrillBotInfo>();
         public SimState state = new SimState();
     }
@@ -391,5 +547,29 @@ namespace Saltworks
     public class ErrorMsg
     {
         public string message;
+    }
+
+    public class MapInfo
+    {
+        public string id;
+        public string name;
+    }
+
+    public class MapsMsg
+    {
+        public List<MapInfo> maps = new List<MapInfo>();
+    }
+
+    /// <summary>Answer to pick_map: the MapDef the next drills use.</summary>
+    public class MapMsg
+    {
+        public MapDef map;
+    }
+
+    /// <summary>Answer to pick_agent. `kit` is read leniently by Agents.ReadKit.</summary>
+    public class AgentMsg
+    {
+        public string agent;
+        public JToken kit;
     }
 }

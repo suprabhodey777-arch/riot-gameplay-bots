@@ -1,3 +1,4 @@
+import { AGENTS, type AgentId } from '../shared/contract.ts';
 import type {
   AgentState,
   MapDef,
@@ -13,13 +14,30 @@ import type {
 import { AGENT_RADIUS, lineOfSight, resolveCircle, siteAt } from './geometry.ts';
 import { createRng, type Rng } from './rng.ts';
 
+export const SMOKE_MAX_RANGE_M = 25;
+export const FLASH_MAX_RANGE_M = 20;
+export const FLASH_FUSE_S = 0.6;
+export const FLASH_BLIND_S = 1.75;
+export const FLASH_RANGE_M = 30;
+export const FLASH_BEHIND_RANGE_M = 8;
+export const FLASH_BEHIND_BLIND_S = 0.5;
+export const FOV_RAD = 103 * Math.PI / 180;
+export const DASH_DISTANCE_M = 6;
+export const DASH_DURATION_S = 0.2;
+export const RECON_MAX_RANGE_M = 30;
+export const RECON_FUSE_S = 0.5;
+export const RECON_RADIUS_M = 10;
+export const RECON_REVEAL_S = 2;
+export const RUN_HEARING_M = 15;
+export const HEARING_RANGE = 3;
 export const TICK_RATE = 20;
 export const RUN_SPEED = 6.75;
 export const WALK_SPEED = 3;
 export const CROUCH_SPEED = 2;
 export const HEAD_DAMAGE = 150;
 export const BODY_DAMAGE = 40;
-export const SMOKES_PER_AGENT = 2;
+/** Default controller loadout for callers that do not pick an agent. */
+export const SMOKES_PER_AGENT = AGENTS.haze.kit.smoke;
 export const SMOKE_RADIUS = 4.5;
 export const SMOKE_DURATION_S = 15;
 export const PLANT_TIME_S = 4;
@@ -44,7 +62,7 @@ export interface Scenario {
 export interface CreateSimOptions {
   map: MapDef;
   seed: number;
-  agents: { id: string; team: Team; isBot: boolean }[];
+  agents: { id: string; team: Team; isBot: boolean; agent?: AgentId }[];
   scenario?: Scenario;
 }
 
@@ -79,7 +97,11 @@ export function createSim(opts: CreateSimOptions): Sim {
       yaw: over?.yaw ?? (a.team === 'attack' ? 0 : Math.PI),
       hp: over?.hp ?? 100,
       alive: true,
-      smokesLeft: SMOKES_PER_AGENT,
+      agent: a.agent ?? 'haze',
+      abilities: { ...AGENTS[a.agent ?? 'haze'].kit },
+      blindUntilTick: 0,
+      revealedUntilTick: 0,
+      smokesLeft: AGENTS[a.agent ?? 'haze'].kit.smoke,
       carryingSpike: false,
     };
   });
@@ -114,6 +136,11 @@ export function createSim(opts: CreateSimOptions): Sim {
     };
   } else if (!carrier) s.spike = { status: 'dropped', pos: { x: map.bounds.width / 2, y: map.bounds.height / 2 } };
 
+  const pending: { kind: 'flash' | 'recon'; by: string; pos: Vec2; at: number }[] = [];
+  const dashes = new Map<string, { dir: Vec2; left: number; from: Vec2 }>();
+  // Team-specific reveal ownership stays private; the public timer is for rendering.
+  const reveals = new Map<string, { team: Team; until: number }[]>();
+  const distance = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
   const spotted = new Set<string>();
   let smokeCounter = 0;
   let plantTicks = 0;
@@ -141,7 +168,7 @@ export function createSim(opts: CreateSimOptions): Sim {
 
     // Movement and aim, in agent order.
     for (const a of agents) {
-      const inp = byId.get(a.id);
+      const inp = byId.get(a.id) ?? (dashes.has(a.id) ? { agentId: a.id, move: { x: 0, y: 0 }, yaw: a.yaw, walk: false, crouch: false, dash: false } : undefined);
       if (!a.alive || !inp) continue;
       let mx = inp.move.x;
       let my = inp.move.y;
@@ -150,6 +177,13 @@ export function createSim(opts: CreateSimOptions): Sim {
         mx /= len;
         my /= len;
       }
+      if (inp.dash && a.abilities.dash > 0 && !dashes.has(a.id)) {
+        a.abilities.dash--;
+        const d = Math.hypot(mx, my);
+        dashes.set(a.id, { dir: d ? { x: mx / d, y: my / d } : { x: Math.cos(inp.yaw), y: Math.sin(inp.yaw) }, left: DASH_DURATION_S * TICK_RATE, from: { ...a.pos } });
+      }
+      const dash = dashes.get(a.id);
+      const from = { ...a.pos };
       const speed = inp.crouch ? CROUCH_SPEED : inp.walk ? WALK_SPEED : RUN_SPEED;
       a.pos = resolveCircle(
         { x: a.pos.x + (mx * speed) / TICK_RATE, y: a.pos.y + (my * speed) / TICK_RATE },
@@ -157,6 +191,21 @@ export function createSim(opts: CreateSimOptions): Sim {
         walls,
         map.bounds,
       );
+      if (dash) {
+        a.pos = from;
+        // Small swept steps prevent tunnelling through thin walls.
+        for (let j = 0; j < 15; j++) {
+          const next = { x: a.pos.x + dash.dir.x * DASH_DISTANCE_M / (DASH_DURATION_S * TICK_RATE * 15), y: a.pos.y + dash.dir.y * DASH_DISTANCE_M / (DASH_DURATION_S * TICK_RATE * 15) };
+          const resolved = resolveCircle(next, AGENT_RADIUS, walls, map.bounds);
+          if (distance(next, resolved) > 1e-6) { dash.left = 0; break; }
+          a.pos = resolved;
+        }
+        if (--dash.left <= 0) {
+          events.push({ type: 'dash', tick: s.tick, agent: a.id, from: dash.from, to: { ...a.pos } });
+          dashes.delete(a.id);
+        }
+      }
+      if (distance(from, a.pos) > 1e-6) events.push({ type: 'footstep', tick: s.tick, agent: a.id, pos: { ...a.pos }, loud: !inp.walk && !inp.crouch });
       a.yaw = inp.yaw;
     }
 
@@ -164,7 +213,9 @@ export function createSim(opts: CreateSimOptions): Sim {
     for (const a of agents) {
       const inp = byId.get(a.id);
       if (!a.alive || !inp?.smokeAt || a.smokesLeft <= 0) continue;
+      if (distance(a.pos, inp.smokeAt) > SMOKE_MAX_RANGE_M) continue;
       a.smokesLeft--;
+      a.abilities.smoke = a.smokesLeft;
       const smoke: SmokeState = {
         id: `smoke-${++smokeCounter}`,
         ownerId: a.id,
@@ -176,14 +227,49 @@ export function createSim(opts: CreateSimOptions): Sim {
       events.push({ type: 'smoke', tick: s.tick, agent: a.id, pos: { ...smoke.pos } });
     }
 
+    // Throws consume a charge only when the target is in range. No random draws.
+    for (const a of agents) {
+      const inp = byId.get(a.id);
+      if (!a.alive || !inp) continue;
+      for (const kind of ['flash', 'recon'] as const) {
+        const pos = kind === 'flash' ? inp.flashAt : inp.reconAt;
+        if (!pos || a.abilities[kind] <= 0 || distance(a.pos, pos) > (kind === 'flash' ? FLASH_MAX_RANGE_M : RECON_MAX_RANGE_M)) continue;
+        a.abilities[kind]--;
+        pending.push({ kind, by: a.id, pos: { ...pos }, at: s.tick + Math.round((kind === 'flash' ? FLASH_FUSE_S : RECON_FUSE_S) * TICK_RATE) });
+        events.push({ type: kind, thrower: a.id, pos: { ...pos }, tick: s.tick });
+      }
+    }
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const p = pending[i];
+      if (p.at > s.tick) continue;
+      pending.splice(i, 1);
+      const owner = agents.find(a => a.id === p.by)!;
+      for (const a of agents) {
+        if (!a.alive || !lineOfSight(a.pos, p.pos, walls, s.smokes)) continue;
+        const d = distance(a.pos, p.pos);
+        if (p.kind === 'flash') {
+          const angle = Math.atan2(p.pos.y - a.pos.y, p.pos.x - a.pos.x) - a.yaw;
+          const facing = Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) <= FOV_RAD / 2;
+          const seconds = d <= FLASH_RANGE_M && facing ? FLASH_BLIND_S : d <= FLASH_BEHIND_RANGE_M ? FLASH_BEHIND_BLIND_S : 0;
+          if (!seconds) continue;
+          a.blindUntilTick = Math.max(a.blindUntilTick, s.tick + Math.round(seconds * TICK_RATE));
+          events.push({ type: 'blinded', agent: a.id, untilTick: a.blindUntilTick, by: p.by, tick: s.tick });
+        } else if (a.team !== owner.team && d <= RECON_RADIUS_M) {
+          a.revealedUntilTick = Math.max(a.revealedUntilTick, s.tick + RECON_REVEAL_S * TICK_RATE);
+          reveals.set(a.id, [...(reveals.get(a.id) ?? []), { team: owner.team, until: a.revealedUntilTick }]);
+          events.push({ type: 'revealed', target: a.id, by: p.by, untilTick: a.revealedUntilTick, tick: s.tick });
+        }
+      }
+    }
+
     // Spotting: first time an agent has line of sight to an enemy (per ordered pair, 360 degrees).
     for (const o of agents) {
-      if (!o.alive) continue;
+      if (!o.alive || o.blindUntilTick > s.tick) continue;
       for (const t of agents) {
         if (!t.alive || t.team === o.team) continue;
         const key = `${o.id}>${t.id}`;
         if (spotted.has(key)) continue;
-        if (lineOfSight(o.pos, t.pos, walls, s.smokes)) {
+        if (lineOfSight(o.pos, t.pos, walls, s.smokes) || reveals.get(t.id)?.some(r => r.team === o.team && r.until > s.tick)) {
           spotted.add(key);
           events.push({ type: 'spotted', tick: s.tick, observer: o.id, target: t.id });
         }
@@ -196,7 +282,7 @@ export function createSim(opts: CreateSimOptions): Sim {
       if (!inp?.fire || !live(a.id)) continue;
       const target = agents.find((x) => x.id === inp.fire?.targetId);
       if (!target || target.team === a.team || target.hp <= 0 || !live(target.id)) continue;
-      if (inp.fire.result === 'miss') continue;
+      if (a.blindUntilTick > s.tick || inp.fire.result === 'miss') continue;
       if (!lineOfSight(a.pos, target.pos, walls, s.smokes)) continue;
       const part = inp.fire.result;
       const amount = part === 'head' ? HEAD_DAMAGE : BODY_DAMAGE;

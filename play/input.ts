@@ -3,7 +3,7 @@ import type { FireIntent, PlayerInput, Team, Vec2 } from '../shared/contract.ts'
 
 /** Keys the page claims, so the browser does not scroll or search on them. */
 export const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'KeyR',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'KeyR', 'KeyX', 'KeyF',
   'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'Space', 'Escape',
 ]);
 
@@ -21,7 +21,7 @@ export function moveFromKeys(keys: ReadonlySet<string>): Vec2 {
 
 export const isWalk = (keys: ReadonlySet<string>): boolean => keys.has('ShiftLeft') || keys.has('ShiftRight');
 export const isCrouch = (keys: ReadonlySet<string>): boolean =>
-  keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC');
+  keys.has('ControlLeft') || keys.has('ControlRight');
 
 /** Aim angle from the player to the cursor, radians, 0 = +x, counter-clockwise. */
 export const yawTo = (from: Vec2, to: Vec2): number => Math.atan2(to.y - from.y, to.x - from.x);
@@ -33,10 +33,13 @@ export interface InputFrame {
   yaw: number;
   fire: FireIntent | null;
   smokeAt: Vec2 | null;
+  flashAt?: Vec2 | null;
+  reconAt?: Vec2 | null;
+  dash?: boolean;
 }
 
 export function buildInput(f: InputFrame): PlayerInput {
-  const held = f.keys.has('KeyE');
+  const held = f.keys.has('KeyF');
   return {
     agentId: f.agentId,
     move: moveFromKeys(f.keys),
@@ -45,6 +48,7 @@ export function buildInput(f: InputFrame): PlayerInput {
     crouch: isCrouch(f.keys),
     fire: f.fire,
     smokeAt: f.smokeAt,
+    flashAt: f.flashAt, reconAt: f.reconAt, dash: f.dash,
     plantHeld: held && f.team === 'attack',
     defuseHeld: held && f.team === 'defense',
   };

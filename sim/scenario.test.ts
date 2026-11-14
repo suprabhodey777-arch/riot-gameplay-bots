@@ -34,9 +34,9 @@ function scripted(scenario?: Scenario): string {
 }
 
 describe('scenario', () => {
-  test('without a scenario the sim is byte-identical to before', () => {
-    // Digest recorded from the sim before `scenario` existed.
-    expect(scripted()).toBe('4a133760-1d6d1527');
+  test('omitting a scenario and empty scenarios have the same deterministic v4 replay', () => {
+    // v4 digest includes agent kits, status timers and footstep events.
+    expect(scripted()).toBe('579372ba-ae2bc791');
     expect(scripted({})).toBe(scripted());
     expect(scripted({ agents: {} })).toBe(scripted());
   });

@@ -32,6 +32,14 @@ namespace Saltworks
             return team == "defense" ? Defense : Attack;
         }
 
+        /// <summary>The player's colour settings: enemies in the enemy highlight, teammates in the ally colour.</summary>
+        public static Color Relation(string team, string playerTeam)
+        {
+            return team == playerTeam ? Settings.Ally : Settings.Enemy;
+        }
+
+        public static Color Accent => Settings.Accent;
+
         public static Color Site(string letter)
         {
             switch (letter)
@@ -114,6 +122,18 @@ namespace Saltworks
             return Make(Find("Unlit/Color", "Standard"), c);
         }
 
+        /// <summary>
+        /// Coloured unlit silhouette drawn on top of everything (ZTest Always, Assets/Resources/SaltworksReveal.shader),
+        /// for enemies revealed by recon. Falls back to an ordinary transparent material if the shader is missing.
+        /// </summary>
+        public static Material Reveal(Color c)
+        {
+            Shader s = Find("Saltworks/RevealThroughWalls");
+            Material m = s != null ? new Material(s) { color = c } : Transparent(c, 4000);
+            m.renderQueue = 4000;
+            return m;
+        }
+
         /// <summary>Alpha-blended material; colour alpha is the opacity.</summary>
         public static Material Transparent(Color c, int queue)
         {
@@ -161,6 +181,26 @@ namespace Saltworks
         {
             // Unity 2022.2+ ships LegacyRuntime.ttf as the built-in font (Arial.ttf was removed).
             return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+
+        static Texture2D gradient;
+
+        /// <summary>A vertical fade: opaque at v = 0, clear at v = 1 (smooth falloff). Shared.</summary>
+        public static Texture2D GradientTexture()
+        {
+            if (gradient != null) return gradient;
+            const int n = 64;
+            gradient = new Texture2D(4, n, TextureFormat.RGBA32, false) { name = "SaltworksGradient", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, hideFlags = HideFlags.DontSave };
+            var px = new Color[4 * n];
+            for (int y = 0; y < n; y++)
+            {
+                float v = y / (float)(n - 1);
+                float a = (1f - v) * (1f - v);
+                for (int x = 0; x < 4; x++) px[y * 4 + x] = new Color(1f, 1f, 1f, a);
+            }
+            gradient.SetPixels(px);
+            gradient.Apply(false);
+            return gradient;
         }
 
         /// <summary>Soft concrete tiles: 1 texture repeat = 4 m.</summary>
@@ -241,6 +281,160 @@ namespace Saltworks
         public static AudioClip Tick()
         {
             return Make("hit", 0.05f, t => Mathf.Sin(2f * Mathf.PI * 2400f * t) * 0.3f * Mathf.Exp(-t * 80f));
+        }
+
+        /// <summary>A boot on concrete: a low thump and a short low-passed scuff. Seeds give variants.</summary>
+        public static AudioClip Footstep(int seed)
+        {
+            var rng = new System.Random(100 + seed);
+            float pitch = 70f + seed * 9f;
+            float lp = 0f;
+            float k = 0.18f + seed * 0.03f;
+            return Make("footstep" + seed, 0.13f, t =>
+            {
+                float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+                lp += (noise - lp) * k; // one-pole low-pass: a dull scuff, not a hiss
+                float thump = Mathf.Sin(2f * Mathf.PI * pitch * t) * Mathf.Exp(-t * 45f);
+                float heel = t < 0.004f ? t / 0.004f : 1f;
+                return (thump * 0.7f + lp * 1.6f * Mathf.Exp(-t * 32f)) * heel;
+            });
+        }
+
+        /// <summary>The flash going off: a bright crack with a ringing tail.</summary>
+        public static AudioClip FlashPop()
+        {
+            var rng = new System.Random(5);
+            return Make("flashpop", 0.5f, t =>
+            {
+                float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+                float crack = noise * Mathf.Exp(-t * 26f) * 0.8f;
+                float ring = Mathf.Sin(2f * Mathf.PI * 3100f * t) * 0.12f * Mathf.Exp(-t * 6f);
+                return crack + ring;
+            });
+        }
+
+        /// <summary>A soft throw whoosh with a rising pitch (also used for the dash, longer).</summary>
+        public static AudioClip Whoosh(float seconds, int seed)
+        {
+            var rng = new System.Random(20 + seed);
+            float bp = 0f, lp = 0f;
+            return Make("whoosh" + seed, seconds, t =>
+            {
+                float x = t / seconds;
+                float env = Mathf.Sin(Mathf.PI * Mathf.Clamp01(x)) * Mathf.Sin(Mathf.PI * Mathf.Clamp01(x));
+                float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+                float k = Mathf.Lerp(0.05f, 0.35f, x);
+                lp += (noise - lp) * k;
+                bp += (lp - bp) * 0.5f;
+                return (lp - bp) * 2.4f * env;
+            });
+        }
+
+        /// <summary>The recon dart hitting the floor, then its sonar ping.</summary>
+        public static AudioClip DartThunk()
+        {
+            return Make("dart", 0.08f, t => Mathf.Sin(2f * Mathf.PI * 520f * t * (1f - t * 4f)) * 0.5f * Mathf.Exp(-t * 60f));
+        }
+
+        public static AudioClip ReconPing()
+        {
+            return Make("ping", 0.7f, t =>
+            {
+                float f = Mathf.Lerp(1320f, 990f, Mathf.Clamp01(t / 0.7f));
+                return Mathf.Sin(2f * Mathf.PI * f * t) * 0.35f * Mathf.Exp(-t * 5f) * Mathf.Clamp01(t * 300f);
+            });
+        }
+
+        /// <summary>The high whine heard while blinded.</summary>
+        public static AudioClip BlindRing()
+        {
+            return Make("blindring", 1.8f, t =>
+            {
+                float env = Mathf.Clamp01(t * 40f) * Mathf.Exp(-t * 1.6f);
+                return (Mathf.Sin(2f * Mathf.PI * 4200f * t) * 0.6f + Mathf.Sin(2f * Mathf.PI * 4230f * t) * 0.4f) * 0.16f * env;
+            });
+        }
+    }
+
+    /// <summary>Procedural 64x64 ability icons (white on transparent; tint with GUI.color).</summary>
+    public static class Icons
+    {
+        const int N = 64;
+        static readonly Dictionary<Ability, Texture2D> Cache = new Dictionary<Ability, Texture2D>();
+
+        public static Texture2D For(Ability a)
+        {
+            if (Cache.TryGetValue(a, out Texture2D t) && t != null) return t;
+            t = Draw(a);
+            Cache[a] = t;
+            return t;
+        }
+
+        static float Smooth(float edge, float d)
+        {
+            // Anti-aliased inside test: 1 inside, 0 outside, 1.5 px soft edge.
+            return Mathf.Clamp01((edge - d) / 1.5f + 0.5f);
+        }
+
+        static float SegDist(Vector2 p, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / Mathf.Max(1e-5f, ab.sqrMagnitude));
+            return (a + ab * t - p).magnitude;
+        }
+
+        static Texture2D Draw(Ability a)
+        {
+            var tex = new Texture2D(N, N, TextureFormat.RGBA32, false) { name = "Icon " + a, filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
+            var px = new Color[N * N];
+            var c = new Vector2(N / 2f, N / 2f);
+            for (int y = 0; y < N; y++)
+            {
+                for (int x = 0; x < N; x++)
+                {
+                    var p = new Vector2(x + 0.5f, y + 0.5f);
+                    float v = 0f;
+                    switch (a)
+                    {
+                        case Ability.Smoke:
+                            // Three overlapping puffs on a flat base.
+                            v = Mathf.Max(Smooth(13f, (p - new Vector2(22f, 26f)).magnitude), Smooth(16f, (p - new Vector2(36f, 32f)).magnitude));
+                            v = Mathf.Max(v, Smooth(11f, (p - new Vector2(46f, 24f)).magnitude));
+                            if (p.y < 14f) v = 0f;
+                            break;
+                        case Ability.Flash:
+                        {
+                            // An eight-point starburst around a bright core.
+                            Vector2 d = p - c;
+                            float ang = Mathf.Atan2(d.y, d.x);
+                            float spikes = Mathf.Pow(Mathf.Abs(Mathf.Cos(ang * 4f)), 6f);
+                            float r = 9f + 19f * spikes;
+                            v = Mathf.Max(Smooth(r, d.magnitude), Smooth(10f, d.magnitude));
+                            break;
+                        }
+                        case Ability.Dash:
+                        {
+                            // Two chevrons pointing right.
+                            float d1 = Mathf.Min(SegDist(p, new Vector2(14f, 14f), new Vector2(32f, 32f)), SegDist(p, new Vector2(14f, 50f), new Vector2(32f, 32f)));
+                            float d2 = Mathf.Min(SegDist(p, new Vector2(32f, 14f), new Vector2(50f, 32f)), SegDist(p, new Vector2(32f, 50f), new Vector2(50f, 32f)));
+                            v = Mathf.Max(Smooth(4f, d1) * 0.6f, Smooth(4f, d2));
+                            break;
+                        }
+                        default:
+                        {
+                            // Recon: concentric rings and a centre dot, like a sonar sweep.
+                            float d = (p - c).magnitude;
+                            v = Mathf.Max(Smooth(5f, d), Smooth(2f, Mathf.Abs(d - 14f)));
+                            v = Mathf.Max(v, Smooth(2f, Mathf.Abs(d - 25f)) * 0.6f);
+                            break;
+                        }
+                    }
+                    px[y * N + x] = new Color(1f, 1f, 1f, Mathf.Clamp01(v));
+                }
+            }
+            tex.SetPixels(px);
+            tex.Apply(false);
+            return tex;
         }
     }
 

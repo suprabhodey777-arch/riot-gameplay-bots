@@ -18,10 +18,15 @@ namespace Saltworks
         Walk,
         Crouch,
         Use,
-        SmokeQ,
-        SmokeE,
+        Smoke,
+        Flash,
+        Dash,
+        Recon,
         Pause,
         Confirm,
+        Fps,
+        Minimap,
+        FullMap,
     }
 
     public static class GameInput
@@ -37,12 +42,17 @@ namespace Saltworks
             new[] { Key.A },
             new[] { Key.D },
             new[] { Key.LeftShift, Key.RightShift },
-            new[] { Key.LeftCtrl, Key.RightCtrl, Key.C },
+            new[] { Key.LeftCtrl, Key.RightCtrl },
             new[] { Key.F },
+            new[] { Key.C },
             new[] { Key.Q },
             new[] { Key.E },
+            new[] { Key.X },
             new[] { Key.Escape },
             new[] { Key.Enter, Key.NumpadEnter, Key.Space },
+            new[] { Key.F3 },
+            new[] { Key.M },
+            new[] { Key.Tab },
         };
 
         static KeyControl Control(Key k)
@@ -87,12 +97,17 @@ namespace Saltworks
             new[] { KeyCode.A },
             new[] { KeyCode.D },
             new[] { KeyCode.LeftShift, KeyCode.RightShift },
-            new[] { KeyCode.LeftControl, KeyCode.RightControl, KeyCode.C },
+            new[] { KeyCode.LeftControl, KeyCode.RightControl },
             new[] { KeyCode.F },
+            new[] { KeyCode.C },
             new[] { KeyCode.Q },
             new[] { KeyCode.E },
+            new[] { KeyCode.X },
             new[] { KeyCode.Escape },
             new[] { KeyCode.Return, KeyCode.KeypadEnter, KeyCode.Space },
+            new[] { KeyCode.F3 },
+            new[] { KeyCode.M },
+            new[] { KeyCode.Tab },
         };
 
         public static bool Held(GameKey k)

@@ -1,7 +1,7 @@
 # Saltworks 3D client (Unity)
 
 First-person client for the coaching bridge. Unity only draws, takes input and raycasts shots; the sim, the bots,
-the weakness analyzer, the staircase and the coach all run in the bridge (TypeScript). Protocol: `bots-wire.1`,
+the weakness analyzer, the staircase and the coach all run in the bridge (TypeScript). Protocol: `bots-wire.2`,
 see `docs/unity-bridge.md`.
 
 - Unity **6000.0.30f1** (any Unity 6000.0.x should work), built-in render pipeline.
@@ -45,12 +45,17 @@ the build. Pressing Play in the editor does not need this step.
 | --- | --- |
 | Mouse | Look (yaw is sent to the sim; pitch stays in Unity) |
 | W A S D | Move, relative to where you look |
-| Shift | Walk |
-| Ctrl or C | Crouch (eye 1.1 m instead of 1.6 m) |
+| Shift | Walk (quiet: running is heard 15 m away through walls) |
+| Ctrl | Crouch (eye 1.1 m instead of 1.6 m, quiet) |
 | Left click | Fire (at most once per `rules.fireIntervalS`) |
-| Q or E | Throw a smoke where the crosshair meets the floor (within `rules.smokeMaxRangeM`) |
+| C | Smoke: hold to aim at the floor, release to throw |
+| Q | Flash: hold to aim, release to throw |
+| E | Dash |
+| X | Recon: hold to aim, release to throw |
 | Hold F | Plant (attack, on a site, carrying the spike) or defuse (defense, near the planted spike) |
-| Esc | Pause (no inputs are sent, so the sim waits), resume or abandon the drill |
+| M / hold Tab | Toggle the minimap / show the full map |
+| F3 | Frame rate, frame time and prediction error |
+| Esc | Pause (no inputs are sent, so the sim waits), settings, resume or abandon the drill |
 | Enter | Begin the drill from the intro card |
 
 ## Code layout
@@ -72,3 +77,11 @@ the build. Pressing Play in the editor does not need this step.
 
 The look is original: pastel concrete, attack red-orange, defense teal. It borrows no map, agent, weapon, logo
 or UI art from any game.
+
+## Building the Mac app
+
+```bash
+/Applications/Unity/Hub/Editor/6000.6.9f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -projectPath unity -executeMethod CommandLineBuild.MacApp -logFile -
+```
+
+The app lands in `unity/Build/GameplayCoach.app`. Start the bridge first (`npm run bridge`).

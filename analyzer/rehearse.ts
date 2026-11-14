@@ -300,7 +300,7 @@ export function rehearsalDrill(evidence: WeaknessEvidence, finding: WeaknessFind
     mapId: map.id,
     seed,
     difficulty: REHEARSAL_DIFFICULTY,
-    player: { id: PLAYER_ID, team: s.side, spawn, hp: 100, carryingSpike: hasSpike },
+    player: { agent: finding.skill === 'smoke_usage' ? 'haze' : 'rook', id: PLAYER_ID, team: s.side, spawn, hp: 100, carryingSpike: hasSpike },
     bots,
     roundTimeLeftS: left,
     spikePlanted: planted ? { ...planted, secondsLeft: left } : null,

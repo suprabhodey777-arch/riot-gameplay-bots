@@ -79,7 +79,7 @@ describe('fighting', () => {
     expect(r.events.some((e) => e.type === 'damage')).toBe(false);
     expect(r.events.some((e) => e.type === 'spotted')).toBe(false);
     expect(r.state.smokes[0].radius).toBe(4.5);
-    expect(r.state.agents[0].smokesLeft).toBe(1);
+    expect(r.state.agents[0].smokesLeft).toBe(2);
     for (let i = 0; i < 299; i++) sim.step([]);
     expect(sim.state().smokes).toHaveLength(1);
     sim.step([]);

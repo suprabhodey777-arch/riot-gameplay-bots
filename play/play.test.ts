@@ -61,11 +61,11 @@ describe('input mapping', () => {
     expect(Math.hypot(m.x, m.y)).toBeCloseTo(1, 9);
     expect(moveFromKeys(keys('KeyW', 'KeyS'))).toEqual({ x: 0, y: 0 });
   });
-  it('shift walks, ctrl or C crouches, E plants for attack and defuses for defense', () => {
+  it('shift walks, ctrl crouches, F plants for attack and defuses for defense', () => {
     const base = { agentId: 'player', yaw: 1, fire: null, smokeAt: null };
-    const a = buildInput({ ...base, team: 'attack', keys: keys('ShiftLeft', 'KeyC', 'KeyE') });
+    const a = buildInput({ ...base, team: 'attack', keys: keys('ShiftLeft', 'ControlLeft', 'KeyF') });
     expect(a).toMatchObject({ walk: true, crouch: true, plantHeld: true, defuseHeld: false, yaw: 1, agentId: 'player' });
-    const d = buildInput({ ...base, team: 'defense', keys: keys('ControlLeft', 'KeyE') });
+    const d = buildInput({ ...base, team: 'defense', keys: keys('ControlLeft', 'KeyF') });
     expect(d).toMatchObject({ walk: false, crouch: true, plantHeld: false, defuseHeld: true });
     expect(buildInput({ ...base, team: 'attack', keys: keys() })).toMatchObject({ walk: false, crouch: false, plantHeld: false });
   });
@@ -73,4 +73,11 @@ describe('input mapping', () => {
     expect(yawTo(o, { x: 0, y: 3 })).toBeCloseTo(Math.PI / 2, 9);
     expect(yawTo({ x: 1, y: 1 }, { x: 0, y: 1 })).toBeCloseTo(Math.PI, 9);
   });
+});
+
+it('C is smoke rather than crouch; F holds the objective while E is available for dash', () => {
+  const base = { agentId: 'player', team: 'attack' as const, yaw: 0, fire: null, smokeAt: null };
+  const ability = buildInput({ ...base, keys: new Set(['KeyC', 'KeyE']), dash: true, flashAt: { x: 1, y: 2 }, reconAt: { x: 3, y: 4 } });
+  expect(ability).toMatchObject({ crouch: false, plantHeld: false, dash: true, flashAt: { x: 1, y: 2 }, reconAt: { x: 3, y: 4 } });
+  expect(buildInput({ ...base, keys: new Set(['KeyF']) }).plantHeld).toBe(true);
 });

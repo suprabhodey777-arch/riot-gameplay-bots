@@ -13,6 +13,8 @@ namespace Saltworks
     {
         Connect,
         Choose,
+        MapSelect,
+        AgentSelect,
         Report,
         Intro,
         Playing,
@@ -24,6 +26,8 @@ namespace Saltworks
         public string Text;
         public Color Color;
         public float At;
+        /// <summary>Measured text width (virtual pixels), cached by the HUD; -1 until measured.</summary>
+        public float Width = -1f;
     }
 
     public struct Choice
@@ -91,6 +95,50 @@ namespace Saltworks
         public int PlantTicks { get; private set; }
         public int VersusSkill = 0;
 
+        // ---- round 2: maps, agents, abilities -----------------------------------------------------
+        /// <summary>The bridge speaks bots-wire.2: maps, agents and abilities are available.</summary>
+        public bool V2 { get; private set; }
+        /// <summary>From the `maps` answer; null until it arrives.</summary>
+        public List<MapInfo> Maps { get; private set; }
+        /// <summary>The map and agent picked this session (re-sent after a reconnect). Null until picked.</summary>
+        public string PickedMapId { get; private set; }
+        public string PickedAgentId { get; private set; }
+        /// <summary>The bridge's answer to pick_agent.</summary>
+        public AbilityCharges PickedKit { get; private set; }
+        /// <summary>The agent the player has in the current drill (a drill may override the pick).</summary>
+        public string PlayerAgent { get; private set; }
+        public AbilityFx Fx { get; private set; }
+        /// <summary>The aimed ability whose key is held, if any.</summary>
+        public Ability? Aiming { get; private set; }
+        public bool AimClamped { get; private set; }
+        /// <summary>Per ability: when the player last pressed its key with no charge left (the HUD flashes the slot).</summary>
+        public readonly float[] DeniedAt = { -10f, -10f, -10f, -10f };
+        public readonly float[] UsedAt = { -10f, -10f, -10f, -10f };
+        public float RevealedAt { get; private set; } = -10f;
+        /// <summary>Movement mode for the HUD: "run", "walk" or "crouch"; Moving is true while a move key is held.</summary>
+        public string MoveMode { get; private set; } = "run";
+        public bool Moving { get; private set; }
+
+        public string MapName => Map != null ? (Map.name ?? Map.id ?? "") : "";
+
+        // ---- round 3: prediction, settings, minimap -------------------------------------------------
+        /// <summary>The map's walls on the floor plan (movement prediction, line of sight). Null before a map.</summary>
+        public Walls2D Walls { get; private set; }
+        public PlayerPredictor Predictor { get; } = new PlayerPredictor();
+        public Minimap Minimap { get; } = new Minimap();
+        /// <summary>Where the player's eye is drawn this frame (predicted while alive), sim coordinates.</summary>
+        public Vector2 EyePos { get; private set; }
+        public bool SettingsOpen { get; private set; }
+        /// <summary>Tab is held during a drill: the full map is shown.</summary>
+        public bool FullMap { get; private set; }
+        /// <summary>Smoothed frames per second and the worst frame time of the last second (ms), for F3.</summary>
+        public float Fps { get; private set; }
+        public float WorstMs { get; private set; }
+        public float LastShotAt { get; private set; } = -10f;
+        /// <summary>The bridge's advice: main and practice agent ids (null when the bridge sent none).</summary>
+        public string AdviceMain => Report?.agentAdvice?.main?.agent?.id;
+        public string AdvicePractice => Report?.agentAdvice?.practice?.agent?.id;
+
         public AgentState Me => World != null ? World.Agent(PlayerId) : null;
         public SimState State => World != null ? World.Curr : null;
         public bool Connected => Client != null && Client.State == LinkState.Connected;
@@ -111,7 +159,28 @@ namespace Saltworks
         bool lastSentPlantHeld;
         ShotOutcome? pendingFire;
         Vector2? pendingSmoke;
+        Vector2? pendingFlash;
+        Vector2? pendingRecon;
+        bool pendingDash;
         bool abandoning;
+        bool legacyHelloSent;
+        bool mapChosen;
+        bool agentChosen;
+        int blindSeenUntil;
+        int blindTotalTicks = 1;
+        readonly Dictionary<string, int> lastDashTick = new Dictionary<string, int>();
+        readonly List<List<Vec2>> sitePolys = new List<List<Vec2>>();
+        /// <summary>Movement accumulated since the last sent tick (metres, sim frame).</summary>
+        Vector2 tickDisp;
+        float fpsAcc;
+        int fpsFrames;
+        float worstAcc;
+        const string PrefMap = "saltworks.map";
+        const string PrefAgent = "saltworks.agent";
+
+        /// <summary>The map and agent last picked on this machine, to highlight on the select screens.</summary>
+        public string RememberedMap => PlayerPrefs.GetString(PrefMap, "");
+        public string RememberedAgent => PlayerPrefs.GetString(PrefAgent, "");
 
         /// <summary>Runs `a` at the start of the next Update (keeps IMGUI layout passes consistent).</summary>
         public void Do(Action a)
@@ -122,9 +191,13 @@ namespace Saltworks
         void Awake()
         {
             Application.runInBackground = true;
+            Settings.Load();
+            Settings.ApplyEngine();
             SetupCamera();
             SetupLighting();
+            WorldLook.Setup(Rig.Cam);
             World = new GameObject("World").AddComponent<WorldView>();
+            Fx = World.gameObject.AddComponent<AbilityFx>();
             font = Mats.DefaultFont();
             textMat = Mats.WorldText(font);
             Font.textureRebuilt += OnFontTextureRebuilt;
@@ -177,28 +250,11 @@ namespace Saltworks
             Rig = rig;
         }
 
+        /// <summary>Turns off scene directional lights; WorldLook creates the sun, sky, ambient and fog.</summary>
         static void SetupLighting()
         {
             foreach (Light l in FindObjectsByType<Light>())
                 if (l.type == LightType.Directional) l.enabled = false;
-            var sunGo = new GameObject("Sun");
-            sunGo.transform.rotation = Quaternion.Euler(52f, -35f, 0f);
-            Light sun = sunGo.AddComponent<Light>();
-            sun.type = LightType.Directional;
-            sun.color = new Color(1f, 0.96f, 0.9f);
-            sun.intensity = 1.15f;
-            sun.shadows = LightShadows.Soft;
-            sun.shadowStrength = 0.55f;
-            RenderSettings.sun = sun;
-            RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.80f, 0.84f, 0.92f);
-            RenderSettings.ambientEquatorColor = new Color(0.74f, 0.72f, 0.70f);
-            RenderSettings.ambientGroundColor = new Color(0.48f, 0.46f, 0.45f);
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogDensity = 0.011f;
-            RenderSettings.fogColor = Palette.Fog;
-            QualitySettings.shadowDistance = 70f;
         }
 
         // ---- actions (called through Do from the UI) ------------------------------------------
@@ -206,6 +262,7 @@ namespace Saltworks
         {
             Screen = AppScreen.Connect;
             WaitingFor = null;
+            legacyHelloSent = false;
             Client.Connect(BridgeClient.DefaultHost, BridgeClient.PortFromEnv());
         }
 
@@ -235,15 +292,30 @@ namespace Saltworks
             Screen = AppScreen.Playing;
             Paused = false;
             sendAcc = 0f;
+            tickDisp = Vector2.zero;
             fireArmed = false;
         }
 
         public void Resume()
         {
             if (Screen != AppScreen.Playing) return;
+            SettingsOpen = false;
             Paused = false;
-            sendAcc = 0f;
+            // sendAcc and tickDisp are kept: the eye was drawn with them, so resuming does not jump.
             fireArmed = false;
+        }
+
+        public void OpenSettings()
+        {
+            SettingsOpen = true;
+            if (Screen == AppScreen.Playing && !DrillDone) Paused = true;
+        }
+
+        public void CloseSettings()
+        {
+            if (!SettingsOpen) return;
+            SettingsOpen = false;
+            Settings.Save();
         }
 
         public void AbandonDrill()
@@ -262,6 +334,51 @@ namespace Saltworks
         public void BackToChoose()
         {
             Screen = AppScreen.Choose;
+        }
+
+        /// <summary>After a report: the map choice, then the agent select, then the report (each only once per session).</summary>
+        AppScreen NextSetupScreen()
+        {
+            if (V2 && !mapChosen) return AppScreen.MapSelect;
+            if (V2 && !agentChosen) return AppScreen.AgentSelect;
+            return Report != null ? AppScreen.Report : AppScreen.Choose;
+        }
+
+        public void OpenMapSelect()
+        {
+            if (!V2) return;
+            if (Maps == null) Client.Send(Wire.Maps());
+            Screen = AppScreen.MapSelect;
+        }
+
+        public void OpenAgentSelect()
+        {
+            if (V2) Screen = AppScreen.AgentSelect;
+        }
+
+        public void PickMap(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            Send(Wire.PickMap(id), "map");
+        }
+
+        /// <summary>Keeps the map the bridge already sent (used when the map list is missing or failed).</summary>
+        public void KeepCurrentMap()
+        {
+            mapChosen = true;
+            Screen = NextSetupScreen();
+        }
+
+        public void PickAgent(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            Send(Wire.PickAgent(id), "agent");
+        }
+
+        public void SkipAgent()
+        {
+            agentChosen = true;
+            Screen = NextSetupScreen();
         }
 
         void Send(JObject msg, string waitFor)
@@ -283,26 +400,55 @@ namespace Saltworks
             CheckLink();
             int guard = 0;
             while (guard++ < 500 && Client.TryDequeue(out JObject msg)) Handle(msg);
+            WorldLook.Apply();
+            TrackFps();
+            if (GameInput.Pressed(GameKey.Fps))
+            {
+                Settings.ShowFps = !Settings.ShowFps;
+                Settings.Save();
+            }
+            // Esc closes the settings first, on any screen.
+            bool escForSettings = SettingsOpen && GameInput.Pressed(GameKey.Pause);
+            if (escForSettings) CloseSettings();
 
             switch (Screen)
             {
                 case AppScreen.Playing:
-                    TickPlaying();
+                    TickPlaying(escForSettings);
                     break;
                 case AppScreen.Intro:
-                    if (GameInput.Pressed(GameKey.Confirm)) Begin();
+                    if (!SettingsOpen && GameInput.Pressed(GameKey.Confirm)) Begin();
                     AgentState me = Me;
                     Rig.SetViewmodelVisible(true);
-                    Rig.Place(World.InterpPos(PlayerId), false, me == null || me.alive);
+                    Vector3 g = World.InterpPos(PlayerId);
+                    EyePos = new Vector2(g.x, g.z);
+                    Rig.Place(g, false, me == null || me.alive);
                     break;
                 default:
                     Rig.SetViewmodelVisible(false);
                     Rig.Orbit(Map);
                     break;
             }
-            bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null;
+            FullMap = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
+            if (Screen == AppScreen.Playing || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
+            if (Screen != AppScreen.Playing && Aiming.HasValue) CancelAim();
+            bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null && !SettingsOpen;
             Cursor.lockState = lockIt ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !lockIt;
+        }
+
+        void TrackFps()
+        {
+            float dt = Time.unscaledDeltaTime;
+            fpsAcc += dt;
+            fpsFrames++;
+            worstAcc = Mathf.Max(worstAcc, dt);
+            if (fpsAcc < 0.5f) return;
+            Fps = fpsFrames / fpsAcc;
+            WorstMs = worstAcc * 1000f;
+            fpsAcc = 0f;
+            fpsFrames = 0;
+            worstAcc = 0f;
         }
 
         void CheckLink()
@@ -322,35 +468,159 @@ namespace Saltworks
                     Drill = null;
                     Result = null;
                     World.Clear();
+                    Fx.Clear();
                 }
             }
         }
 
-        void TickPlaying()
+        void TickPlaying(bool escUsed)
         {
-            if (!DrillDone && GameInput.Pressed(GameKey.Pause))
+            if (!DrillDone && !escUsed && GameInput.Pressed(GameKey.Pause))
             {
                 if (Paused) Resume();
                 else Paused = true;
             }
             if (!Paused && !fireArmed && !GameInput.FireHeld) fireArmed = true;
+            if (!Paused && GameInput.Pressed(GameKey.Minimap))
+            {
+                Settings.MinimapOn = !Settings.MinimapOn;
+                Settings.Save();
+            }
 
             AgentState me = Me;
             bool alive = me != null && me.alive;
             bool active = !Paused && !DrillDone && Connected;
-            if (active && alive) Rig.Look(GameInput.LookDelta());
-            bool crouch = active && alive && GameInput.Held(GameKey.Crouch);
-            Rig.Place(World.InterpPos(PlayerId), crouch, alive);
+            bool control = active && alive;
+            if (control) Rig.Look(GameInput.LookDelta());
+            bool crouch = control && GameInput.Held(GameKey.Crouch);
+            bool walk = control && GameInput.Held(GameKey.Walk);
+            float fwd = (GameInput.Held(GameKey.Forward) ? 1f : 0f) - (GameInput.Held(GameKey.Back) ? 1f : 0f);
+            float right = (GameInput.Held(GameKey.Right) ? 1f : 0f) - (GameInput.Held(GameKey.Left) ? 1f : 0f);
+            Vector2 mv = control ? Rig.MoveVector(fwd, right) : Vector2.zero;
+            MoveMode = crouch ? "crouch" : walk ? "walk" : "run";
+            Moving = control && (fwd != 0f || right != 0f);
+
+            // Movement goes out with the next ticks (averaged over each 50 ms window), and the eye moves now.
+            if (active) SendLoop(mv * SpeedFor(crouch, walk));
+            Vector3 ground;
+            if (alive && Predictor.Ready)
+            {
+                Vector2 p = Predictor.Render(tickDisp, sendAcc * Mathf.Max(1f, Rules.tickRate), Time.unscaledDeltaTime);
+                ground = new Vector3(p.x, 0f, p.y);
+            }
+            else ground = World.InterpPos(PlayerId);
+            EyePos = new Vector2(ground.x, ground.z);
+            Rig.Place(ground, crouch, alive);
             Rig.SetViewmodelVisible(alive);
 
-            if (active && alive)
+            if (control)
             {
                 QueueFire();
-                QueueSmoke(me);
+                QueueAbilities(me);
             }
-            if (active) SendLoop();
+            else CancelAim();
 
             if (Result != null && Time.unscaledTime >= VerdictUntil) Screen = AppScreen.Result;
+        }
+
+        float SpeedFor(bool crouch, bool walk)
+        {
+            if (crouch) return Rules.crouchSpeedMps > 0f ? Rules.crouchSpeedMps : 2f;
+            if (walk) return Rules.walkSpeedMps > 0f ? Rules.walkSpeedMps : 3f;
+            return Rules.moveSpeedMps > 0f ? Rules.moveSpeedMps : 6.75f;
+        }
+
+        void CancelAim()
+        {
+            Aiming = null;
+            Fx.HideMarker();
+        }
+
+        /// <summary>Has a charge, nothing of this kind already queued, and the last use has had time to reach the state.</summary>
+        bool Ready(Ability a, AgentState me)
+        {
+            if (me.Charges(a) <= 0) return false;
+            if (Time.unscaledTime - UsedAt[(int)a] < 0.3f) return false;
+            switch (a)
+            {
+                case Ability.Smoke: return !pendingSmoke.HasValue;
+                case Ability.Flash: return !pendingFlash.HasValue;
+                case Ability.Recon: return !pendingRecon.HasValue;
+                default: return !pendingDash;
+            }
+        }
+
+        public float EffectRadius(Ability a)
+        {
+            switch (a)
+            {
+                case Ability.Smoke: return 4.5f;
+                case Ability.Recon: return Mathf.Max(0.5f, Rules.reconRadiusM);
+                default: return 1f;
+            }
+        }
+
+        /// <summary>
+        /// C smoke, Q flash, X recon: hold to show the landing point (the crosshair's floor hit within the ability's
+        /// range), release to throw. E dash goes out on press.
+        /// </summary>
+        void QueueAbilities(AgentState me)
+        {
+            float now = Time.unscaledTime;
+            if (GameInput.Pressed(GameKey.Dash))
+            {
+                if (Ready(Ability.Dash, me))
+                {
+                    pendingDash = true;
+                    UsedAt[(int)Ability.Dash] = now;
+                }
+                else if (me.Charges(Ability.Dash) <= 0) DeniedAt[(int)Ability.Dash] = now;
+            }
+            foreach (Ability a in Agents.AllAbilities)
+            {
+                if (!Agents.Aimed(a) || !GameInput.Pressed(Agents.Key(a))) continue;
+                if (Ready(a, me)) Aiming = a;
+                else if (me.Charges(a) <= 0) DeniedAt[(int)a] = now;
+            }
+            if (!Aiming.HasValue) return;
+
+            Ability ab = Aiming.Value;
+            if (me.Charges(ab) <= 0)
+            {
+                CancelAim();
+                return;
+            }
+            var mine = EyePos;
+            Vector2 pt = Rig.AimPoint(mine, Rules.MaxRange(ab), Map, out bool clamped);
+            AimClamped = clamped;
+            if (GameInput.Held(Agents.Key(ab)))
+            {
+                Fx.ShowMarker(ab, World.HandPos(PlayerId, Rig.transform), new Vector3(pt.x, 0f, pt.y), EffectRadius(ab), clamped);
+                return;
+            }
+            // Released: throw.
+            switch (ab)
+            {
+                case Ability.Smoke: pendingSmoke = pt; break;
+                case Ability.Flash: pendingFlash = pt; break;
+                case Ability.Recon: pendingRecon = pt; break;
+            }
+            UsedAt[(int)ab] = now;
+            CancelAim();
+        }
+
+        /// <summary>0..1 white-out for the player's blindness, easing out over the remaining blind time.</summary>
+        public float BlindAmount()
+        {
+            AgentState me = Me;
+            if (me == null || State == null || me.blindUntilTick <= State.tick) return 0f;
+            float left = me.blindUntilTick - World.TickNow;
+            float x = Mathf.Clamp01(left / Mathf.Max(1f, blindTotalTicks));
+            // Fully white for the first part, then an ease-out to clear.
+            const float hold = 0.6f;
+            if (x >= hold) return 1f;
+            float k = x / hold;
+            return 1f - (1f - k) * (1f - k);
         }
 
         void QueueFire()
@@ -361,41 +631,47 @@ namespace Saltworks
             if (ticksSent + 1 - lastFireTick < needTicks) return;
             pendingFire = Rig.Fire(World, PlayerTeam);
             lastFireTick = ticksSent + 1;
+            LastShotAt = Time.unscaledTime;
         }
 
-        void QueueSmoke(AgentState me)
+        /// <summary>
+        /// Accumulates this frame's movement (`vel`, m/s in the sim frame) and sends one input per elapsed tick. Each
+        /// tick's move vector is the average over its 50 ms window, so the sim covers exactly the distance the eye
+        /// was drawn moving, even when keys change between ticks.
+        /// </summary>
+        void SendLoop(Vector2 vel)
         {
-            if (pendingSmoke.HasValue || me.smokesLeft <= 0) return;
-            if (!GameInput.Pressed(GameKey.SmokeQ) && !GameInput.Pressed(GameKey.SmokeE)) return;
-            pendingSmoke = Rig.SmokePoint(new Vector2(me.pos.x, me.pos.y), Rules.smokeMaxRangeM, Map);
-        }
-
-        void SendLoop()
-        {
-            float dt = 1f / Mathf.Max(1f, Rules.tickRate);
-            sendAcc += Time.unscaledDeltaTime;
+            float tick = 1f / Mathf.Max(1f, Rules.tickRate);
+            float dt = Time.unscaledDeltaTime;
+            sendAcc += dt;
+            tickDisp += vel * dt;
             // After a hitch, catch up a few ticks at most rather than flooding the bridge.
-            if (sendAcc > dt * 4f) sendAcc = dt * 4f;
-            while (sendAcc >= dt && !DrillDone)
+            if (sendAcc > tick * 4f) sendAcc = tick * 4f;
+            while (sendAcc >= tick && !DrillDone)
             {
-                sendAcc -= dt;
-                SendTick();
+                float excess = sendAcc - tick;
+                Vector2 carry = vel * Mathf.Min(excess, dt);
+                Vector2 window = tickDisp - carry;
+                sendAcc = excess;
+                tickDisp = carry;
+                SendTick(window / tick);
             }
         }
 
-        void SendTick()
+        void SendTick(Vector2 windowVel)
         {
             AgentState me = Me;
             bool alive = me != null && me.alive;
             var input = new PlayerInputMsg();
-            float fwd = (GameInput.Held(GameKey.Forward) ? 1f : 0f) - (GameInput.Held(GameKey.Back) ? 1f : 0f);
-            float right = (GameInput.Held(GameKey.Right) ? 1f : 0f) - (GameInput.Held(GameKey.Left) ? 1f : 0f);
-            Vector2 mv = alive ? Rig.MoveVector(fwd, right) : Vector2.zero;
+            input.walk = alive && GameInput.Held(GameKey.Walk);
+            input.crouch = alive && GameInput.Held(GameKey.Crouch);
+            float speed = SpeedFor(input.crouch, input.walk);
+            Vector2 mv = alive && speed > 0f ? windowVel / speed : Vector2.zero;
+            if (mv.sqrMagnitude > 1f) mv.Normalize();
+            if (mv.sqrMagnitude < 1e-6f) mv = Vector2.zero;
             input.moveX = mv.x;
             input.moveY = mv.y;
             input.yaw = Rig.SimYaw;
-            input.walk = alive && GameInput.Held(GameKey.Walk);
-            input.crouch = alive && GameInput.Held(GameKey.Crouch);
             bool use = alive && GameInput.Held(GameKey.Use);
             input.plantHeld = use && PlayerTeam == "attack";
             input.defuseHeld = use && PlayerTeam == "defense";
@@ -412,10 +688,36 @@ namespace Saltworks
                 input.smokeY = pendingSmoke.Value.y;
                 pendingSmoke = null;
             }
+            if (pendingFlash.HasValue)
+            {
+                input.hasFlash = true;
+                input.flashX = pendingFlash.Value.x;
+                input.flashY = pendingFlash.Value.y;
+                pendingFlash = null;
+            }
+            if (pendingRecon.HasValue)
+            {
+                input.hasRecon = true;
+                input.reconX = pendingRecon.Value.x;
+                input.reconY = pendingRecon.Value.y;
+                pendingRecon = null;
+            }
+            if (pendingDash)
+            {
+                input.dash = alive;
+                pendingDash = false;
+            }
             if (Client.Send(Wire.Input(input)))
             {
                 ticksSent++;
                 lastSentPlantHeld = input.plantHeld;
+                Predictor.Apply(mv, speed, input.dash, input.yaw);
+                if (input.dash)
+                {
+                    // The predicted dash starts now, so its kick and whoosh do too (not when the bridge echoes it).
+                    Rig.DashKick();
+                    Fx.PlayOwnDash();
+                }
             }
         }
 
@@ -428,13 +730,23 @@ namespace Saltworks
                 switch (type)
                 {
                     case "hello": OnHello(Wire.Read<HelloMsg>(o)); break;
-                    case "report": OnReport(Wire.Read<ReportMsg>(o)); break;
+                    case "maps": OnMaps(Wire.Read<MapsMsg>(o)); break;
+                    case "map": OnMap(Wire.Read<MapMsg>(o)); break;
+                    case "agent": OnAgent(o); break;
+                    case "report": OnReport(ReadReport(o)); break;
                     case "drill": OnDrill(Wire.Read<DrillMsg>(o)); break;
                     case "step": OnStep(Wire.Read<StepMsg>(o)); break;
                     case "result": OnResult(Wire.Read<ResultMsg>(o)); break;
                     case "debrief": Debrief = Wire.Read<DebriefMsg>(o); break;
                     case "error":
                         ErrorMsg e = Wire.Read<ErrorMsg>(o);
+                        if (Screen == AppScreen.Connect && !legacyHelloSent)
+                        {
+                            // An error before any hello: a bots-wire.1 bridge refusing our bots-wire.2 hello. Speak .1.
+                            legacyHelloSent = true;
+                            Client.Send(Wire.Hello(Wire.LegacyProtocol));
+                            break;
+                        }
                         // Inputs already in flight when a drill ends are answered with errors; those are expected.
                         if (!(DrillDone && Screen == AppScreen.Playing)) ShowToast("Bridge: " + (e?.message ?? "error"));
                         if (WaitingFor != "result") WaitingFor = null;
@@ -451,25 +763,98 @@ namespace Saltworks
             }
         }
 
+        /// <summary>Reads a report; an agentAdvice block of an unexpected shape is dropped instead of losing the report.</summary>
+        static ReportMsg ReadReport(JObject o)
+        {
+            try
+            {
+                return Wire.Read<ReportMsg>(o);
+            }
+            catch (Exception ex)
+            {
+                if (o["agentAdvice"] == null) throw;
+                Debug.LogWarning("Saltworks: could not read report.agentAdvice, hiding the advice panel: " + ex.Message);
+                var copy = (JObject)o.DeepClone();
+                copy.Remove("agentAdvice");
+                return Wire.Read<ReportMsg>(copy);
+            }
+        }
+
         void OnHello(HelloMsg h)
         {
-            if (h.protocol != Wire.Protocol) ShowToast("The bridge speaks " + h.protocol + ", this client expects " + Wire.Protocol + ".");
+            V2 = h.protocol == Wire.Protocol;
+            if (!V2 && h.protocol != Wire.LegacyProtocol)
+                ShowToast("The bridge speaks " + h.protocol + ", this client expects " + Wire.Protocol + ".");
             Rules = h.rules ?? new Rules();
             if (Rules.tickRate <= 0f) Rules.tickRate = 20f;
-            if (h.map != null)
-            {
-                Map = h.map;
-                if (mapRoot != null) Destroy(mapRoot);
-                mapRoot = MapBuilder.Build(Map, font, textMat);
-                textMat.mainTexture = font.material.mainTexture;
-            }
+            Agents.MergeFromRules(Rules.agents);
+            if (h.map != null) LoadMap(h.map);
             World.Clear();
+            Fx.Clear();
             Report = null;
             Drill = null;
             Result = null;
             Debrief = null;
             WaitingFor = null;
+            Maps = null;
             Screen = AppScreen.Choose;
+            if (!V2)
+            {
+                // A bots-wire.1 bridge: one map, no agents. Skip both select screens.
+                mapChosen = true;
+                agentChosen = true;
+                return;
+            }
+            Client.Send(Wire.Maps());
+            // Picks made earlier this session survive a reconnect: the bridge is told again.
+            if (PickedMapId != null) Client.Send(Wire.PickMap(PickedMapId));
+            if (PickedAgentId != null) Client.Send(Wire.PickAgent(PickedAgentId));
+            mapChosen = PickedMapId != null;
+            agentChosen = PickedAgentId != null;
+        }
+
+        void LoadMap(MapDef m)
+        {
+            Map = m;
+            if (mapRoot != null) Destroy(mapRoot);
+            mapRoot = MapBuilder.Build(Map, font, textMat);
+            textMat.mainTexture = font.material.mainTexture;
+            Walls = new Walls2D(m);
+            Predictor.Configure(Walls, Rules);
+            Minimap.Build(m);
+            sitePolys.Clear();
+            foreach (KeyValuePair<string, List<Vec2>> site in m.SiteList()) sitePolys.Add(site.Value);
+        }
+
+        void OnMaps(MapsMsg m)
+        {
+            Maps = m?.maps ?? new List<MapInfo>();
+        }
+
+        void OnMap(MapMsg m)
+        {
+            if (WaitingFor == "map") WaitingFor = null;
+            if (m?.map == null) return;
+            if (Drill != null && !DrillDone && Screen == AppScreen.Playing) return; // never swap the floor mid-drill
+            World.Clear();
+            Fx.Clear();
+            LoadMap(m.map);
+            PickedMapId = m.map.id;
+            if (!string.IsNullOrEmpty(m.map.id)) PlayerPrefs.SetString(PrefMap, m.map.id);
+            mapChosen = true;
+            if (Screen == AppScreen.MapSelect) Screen = NextSetupScreen();
+        }
+
+        void OnAgent(JObject o)
+        {
+            if (WaitingFor == "agent") WaitingFor = null;
+            AgentMsg a = Wire.Read<AgentMsg>(o);
+            if (a == null || string.IsNullOrEmpty(a.agent)) return;
+            PickedAgentId = a.agent;
+            PickedKit = Agents.ReadKit(a.kit) ?? Agents.Get(a.agent)?.Kit;
+            PlayerPrefs.SetString(PrefAgent, a.agent);
+            agentChosen = true;
+            if (Screen == AppScreen.AgentSelect) Screen = NextSetupScreen();
         }
 
         void OnReport(ReportMsg r)
@@ -482,7 +867,7 @@ namespace Saltworks
                 if (i >= 0) VersusSkill = i;
             }
             if (WaitingFor == "report") WaitingFor = null;
-            if (Screen == AppScreen.Choose) Screen = AppScreen.Report;
+            if (Screen == AppScreen.Choose) Screen = NextSetupScreen();
         }
 
         void OnDrill(DrillMsg d)
@@ -497,6 +882,15 @@ namespace Saltworks
             PlantTicks = 0;
             pendingFire = null;
             pendingSmoke = null;
+            pendingFlash = null;
+            pendingRecon = null;
+            pendingDash = false;
+            Aiming = null;
+            for (int i = 0; i < UsedAt.Length; i++) UsedAt[i] = DeniedAt[i] = -10f;
+            RevealedAt = -10f;
+            lastDashTick.Clear();
+            blindSeenUntil = 0;
+            blindTotalTicks = 1;
             ticksSent = 0;
             lastFireTick = -1000;
             sendAcc = 0f;
@@ -504,8 +898,18 @@ namespace Saltworks
             DamageAt = -10f;
             PlayerId = d.playerId ?? d.spec?.player?.id ?? "player";
             PlayerTeam = d.playerTeam ?? d.spec?.player?.team ?? "attack";
+            Fx.Clear();
             World.StartDrill(d, 1f / Rules.tickRate);
+            PlayerAgent = d.playerAgent ?? d.spec?.player?.agent ?? World.Agent(PlayerId)?.agent ?? PickedAgentId;
             Rig.ResetFor(World.Agent(PlayerId));
+            AgentState mine = World.Agent(PlayerId);
+            Predictor.Configure(Walls, Rules);
+            if (mine != null) Predictor.Reset(Geo.ToV2(mine.pos), d.state != null ? d.state.tick : 0);
+            else Predictor.Stop();
+            tickDisp = Vector2.zero;
+            EyePos = mine != null ? Geo.ToV2(mine.pos) : Vector2.zero;
+            Minimap.Clear();
+            LastShotAt = -10f;
             WaitingFor = null;
             Screen = AppScreen.Intro;
         }
@@ -514,9 +918,22 @@ namespace Saltworks
         {
             if (Drill == null || st.state == null) return;
             World.ApplyStep(st.state, st.thoughts);
+            AgentState me = st.state.Agent(PlayerId);
+            if (me != null) Predictor.Reconcile(st.state.tick, Geo.ToV2(me.pos), me.alive);
             if (st.events != null) foreach (SimEvent e in st.events) OnEvent(e);
+            TrackBlind(st.state);
             UpdatePlant();
             if (st.done) DrillDone = true;
+        }
+
+        /// <summary>Remembers how long the current blindness is in total, so the white-out can ease over it.</summary>
+        void TrackBlind(SimState s)
+        {
+            AgentState me = Me;
+            if (me == null || me.blindUntilTick <= s.tick || me.blindUntilTick <= blindSeenUntil) return;
+            // A new or extended blind: the fade restarts from full over the time now left.
+            blindTotalTicks = Mathf.Max(1, me.blindUntilTick - s.tick);
+            blindSeenUntil = me.blindUntilTick;
         }
 
         void OnResult(ResultMsg r)
@@ -548,8 +965,8 @@ namespace Saltworks
         {
             if (Map == null || p == null) return false;
             var v = new Vector2(p.x, p.y);
-            foreach (KeyValuePair<string, List<Vec2>> site in Map.SiteList())
-                if (Geo.PointInPolygon(v, site.Value)) return true;
+            for (int i = 0; i < sitePolys.Count; i++)
+                if (Geo.PointInPolygon(v, sitePolys[i])) return true;
             return false;
         }
 
@@ -594,6 +1011,60 @@ namespace Saltworks
                 case "smoke":
                     AddFeed(Name(e.agent) + " threw a smoke", new Color(0.85f, 0.83f, 0.95f));
                     break;
+                case "flash":
+                    Fx.Flash(World.HandPos(e.thrower, Rig.transform), Geo.ToWorld(e.pos), Rules.flashFuseS);
+                    AddFeed(Name(e.thrower) + " threw a flash", Agents.AbilityColor(Ability.Flash));
+                    break;
+                case "blinded":
+                    if (e.agent == PlayerId)
+                    {
+                        float secs = Mathf.Max(0f, (e.untilTick - e.tick) / Mathf.Max(1f, Rules.tickRate));
+                        Fx.PlayBlindRing(secs);
+                        AddFeed(e.by == PlayerId ? "Your own flash blinded you" : "Blinded by " + Name(e.by), Agents.AbilityColor(Ability.Flash));
+                    }
+                    else if (e.by == PlayerId)
+                    {
+                        AddFeed("Your flash blinded " + Name(e.agent), Agents.AbilityColor(Ability.Flash));
+                    }
+                    break;
+                case "dash":
+                {
+                    string id = e.agent ?? "";
+                    // The sim sends one dash event per tick of the 0.2 s dash; consecutive ticks are one dash.
+                    bool starts = !(lastDashTick.TryGetValue(id, out int last) && e.tick - last <= 1);
+                    lastDashTick[id] = e.tick;
+                    // The player's own kick and sound already played when the dash was sent (client-side prediction).
+                    if (id != PlayerId)
+                    {
+                        Fx.DashSegment(Geo.ToWorld(e.from), Geo.ToWorld(e.to), starts);
+                        if (starts) AddFeed(Name(id) + " dashed", Agents.AbilityColor(Ability.Dash));
+                    }
+                    break;
+                }
+                case "recon":
+                    Fx.Recon(World.HandPos(e.thrower, Rig.transform), Geo.ToWorld(e.pos), Rules.ReconFuseS, Rules.reconRadiusM, Rules.reconRevealS);
+                    AddFeed(Name(e.thrower) + " threw a recon dart", Agents.AbilityColor(Ability.Recon));
+                    break;
+                case "revealed":
+                    World.NoteRevealed(e.target, e.untilTick);
+                    if (e.target == PlayerId)
+                    {
+                        RevealedAt = now;
+                        AddFeed("Revealed by " + Name(e.by) + "'s recon", Agents.AbilityColor(Ability.Recon));
+                    }
+                    else if (TeamOf(e.by) == PlayerTeam)
+                    {
+                        AddFeed("Recon revealed " + Name(e.target), Agents.AbilityColor(Ability.Recon));
+                    }
+                    break;
+                case "footstep":
+                    Fx.Footstep(e.agent, Geo.ToWorld(e.pos), e.loud, e.agent == PlayerId, Rules.runHearingM);
+                    if (e.loud && e.pos != null && e.agent != PlayerId && TeamOf(e.agent) != PlayerTeam)
+                    {
+                        var at = new Vector2(e.pos.x, e.pos.y);
+                        if ((at - EyePos).magnitude <= Rules.runHearingM) Minimap.Ping(e.agent, at);
+                    }
+                    break;
                 case "plant":
                     AddFeed(Name(e.agent) + " planted the spike on " + e.site, Palette.Spike);
                     break;
@@ -616,6 +1087,28 @@ namespace Saltworks
         {
             AgentState a = World.Agent(id);
             return Palette.Team(a != null ? a.team : "attack");
+        }
+
+        string TeamOf(string id)
+        {
+            if (id == PlayerId) return PlayerTeam;
+            AgentState a = World.Agent(id);
+            return a?.team;
+        }
+
+        /// <summary>The agent a bot plays in this drill (drill message, else its state), or null.</summary>
+        public string BotAgent(string id)
+        {
+            if (World.Bots.TryGetValue(id, out BotView b) && !string.IsNullOrEmpty(b.Agent)) return b.Agent;
+            return World.Agent(id)?.agent;
+        }
+
+        /// <summary>The player's kit for the HUD's pips: the bridge's answer to pick_agent when it is the agent in play, else the catalogue's.</summary>
+        public AbilityCharges PlayerKit()
+        {
+            string id = PlayerAgent ?? PickedAgentId;
+            if (id != null && id == PickedAgentId && PickedKit != null) return PickedKit;
+            return Agents.Get(id)?.Kit;
         }
 
         public string Name(string id)

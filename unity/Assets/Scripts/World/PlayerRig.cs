@@ -20,6 +20,11 @@ namespace Saltworks
         public const float EyeCrouch = 1.1f;
         public const float MaxShotRange = 200f;
         public const float HorizontalFov = 103f;
+        /// <summary>
+        /// Aim points stay this far inside an ability's range: the sim checks the range after this tick's movement
+        /// (up to 0.34 m at run speed) from a position the client sees one tick late.
+        /// </summary>
+        public const float RangeMarginM = 0.75f;
 
         public float Sensitivity = 1f;
         public Camera Cam { get; private set; }
@@ -116,13 +121,15 @@ namespace Saltworks
             eye = EyeStand;
             deathLerp = 0f;
             recoil = 0f;
+            fovKick = 0f;
             if (me != null) lastGround = Geo.ToWorld(me.pos);
         }
 
         public void Look(Vector2 deltaDeg)
         {
-            Heading = Mathf.Repeat(Heading + deltaDeg.x * Sensitivity, 360f);
-            Pitch = Mathf.Clamp(Pitch - deltaDeg.y * Sensitivity, -85f, 85f);
+            float s = Settings.RigSensitivity;
+            Heading = Mathf.Repeat(Heading + deltaDeg.x * s, 360f);
+            Pitch = Mathf.Clamp(Pitch - deltaDeg.y * s, -85f, 85f);
         }
 
         /// <summary>The sim yaw for the current look direction (spec: atan2(f.z, f.x) of the flattened forward).</summary>
@@ -189,8 +196,26 @@ namespace Saltworks
 
         void LateUpdate()
         {
-            if (Cam != null) Cam.fieldOfView = Camera.HorizontalToVerticalFieldOfView(HorizontalFov, Mathf.Max(0.1f, Cam.aspect));
+            fovKick = Mathf.MoveTowards(fovKick, 0f, Time.deltaTime / 0.35f);
+            // A quick widen that eases back: the dash's sense of speed.
+            float kick = DashFovKickDeg * fovKick * fovKick;
+            if (Cam != null) Cam.fieldOfView = Camera.HorizontalToVerticalFieldOfView(Mathf.Min(150f, Settings.FovH + kick), Mathf.Max(0.1f, Cam.aspect));
         }
+
+        public const float DashFovKickDeg = 16f;
+        float fovKick;
+
+        /// <summary>Starts the dash FOV kick (1 = full, eases out over ~0.35 s).</summary>
+        public void DashKick()
+        {
+            fovKick = 1f;
+        }
+
+        /// <summary>0..1, how much of the dash kick is left (the HUD draws wind streaks with it).</summary>
+        public float DashKickAmount => fovKick;
+
+        /// <summary>Current recoil (0 at rest, up to 1.5 while firing), for the crosshair's dynamic spread.</summary>
+        public float Recoil => recoil;
 
         public Ray AimRay()
         {
@@ -257,16 +282,22 @@ namespace Saltworks
         }
 
         /// <summary>
-        /// Where a smoke thrown now lands: the floor point under the crosshair (or under the wall it hits), pulled back
-        /// to rules.smokeMaxRangeM from the player and kept inside the map. Returns sim coordinates.
+        /// Where an aimed ability thrown now lands: the floor point under the crosshair (or under the wall it hits),
+        /// pulled back to within `maxRange` of the player and kept inside the map. Returns sim coordinates;
+        /// `clamped` is true when the crosshair point was further than the range.
         /// </summary>
-        public Vector2 SmokePoint(Vector2 player, float maxRange, MapDef map)
+        public Vector2 AimPoint(Vector2 player, float maxRange, MapDef map, out bool clamped)
         {
             Physics.SyncTransforms();
             Ray ray = AimRay();
             Vector3 p;
             if (Physics.Raycast(ray, out RaycastHit hit, 400f, ~0, QueryTriggerInteraction.Ignore))
+            {
                 p = hit.point;
+                // On a wall face, step back off it so the point is on open floor, not inside the wall.
+                var n = new Vector3(hit.normal.x, 0f, hit.normal.z);
+                if (n.sqrMagnitude > 0.25f) p += n.normalized * 0.4f;
+            }
             else if (ray.direction.y < -1e-3f)
                 p = ray.origin + ray.direction * (-ray.origin.y / ray.direction.y);
             else
@@ -277,7 +308,9 @@ namespace Saltworks
             }
             var target = new Vector2(p.x, p.z);
             Vector2 d = target - player;
-            if (d.magnitude > maxRange) target = player + d.normalized * maxRange;
+            float limit = Mathf.Max(0f, maxRange - RangeMarginM);
+            clamped = d.magnitude > limit;
+            if (clamped) target = player + d.normalized * limit;
             if (map?.bounds != null && map.bounds.width > 0)
             {
                 target.x = Mathf.Clamp(target.x, 0f, map.bounds.width);

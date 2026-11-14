@@ -1,3 +1,4 @@
+import { agentForArchetype, type AgentId } from '../shared/contract.ts';
 import type { BotTraits } from '../shared/coaching.ts';
 import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { createRng } from '../sim/rng.ts';
@@ -5,7 +6,7 @@ import { createSim, type Scenario, type Sim } from '../sim/sim.ts';
 import { type Bot, createBot } from './bot.ts';
 import { createHealth } from './health.ts';
 import { hashStr } from './nav.ts';
-import { archetypeById, DEFAULT_TRAITS } from './traits.ts';
+import { ARCHETYPES, archetypeById, DEFAULT_TRAITS } from './traits.ts';
 
 export type Fault = 'freeze' | 'spam';
 
@@ -13,6 +14,7 @@ export interface MatchAgent {
   id: string;
   team: Team;
   isBot: boolean;
+  agent?: AgentId;
   /** Explicit traits; win over `archetypeId`. */
   traits?: BotTraits;
   /** A named archetype from `traits.ts`, used when `traits` is not given. */
@@ -49,23 +51,28 @@ const sanitize = (i: PlayerInput, fallbackYaw: number): PlayerInput => {
   return { ...i, move: { x, y }, yaw: Number.isFinite(i.yaw) ? i.yaw : fallbackYaw };
 };
 
-export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgent[]; scenario?: Scenario }): Match {
+export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgent[]; scenario?: Scenario; /** Bot team behaviour (default true); see BotOptions.teamPlay. */ teamPlay?: boolean }): Match {
+  const agents = opts.agents.map(a => {
+    const archetypeId = a.archetypeId ?? ARCHETYPES.find(b => JSON.stringify(b.traits) === JSON.stringify(a.traits ?? DEFAULT_TRAITS))?.id ?? 'baseline';
+    return { ...a, archetypeId, agent: a.agent ?? (a.isBot ? agentForArchetype(archetypeId) : 'rook') };
+  });
   const sim = createSim({
     map: opts.map,
     seed: opts.seed,
-    agents: opts.agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot })),
+    agents: agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot, agent: a.agent ?? (a.archetypeId ? agentForArchetype(a.archetypeId) : undefined) })),
     scenario: opts.scenario,
   });
   const bots = new Map<string, Bot>();
   const health = new Map<string, ReturnType<typeof createHealth>>();
-  for (const a of opts.agents) {
+  for (const a of agents) {
     if (!a.isBot) continue;
     const rng = createRng((Math.imul(opts.seed >>> 0, 2654435761) ^ hashStr(a.id)) >>> 0);
-    bots.set(a.id, createBot({ id: a.id, map: opts.map, traits: a.traits ?? (a.archetypeId ? archetypeById(a.archetypeId).traits : DEFAULT_TRAITS), rng, siteSeed: opts.seed, hold: a.hold }));
+    bots.set(a.id, createBot({ id: a.id, map: opts.map, archetypeId: a.archetypeId, traits: a.traits ?? (a.archetypeId ? archetypeById(a.archetypeId).traits : DEFAULT_TRAITS), rng, siteSeed: opts.seed, hold: a.hold, teamPlay: opts.teamPlay }));
     health.set(a.id, createHealth());
   }
   const faults = new Map<string, Fault>();
   const trippedBy: Record<string, string> = {};
+  let lastEvents: SimEvent[] = [];
   let botInputs: PlayerInput[] = [];
 
   function step(humanInputs: PlayerInput[]): StepResult {
@@ -76,11 +83,11 @@ export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgen
     for (const [id, bot] of bots) {
       const agent = before.agents.find((x) => x.id === id);
       if (!agent || before.phase === 'ended') continue;
-      const d = bot.decide(before);
+      const d = bot.decide(before, lastEvents);
       trace.push(...d.trace);
       let input = d.input;
       const fault = faults.get(id);
-      if (fault === 'freeze') input = { ...input, move: { x: 0, y: 0 }, fire: null };
+      if (fault === 'freeze') input = { ...input, move: { x: 0, y: 0 }, fire: null, dash: false, smokeAt: null, flashAt: null, reconAt: null };
       else if (fault === 'spam') input = { ...input, move: { x: 3, y: 3 }, yaw: Number.NaN };
       if (agent.alive) {
         const verdict = health.get(id)?.observe({ tick: before.tick, node: d.node, holding: d.holding && !fault, input, pos: agent.pos });
@@ -106,6 +113,7 @@ export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgen
     }
     botInputs = fromBots;
     const res = sim.step(inputs);
+    lastEvents = res.events;
     return { state: res.state, events: res.events, trace };
   }
 
