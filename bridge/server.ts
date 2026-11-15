@@ -116,6 +116,7 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
     if (!fullMatch || fullMatch.phase !== 'buy') return;
     clearBuyTimer(); fullMatch.ready();
     const state = fullMatch.state();
+    send(fullMatch.roundDrill());
     send({ type: 'step', state, events: [], thoughts: {}, done: false });
   };
   const scheduleBuy = () => { clearBuyTimer(); buyTimer = setTimeout(startMatchRound, 20000); buyTimer.unref(); };

@@ -32,7 +32,9 @@ it('accepts the exact new client shapes, offers a selectable persona drill, and 
   expect(JSON.parse(JSON.stringify(commands))).toEqual([{ type: 'personas' }, { type: 'streamer', on: true }, { type: 'duel', persona: 'zephyr', map: 'ironvale', site: 'A' }, { type: 'match', map: 'ironvale', agent: 'rook', enemyPersonas: ['zephyr', 'atlas', 'ember', 'wisp', 'nova'] }]);
   await c.send(commands[1]);
   const start = await c.send(commands[2]);
-  expect(start.map(m => m.type)).toEqual(['map', 'step']); expect(start[1].state.agents).toHaveLength(2);
+  expect(start.map(m => m.type)).toEqual(['map', 'drill', 'step']); expect(start[2].state.agents).toHaveLength(2);
+  // The client sets the round up from the drill message: the player, their side and the persona bot.
+  expect(start[1]).toMatchObject({ playerTeam: 'attack', bots: [{ archetype: 'zephyr' }] });
   expect(start[1].state.agents.every((a: any) => typeof a.ammo === 'number' && typeof a.reserve === 'number')).toBe(true);
   expect((await c.send({ type: 'match', map: 'ironvale', agent: 'rook' }))[0].type).toBe('error');
   await c.send({ type: 'abandon' });
@@ -49,7 +51,7 @@ it('accepts the exact new client shapes, offers a selectable persona drill, and 
 it('rejects malformed new messages without replacing the live mode', async () => {
   const c = connection();
   for (const msg of [{ type: 'streamer', on: 1 }, { type: 'duel', persona: 'unknown', map: 'ironvale', site: 'A' }, { type: 'duel', persona: 'ember', map: 'ironvale', site: 'C' }, { type: 'match', agent: 'rook', map: 'ironvale', enemyPersonas: ['ember'] }, { type: 'match', agent: 'rook', map: 'ironvale', enemyPersonas: 'ember' }]) expect((await c.send(msg))[0].type).toBe('error');
-  expect((await c.send({ type: 'duel', persona: 'ember', map: 'ironvale', site: 'B' })).map(m => m.type)).toEqual(['map', 'step']);
+  expect((await c.send({ type: 'duel', persona: 'ember', map: 'ironvale', site: 'B' })).map(m => m.type)).toEqual(['map', 'drill', 'step']);
   expect((await c.send({ type: 'input', input: idleInput('player') }))[0].state.tick).toBe(1);
 });
 it.each(['bots-wire.1', 'bots-wire.2', 'bots-wire.3'])('preserves %s and rejects v4-only commands', async protocol => {

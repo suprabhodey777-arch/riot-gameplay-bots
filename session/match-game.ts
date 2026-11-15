@@ -8,6 +8,7 @@ import { loadMap } from '../shared/maps/index.ts';
 import { createMatch, type Match } from '../bot/match.ts';
 import { createRecorder, type Recorder } from './recorder.ts';
 import type { ServerMessage } from '../bridge/protocol.ts';
+import type { DrillSpec } from '../shared/coaching.ts';
 
 type Wallet = { id: string; ally: boolean; agent: AgentId; archetypeId: string; credits: number; primary: WeaponId | null; secondary: WeaponId; armor: ArmorId | null; armorPoints: number; purchases: Map<string, number>; previousWeapons: Map<WeaponId, WeaponId | null>; armorBefore?: { armor: ArmorId | null; points: number } };
 export const lossAward = (streak: number): number => [1900, 2400, 2900][Math.min(2, Math.max(0, streak - 1))];
@@ -53,6 +54,28 @@ export class MatchGame {
     this.prepareBuy();
   }
   side(): Team { return this.duel || this.round <= 6 ? 'attack' : 'defense'; }
+  /**
+   * The `drill` message that opens a match or duel round. The 3D client sets up the player, the
+   * bots and the world from it and ignores every step until one arrives; without it match and
+   * duel rounds never started in the client. The spec is a thin stand-in: a round has no drill rules.
+   */
+  roundDrill(): Extract<ServerMessage, { type: 'drill' }> {
+    const state = this.state();
+    const side = this.side();
+    const me = this.wallets[0];
+    const spawn = state.agents.find((a) => a.id === this.playerId)?.pos ?? { x: 0, y: 0 };
+    const title = this.duel ? `Duel vs ${personaById(this.duel.persona).name}, round ${this.round}` : `Round ${this.round}`;
+    const goal = this.duel ? 'Win the round: first to 5 takes the duel.' : side === 'attack' ? 'Plant the spike or eliminate the defenders.' : 'Stop the plant, defuse, or eliminate the attackers.';
+    const spec = {
+      id: `${this.duel ? 'duel' : 'match'}-${this.seed}-r${this.round}`,
+      mapId: this.mapId, skill: 'entry', difficulty: 0.5, seed: this.seed, title, goal,
+      roundTimeLeftS: state.roundTimeLeftS,
+      player: { id: this.playerId, team: side, agent: me.agent, spawn, hp: 100, carryingSpike: false },
+      bots: [], loadout: this.loadout(me),
+    } as unknown as DrillSpec;
+    const bots = this.wallets.slice(1).map((w) => ({ id: w.id, team: this.team(w), archetype: w.archetypeId, agent: w.agent }));
+    return { type: 'drill', spec, intro: goal, playerId: this.playerId, playerTeam: side, playerAgent: me.agent, bots, state };
+  }
   private team(w: Wallet): Team { return w.ally ? this.side() : this.side() === 'attack' ? 'defense' : 'attack'; }
   private loadout(w: Wallet): Loadout { return { primary: w.primary, secondary: w.secondary, armor: w.armor, credits: w.credits }; }
   loadoutMessage(): Extract<ServerMessage, { type: 'loadout' }> {

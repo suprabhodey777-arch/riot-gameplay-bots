@@ -191,7 +191,10 @@ it('wire v3 exposes weapons and runs a full match through buy, ready, results an
   c.send({ type: 'sell', item: 'hammer' }); expect((await c.next('loadout')).credits).toBe(800);
   let complete = false;
   while (!complete) {
-    c.send({ type: 'ready' }); await c.next('step');
+    c.send({ type: 'ready' });
+    // Every round opens with a drill message (the 3D client sets the round up from it), then a step.
+    expect((await c.next('drill')).playerId).toBeTruthy();
+    await c.next('step');
     let done = false;
     for (let tick = 0; tick < 3001 && !done; tick++) {
       c.send({ type: 'input', input: idleInput('spoofed-enemy') });
