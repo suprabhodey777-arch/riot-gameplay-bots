@@ -90,7 +90,8 @@ namespace Saltworks
             get
             {
                 WeaponInfo w = Weapon;
-                return w.SprayAt(spray) * w.KickFraction;
+                // x1.6: the kick was too faint to feel; the bullet still follows the spray pattern itself.
+                return w.SprayAt(spray) * w.KickFraction * 1.6f;
             }
         }
 
@@ -236,7 +237,7 @@ namespace Saltworks
             Scope01 = Mathf.MoveTowards(Scope01, ScopeWanted ? 1f : 0f, dt / 0.14f);
 
             float mult = 0f;
-            if (dashing) mult = 6f;
+            if (dashing || PlayerRig.Airborne) mult = 6f; // jumping is as inaccurate as dashing
             else if (moving) mult = moveMode == "crouch" ? 0.5f : moveMode == "walk" ? 1f : 4f;
             // The Longshot is very inaccurate unless still and scoped.
             if (w.Scopes && !ScopedFully) mult += 1f;

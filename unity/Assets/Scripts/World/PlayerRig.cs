@@ -45,6 +45,9 @@ namespace Saltworks
         float recoil;
         float shake;
         float bobPhase;
+        float jumpY, jumpVel;
+        /// <summary>True while the player is in the air from a jump.</summary>
+        public static bool Airborne { get; private set; }
         Vector3 lastGround;
         Vector2 lastLook;
         AudioSource audioSrc;
@@ -126,6 +129,19 @@ namespace Saltworks
             float moving = Mathf.Clamp01(speed / 6f);
             // No camera bob: the eye stays level while moving, so the world never wobbles under the crosshair.
             float bob = 0f;
+
+            // Jump (Space): a client-side hop of about 0.65 m. The sim is flat, so it does not clear
+            // cover or dodge shots; it lifts the eye and makes shots as inaccurate as a dash.
+            if (alive && !Airborne && GameInput.JumpPressed && Cursor.lockState == CursorLockMode.Locked) jumpVel = 3.6f;
+            if (jumpVel != 0f || jumpY > 0f)
+            {
+                jumpY += jumpVel * dt;
+                jumpVel -= 10f * dt;
+                if (jumpY <= 0f) { jumpY = 0f; jumpVel = 0f; }
+            }
+            if (!alive) { jumpY = 0f; jumpVel = 0f; }
+            Airborne = jumpY > 0.02f;
+            bob = jumpY;
 
             Vector2 kick = Gun != null ? Gun.Kick : Vector2.zero;
             float y = Mathf.Lerp(eye + bob, 0.35f, deathLerp);
