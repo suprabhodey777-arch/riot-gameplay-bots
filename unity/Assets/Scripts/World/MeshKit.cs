@@ -1,5 +1,5 @@
 // Builds merged meshes from simple solids (chamfered boxes, cylinders, quads)
-// with flat normals, box-projected UVs and per-vertex colours. Vertex colour
+// with flat face normals, rounded-looking bevels, box-projected UVs and per-vertex colours. Vertex colour
 // RGB is the albedo tint and A the material mask of Saltworks/WorldLit
 // (1 = metal, 0 = paint/polymer). Many parts become one draw call per submesh.
 using System.Collections.Generic;
@@ -140,7 +140,14 @@ namespace Saltworks
                             Vector3 p2 = Set(Set(Set(Vector3.zero, a1, s1 * h[a1]), a2, s2 * i[a2]), t, i[t]);
                             Vector3 p3 = Set(Set(Set(Vector3.zero, a1, s1 * i[a1]), a2, s2 * h[a2]), t, i[t]);
                             Vector3 p4 = Set(Set(Set(Vector3.zero, a1, s1 * i[a1]), a2, s2 * h[a2]), t, -i[t]);
-                            QuadM(sub, m, p1, p2, p3, p4, n, col);
+                            // Each side of the chamfer takes the normal of the face it joins, so the edge shades as a
+                            // rounded bevel and catches a highlight instead of reading as a third flat facet.
+                            Vector3 n1 = m.MultiplyVector(Axis(a1, s1)).normalized, n2 = m.MultiplyVector(Axis(a2, s2)).normalized;
+                            Vector3 fn = m.MultiplyVector(n).normalized;
+                            int i1 = Vert(m.MultiplyPoint3x4(p1), n1, col), i2 = Vert(m.MultiplyPoint3x4(p2), n1, col);
+                            int i3 = Vert(m.MultiplyPoint3x4(p3), n2, col), i4 = Vert(m.MultiplyPoint3x4(p4), n2, col);
+                            Index(sub, i1, i2, i3, fn);
+                            Index(sub, i1, i3, i4, fn);
                         }
                     }
                 }
@@ -154,7 +161,10 @@ namespace Saltworks
                 var pa = new Vector3(sx * h.x, sy * i.y, sz * i.z);
                 var pb = new Vector3(sx * i.x, sy * h.y, sz * i.z);
                 var pc = new Vector3(sx * i.x, sy * i.y, sz * h.z);
-                Tri(sub, m.MultiplyPoint3x4(pa), m.MultiplyPoint3x4(pb), m.MultiplyPoint3x4(pc), m.MultiplyVector(n).normalized, col);
+                int ia = Vert(m.MultiplyPoint3x4(pa), m.MultiplyVector(new Vector3(sx, 0f, 0f)).normalized, col);
+                int ib = Vert(m.MultiplyPoint3x4(pb), m.MultiplyVector(new Vector3(0f, sy, 0f)).normalized, col);
+                int ic = Vert(m.MultiplyPoint3x4(pc), m.MultiplyVector(new Vector3(0f, 0f, sz)).normalized, col);
+                Index(sub, ia, ib, ic, m.MultiplyVector(n).normalized);
             }
         }
 

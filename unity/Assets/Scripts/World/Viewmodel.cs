@@ -107,7 +107,7 @@ namespace Saltworks
             magIn = Synth.Click(2, 1400f);
             slideClip = Synth.Click(3, 600f);
             drawClip = Synth.Whoosh(0.18f, 7);
-            armsMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.3f, 0.6f, 0.5f, 1f);
+            armsMat = Mats.Gun(0.5f, 0.3f, 0.45f);
         }
 
         void FlashQuad(Vector3 pos, Quaternion rot, float w, float h)

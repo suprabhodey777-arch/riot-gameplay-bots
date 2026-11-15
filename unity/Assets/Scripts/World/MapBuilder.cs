@@ -50,10 +50,10 @@ namespace Saltworks
         {
             switch (z)
             {
-                case Zone.Brick: return new ZoneLook { Side = new Color(0.66f, 0.43f, 0.34f), Tex = Textures.Brick(), Gloss = 0.15f, Bump = 1f };
-                case Zone.Plaster: return new ZoneLook { Side = new Color(0.86f, 0.8f, 0.69f), Tex = Textures.Concrete(), Gloss = 0.18f, Bump = 0.45f };
-                case Zone.Steel: return new ZoneLook { Side = new Color(0.42f, 0.5f, 0.52f), Tex = Textures.PaintedMetal(), Gloss = 0.42f, Bump = 1f };
-                default: return new ZoneLook { Side = new Color(0.76f, 0.74f, 0.7f), Tex = Textures.Concrete(), Gloss = 0.25f, Bump = 1f };
+                case Zone.Brick: return new ZoneLook { Side = new Color(0.6f, 0.38f, 0.3f), Tex = Textures.Brick(), Gloss = 0.15f, Bump = 0.5f };
+                case Zone.Plaster: return new ZoneLook { Side = new Color(0.78f, 0.7f, 0.58f), Tex = Textures.Concrete(), Gloss = 0.18f, Bump = 0.45f };
+                case Zone.Steel: return new ZoneLook { Side = new Color(0.27f, 0.33f, 0.35f), Tex = Textures.PaintedMetal(), Gloss = 0.5f, Bump = 1f };
+                default: return new ZoneLook { Side = new Color(0.68f, 0.66f, 0.62f), Tex = Textures.Concrete(), Gloss = 0.25f, Bump = 1f };
             }
         }
 
@@ -95,7 +95,7 @@ namespace Saltworks
             {
                 if (!matCache.TryGetValue(key, out Material m))
                 {
-                    m = Mats.World(c, tex.Albedo, tex.Normal, bump, gloss, 0f, gloss, 1f);
+                    m = Mats.Weathered(Mats.World(c, tex.Albedo, tex.Normal, bump, gloss, 0f, gloss, 1f));
                     WorldLook.Register(m, c, kind);
                     matCache[key] = m;
                 }
@@ -151,7 +151,8 @@ namespace Saltworks
                 mr.sharedMaterials = new[]
                 {
                     Get("s" + side + tk, side, Surface.Wall, sideTex, sideGloss, bump),
-                    Get("t" + top, top, Surface.Wall, concrete, 0.25f, 0.8f),
+                    // Crate lids are planks like their sides, not pitted concrete.
+                    height <= 1.5f && !outer ? Get("tc" + top, top, Surface.Wall, crate, 0.2f, 0.8f) : Get("t" + top, top, Surface.Wall, concrete, 0.25f, 0.8f),
                     Get("r" + baseTrim, baseTrim, Surface.Trim, trimTex, 0.45f, 1f),
                 };
                 go.AddComponent<MeshCollider>().sharedMesh = mesh;
@@ -224,6 +225,18 @@ namespace Saltworks
             k.Box(0, MeshKit.At(new Vector3(p.x, y, p.y), new Vector3(0f, yaw, 0f)), new Vector3(length, height, proud + 0.02f), bevel, c);
         }
 
+        /// <summary>The faded paint of a zone's wayfinding band: teal, oxide red or signal yellow.</summary>
+        static Color BandColor(Zone zone)
+        {
+            switch (zone)
+            {
+                case Zone.Brick: return new Color(0.78f, 0.6f, 0.2f, 0f);
+                case Zone.Plaster: return new Color(0.58f, 0.25f, 0.19f, 0f);
+                case Zone.Steel: return new Color(0.8f, 0.62f, 0.2f, 0f);
+                default: return new Color(0.24f, 0.5f, 0.48f, 0f);
+            }
+        }
+
         /// <summary>Plinth, cornice, string course, pilasters or steel ribs, and framed windows on every face that looks onto the floor.</summary>
         static void WallTrim(MeshKit k, MeshKit glass, WallDef wall, MapDef map, float mapW, float mapH, Zone zone, Color side)
         {
@@ -248,6 +261,13 @@ namespace Saltworks
                 float ph = height >= 2.9f ? 0.34f : 0.22f;
                 FaceBox(k, a, dir, n, mid, len + 0.07f, ph * 0.5f, ph, 0.035f, plinth, 0.008f);
                 FaceBox(k, a, dir, n, mid, len + 0.09f, ph + 0.02f, 0.04f, 0.045f, plinth, 0.012f);
+                if (height >= 2.4f)
+                {
+                    // Wayfinding: a faded paint band at about 1.1 m in the zone's colour, with a thin line under it.
+                    Color band = BandColor(zone);
+                    FaceBox(k, a, dir, n, mid, len - 0.02f, 1.12f, 0.2f, 0.006f, band);
+                    FaceBox(k, a, dir, n, mid, len - 0.02f, 0.94f, 0.035f, 0.006f, new Color(band.r * 0.72f, band.g * 0.72f, band.b * 0.72f, 0f));
+                }
                 if (height < 2.4f)
                 {
                     // Half walls: a coping stone on top instead of a cornice.
@@ -388,8 +408,9 @@ namespace Saltworks
             int pick = letter == "C" ? 2 : letter == "B" ? 1 - baseline : baseline;
             StepSurface surf = pick == 0 ? StepSurface.Metal : pick == 1 ? StepSurface.Wood : StepSurface.Concrete;
             Textures.Pair tex = surf == StepSurface.Metal ? Textures.DeckPlate() : surf == StepSurface.Wood ? Textures.Timber() : Textures.FloorTiles();
-            Color fc = surf == StepSurface.Metal ? new Color(0.62f, 0.64f, 0.64f) : surf == StepSurface.Wood ? new Color(0.78f, 0.62f, 0.46f) : new Color(0.84f, 0.84f, 0.82f);
+            Color fc = surf == StepSurface.Metal ? new Color(0.42f, 0.45f, 0.46f) : surf == StepSurface.Wood ? new Color(0.62f, 0.5f, 0.38f) : new Color(0.6f, 0.6f, 0.58f);
             Material fm = Mats.World(fc, tex.Albedo, tex.Normal, 1f, surf == StepSurface.Wood ? 0.2f : 0.45f, surf == StepSurface.Metal ? 0.65f : 0f, 0.55f, 0f);
+            Mats.Weathered(fm, 0.8f);
             WorldLook.Register(fm, fc, Surface.Floor);
             var floor = new GameObject("Site " + letter + " paving");
             floor.transform.SetParent(parent, false);
@@ -585,7 +606,7 @@ namespace Saltworks
             Mesh m = FlatPolygon(pts, 0f, 4f);
             floor.AddComponent<MeshFilter>().sharedMesh = m;
             Textures.Pair tiles = Textures.Flagstones();
-            Material fm = Mats.World(Palette.Floor, tiles.Albedo, tiles.Normal, 1f, 0.45f, 0f, 0.45f, 0f);
+            Material fm = Mats.Weathered(Mats.World(Palette.Floor, tiles.Albedo, tiles.Normal, 0.55f, 0.4f, 0f, 0.4f, 0f));
             WorldLook.Register(fm, Palette.Floor, Surface.Floor);
             floor.AddComponent<MeshRenderer>().sharedMaterial = fm;
             var box = floor.AddComponent<BoxCollider>();
@@ -602,7 +623,7 @@ namespace Saltworks
             ground.AddComponent<MeshFilter>().sharedMesh = FlatPolygon(gpts, -0.04f, 6f);
             // Its own material (not the shared Lit cache), so the palette tint does not leak onto bots.
             Textures.Pair gt = Textures.Ground();
-            Material gm = Mats.World(Palette.Ground, gt.Albedo, gt.Normal, 0.8f, 0.12f, 0f, 0.12f, 0f);
+            Material gm = Mats.Weathered(Mats.World(Palette.Ground, gt.Albedo, gt.Normal, 0.8f, 0.12f, 0f, 0.12f, 0f));
             WorldLook.Register(gm, Palette.Ground, Surface.Ground);
             ground.AddComponent<MeshRenderer>().sharedMaterial = gm;
         }
