@@ -106,7 +106,7 @@ namespace Saltworks
             Plate(pill, new Color(0.9f, 0.1f, 0.18f, 0.95f));
             float pulse = 0.55f + 0.45f * Mathf.Sin(now * 5f);
             Plate(new Rect(pill.x + 10f, pill.y + 10f, 8f, 8f), new Color(1f, 1f, 1f, pulse));
-            Lbl(new Rect(pill.x + 24f, pill.y, 50f, pill.height), "L I V E", liveStyle, Color.white);
+            Lbl(new Rect(pill.x + 24f, pill.y, 50f, pill.height), "LIVE", liveStyle, Color.white);
             if (!viewers) return;
             int v = Game.Viewers;
             if (v != viewersKey)
@@ -156,7 +156,7 @@ namespace Saltworks
                 goalText = what + "   " + Mathf.Min(have, target) + " / " + target;
             }
             Plate(r, new Color(0.02f, 0.025f, 0.04f, 0.82f));
-            Lbl(new Rect(r.x + 12f, r.y + 4f, r.width - 24f, 16f), "S T R E A M   G O A L", tinyCaps, Settings.Accent);
+            Lbl(new Rect(r.x + 12f, r.y + 4f, r.width - 24f, 16f), "STREAM GOAL", tinyCaps, Settings.Accent);
             Lbl(new Rect(r.x + 12f, r.y + 18f, r.width - 24f, 18f), goalText, tinyCaps, Theme.Ink);
             var bar = new Rect(r.x + 12f, r.yMax - 9f, r.width - 24f, 4f);
             Fill(bar, new Color(1f, 1f, 1f, 0.1f));
@@ -186,7 +186,7 @@ namespace Saltworks
             Brackets(new Rect(r.x - 3f, r.y - 3f, r.width + 6f, r.height + 6f), new Color(ac.r, ac.g, ac.b, 0.9f), 14f, 2f);
             float now = Time.unscaledTime;
             Plate(new Rect(r.x + 10f, r.y + 10f, 8f, 8f), new Color(1f, 0.15f, 0.2f, Mathf.Repeat(now, 1.2f) < 0.8f ? 1f : 0.2f));
-            Lbl(new Rect(r.x + 24f, r.y + 5f, 110f, 18f), "C A M   0 1", tinyCaps, Color.white);
+            Lbl(new Rect(r.x + 24f, r.y + 5f, 110f, 18f), "CAM 01", tinyCaps, Color.white);
             var tag = new Rect(r.x + 8f, r.yMax - 28f, r.width - 16f, 22f);
             Plate(tag, new Color(0.02f, 0.025f, 0.04f, 0.85f));
             Fill(new Rect(tag.x, tag.y, 3f, tag.height), ac);
@@ -205,7 +205,7 @@ namespace Saltworks
             var head = new Rect(r.x, r.y, r.width, 28f);
             Fill(new Rect(head.x + 10f, head.yMax - 1f, head.width - 20f, 1f), new Color(1f, 1f, 1f, 0.08f));
             Plate(new Rect(head.x + 12f, head.y + 10f, 8f, 8f), Palette.Spike);
-            Lbl(new Rect(head.x + 26f, head.y, 220f, head.height), "S T R E A M   C H A T", tinyCaps, Theme.Ink);
+            Lbl(new Rect(head.x + 26f, head.y, 220f, head.height), "STREAM CHAT", tinyCaps, Theme.Ink);
             float innerW = r.width - 24f;
             // New lines push the stack up; the offset eases back to zero (the auto-scroll).
             if (chat.Count < chatSeen) chatSeen = 0;
@@ -303,7 +303,7 @@ namespace Saltworks
             var tr = new Rect(0f, y + (al.Big ? 4f : 0f), W, al.Big ? 80f : 66f);
             Condensed(tr, Spaced(al.Text), alertStyle, new Color(c.r, c.g, c.b, a), 0.8f, true);
             GUI.matrix = m;
-            Lbl(new Rect(0f, y - 24f, W, 16f), "S T R E A M   A L E R T", alertSmall, new Color(1f, 1f, 1f, 0.7f * a));
+            Lbl(new Rect(0f, y - 24f, W, 16f), "STREAM ALERT", alertSmall, new Color(1f, 1f, 1f, 0.7f * a));
         }
 
         /// <summary>Persona callouts as speech captions above the ability bar, typed on.</summary>
@@ -331,8 +331,8 @@ namespace Saltworks
         void DrawPersonaSelect()
         {
             float now = Time.unscaledTime;
-            float x0 = 56f, top = 44f;
-            float cy = Header(x0, top, W - 2f * x0 - 200f, "Play your favourite streamer  //  name them in Settings", "Pick your streamer",
+            float x0 = 80f, top = 56f;
+            float cy = Header(x0, top, W - 2f * x0 - 200f, "Favourite streamer", "Pick your streamer",
                 Game.V4 ? "Each persona plays one well-known style. Rename any of them: the name is used everywhere in the client."
                         : "This bridge does not speak bots-wire.4: the cards show the built-in profiles and duels stay off.");
 
@@ -340,7 +340,7 @@ namespace Saltworks
             int n = Mathf.Min(5, all.Count);
             float gap = 16f;
             float cw = (W - 2f * x0 - gap * (n - 1)) / Mathf.Max(1, n);
-            float ch = H - cy - 104f;
+            float ch = H - cy - 112f;
             FigureSpec[] specs = Figures("personas", n, i => new FigureSpec { Look = all[i].Id, Accent = all[i].Primary, Team = Settings.Enemy, Weapon = all[i].Weapon });
             Game.Stage?.Use("personas", specs);
             int hovered = -1;
@@ -355,13 +355,12 @@ namespace Saltworks
                 float h = Anim(5000 + i, hot);
                 Color oldC = GUI.color;
                 GUI.color = new Color(1f, 1f, 1f, oldC.a * ik);
-                Shadow(r, 20f + 12f * h, 0.5f + 0.2f * h);
-                Glass(r);
-                PlateLine(r, new Color(p.Primary.r, p.Primary.g, p.Primary.b, 0.2f + 0.7f * h));
-                Fill(new Rect(r.x + Theme.Cut, r.y, r.width - Theme.Cut - 4f, 3f), p.Primary);
-                // The figure, on a backdrop in its colour.
-                var fr = new Rect(r.x + 10f, r.y + 12f, r.width - 20f, r.height * 0.42f);
-                Fill(fr, new Color(p.Primary.r * 0.12f, p.Primary.g * 0.12f, p.Primary.b * 0.12f, 0.9f));
+                Plate(r, Color.Lerp(Theme.PanelC, Theme.CardC, h));
+                PlateLine(r, new Color(1f, 1f, 1f, 0.10f + 0.14f * h));
+                Fill(new Rect(r.x, r.y, r.width, 2f), new Color(p.Primary.r, p.Primary.g, p.Primary.b, 0.35f + 0.65f * h));
+                // The figure, on the stage's own dark.
+                var fr = new Rect(r.x + 1f, r.y + 2f, r.width - 2f, r.height * 0.42f);
+                Fill(fr, Theme.StageC);
                 DrawFigure(fr, i);
                 Tex(new Rect(fr.xMax - 30f, fr.y + 8f, 22f, 22f), UiTex.Role(Agents.Get(p.Agent)?.Role), new Color(1f, 1f, 1f, 0.7f));
                 float y = fr.yMax + 12f;
@@ -388,23 +387,25 @@ namespace Saltworks
                 Plate(new Rect(r.x + 46f, y + 2f, 26f, 12f), p.Secondary);
                 Lbl(new Rect(r.x + 80f, y - 1f, r.width - 96f, 18f), Upper(Agents.NameOf(p.Agent)) + "  KIT", tinyCaps, Theme.Muted);
                 y += 26f;
-                Lbl(new Rect(r.x + 16f, y, r.width - 32f, 16f), "S I G N A T U R E", tinyCaps, p.Primary);
+                Lbl(new Rect(r.x + 16f, y, r.width - 32f, 16f), "SIGNATURE", tinyCaps, Theme.Muted);
                 Lbl(new Rect(r.x + 16f, y + 16f, r.width - 32f, 40f), p.Signature ?? "", bodyBold, Theme.Ink);
                 y += 58f;
                 float tipH = r.yMax - 68f - y;
                 if (tipH > 44f)
                 {
                     var tip = new Rect(r.x + 12f, y, r.width - 24f, tipH);
-                    Plate(tip, new Color(1f, 1f, 1f, 0.04f));
-                    Lbl(new Rect(tip.x + 12f, tip.y + 8f, tip.width - 24f, 16f), "H O W   T O   B E A T   T H E M", tinyCaps, Settings.Accent);
-                    Lbl(new Rect(tip.x + 12f, tip.y + 26f, tip.width - 24f, tip.height - 30f), p.BeatTip ?? "", tipStyle, Theme.Muted);
+                    Fill(new Rect(tip.x + 4f, tip.y, tip.width - 8f, 1f), Theme.Line);
+                    Lbl(new Rect(tip.x + 4f, tip.y + 10f, tip.width - 8f, 16f), "HOW TO BEAT THEM", tinyCaps, Theme.Muted);
+                    BeginClip(new Rect(tip.x + 4f, tip.y + 28f, tip.width - 8f, tip.height - 30f));
+                    Lbl(new Rect(0f, 0f, tip.width - 8f, tip.height - 30f), p.BeatTip ?? "", tipStyle, Theme.Ink);
+                    EndClip();
                 }
                 GUI.color = oldC;
                 string did = p.Id;
-                if (GButton(new Rect(r.x + 14f, r.yMax - 58f, r.width - 28f, 44f), "Duel " + p.Name, 1, Game.V4 && Idle, duelKey)) Game.Do(() => Game.OpenDuel(did));
+                if (GButton(new Rect(r.x + 14f, r.yMax - 58f, r.width - 28f, 44f), "Duel " + p.Name, 0, Game.V4 && Idle, duelKey)) Game.Do(() => Game.OpenDuel(did));
             }
             if (Game.Stage != null) Game.Stage.Hero = hovered;
-            float by = H - 40f - Theme.ButtonH;
+            float by = H - 48f - Theme.ButtonH;
             if (GButton(new Rect(x0, by, 180f, Theme.ButtonH), "Back", 2, true, 0, false, UiTex.Glyph("back"))) Game.Do(Game.OpenMenu);
             if (GButton(new Rect(W - x0 - 320f, by, 320f, Theme.ButtonH), "Persona match  (5v5)", 0, Game.V4 && Game.V3 && Idle)) Game.Do(Game.OpenPersonaMatch);
             Lbl(new Rect(x0 + 200f, by, W - 2f * x0 - 540f, Theme.ButtonH), "Original characters with their own look, lines and moves. No real player's name, likeness or voice is used.", smallMid, Theme.Faint);
@@ -442,10 +443,10 @@ namespace Saltworks
             float k = Intro01;
             // Left: the persona, large.
             var fr = new Rect(48f, 48f, Mathf.Min(W * 0.4f, (H - 96f) * FigureStage.Aspect * 1.25f), H - 96f);
-            Shadow(fr, 30f, 0.5f);
-            Fill(fr, new Color(p.Primary.r * 0.1f, p.Primary.g * 0.1f, p.Primary.b * 0.1f, 0.88f));
+            Fill(fr, Theme.StageC);
             DrawFigure(fr, 0);
-            Fill(new Rect(fr.x, fr.y, fr.width, 3f), p.Primary);
+            PlateLine(fr, Theme.Line);
+            Fill(new Rect(fr.x, fr.y, fr.width, 2f), p.Primary);
             Lbl(new Rect(fr.x + 16f, fr.yMax - 34f, fr.width - 32f, 20f), Spaced("Duel  \u00b7  1v1  \u00b7  first to 5"), tinyCaps, Theme.Ink);
             // Right: the setup.
             var area = new Rect(fr.xMax + 40f, 70f + (1f - k) * 12f, Mathf.Min(660f, W - fr.xMax - 88f), H - 140f);
@@ -487,7 +488,7 @@ namespace Saltworks
                 var tip = new Rect(x, y, w, tipH);
                 Plate(tip, new Color(1f, 1f, 1f, 0.04f));
                 Fill(new Rect(tip.x + 2f, tip.y + 10f, 3f, tip.height - 20f), Settings.Accent);
-                Lbl(new Rect(tip.x + 18f, tip.y + 10f, tip.width - 36f, 16f), "C O A C H   T I P", tinyCaps, Settings.Accent);
+                Lbl(new Rect(tip.x + 18f, tip.y + 10f, tip.width - 36f, 16f), "COACH TIP", tinyCaps, Settings.Accent);
                 Lbl(new Rect(tip.x + 18f, tip.y + 30f, tip.width - 36f, tip.height - 34f), p.BeatTip ?? "", tipStyle, Theme.Ink);
             }
             float by = area.yMax - Pad - Theme.ButtonH;

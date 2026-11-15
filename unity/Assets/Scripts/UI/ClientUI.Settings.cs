@@ -27,7 +27,7 @@ namespace Saltworks
 
         void DrawSettings()
         {
-            Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.62f * Intro01));
+            Fill(new Rect(0f, 0f, W, H), new Color(Theme.Base.r, Theme.Base.g, Theme.Base.b, 0.7f * Intro01));
             Rect r = Centered(Mathf.Min(1200f, W - 60f), H - 60f);
             settingsArea = r;
             Frame(r, "Settings");
@@ -38,11 +38,12 @@ namespace Saltworks
 
             GUI.changed = false;
             // Left: the tabs.
-            float navW = 220f, top = r.y + 132f;
+            float navW = 200f, top = r.y + 132f;
+            Fill(new Rect(x + navW + 17f, top, 1f, r.yMax - Pad - top), Theme.Line);
             for (int i = 0; i < TabNames.Length; i++)
             {
                 int idx = i;
-                if (GButton(new Rect(x, top + i * 50f, navW, 42f), TabNames[i], 2, true, StableKey("tab:" + TabNames[i]), i == settingsTab)) settingsTab = idx;
+                if (NavItem(new Rect(x, top + i * 46f, navW, 42f), TabNames[i], i == settingsTab, StableKey("tab:" + TabNames[i]))) settingsTab = idx;
             }
             if (GButton(new Rect(x, r.yMax - Pad - 40f, navW, 40f), "Reset everything", 2)) ResetAll();
 
@@ -108,7 +109,7 @@ namespace Saltworks
 
         void Note(string text)
         {
-            rowY = Para(rowX, rowY - 2f, rowW, text, small, Theme.Faint) + 8f;
+            rowY = Para(rowX, rowY - 2f, rowW, text, small, Theme.Muted) + 8f;
         }
 
         void RowLabel(string label, float h)
@@ -142,7 +143,7 @@ namespace Saltworks
             bool nv = SwitchCtl(new Rect(cx, rowY + 7f, 54f, 26f), v, StableKey("toggle:" + label));
             if (nv != v) GUI.changed = true;
             Lbl(new Rect(cx + 66f, rowY, 40f, h), nv ? "On" : "Off", bodyMid, nv ? Theme.Ink : Theme.Muted);
-            if (!string.IsNullOrEmpty(note)) Lbl(new Rect(cx + 110f, rowY, rowW - rowLabelW - 110f, h), note, smallMid, Theme.Faint);
+            if (!string.IsNullOrEmpty(note)) Lbl(new Rect(cx + 110f, rowY, rowW - rowLabelW - 110f, h), note, smallMid, Theme.Muted);
             rowY += h + 4f;
             return nv;
         }
@@ -286,9 +287,9 @@ namespace Saltworks
                 Fill(new Rect(a.x, a.y + a.height * 0.55f, a.width, a.height * 0.45f - 2f), new Color(0.86f, 0.84f, 0.80f));
                 Plate(b, new Color(0.10f, 0.11f, 0.14f));
                 Plate(z, new Color(0.18f, 0.20f, 0.24f));
-                Lbl(new Rect(a.x + 12f, a.y + 8f, a.width, 18f), "L I G H T", tinyCaps, new Color(0.1f, 0.1f, 0.12f, 0.8f));
-                Lbl(new Rect(b.x + 12f, b.y + 8f, b.width, 18f), "D A R K", tinyCaps, Theme.Muted);
-                Lbl(new Rect(z.x + 12f, z.y + 8f, z.width, 18f), "Z O O M   \u00d7 4", tinyCaps, Theme.Muted);
+                Lbl(new Rect(a.x + 12f, a.y + 8f, a.width, 18f), "LIGHT", tinyCaps, new Color(0.1f, 0.1f, 0.12f, 0.8f));
+                Lbl(new Rect(b.x + 12f, b.y + 8f, b.width, 18f), "DARK", tinyCaps, Theme.Muted);
+                Lbl(new Rect(z.x + 12f, z.y + 8f, z.width, 18f), "ZOOM \u00d74", tinyCaps, Theme.Muted);
                 int k = Crosshair.PixelScale(Screen.height);
                 float demoSpread = c.Dynamic ? (Mathf.Sin(Time.unscaledTime * 2.5f) * 0.5f + 0.5f) * 6f : 0f;
                 Draw2D.Begin(Screen.width, Screen.height);
