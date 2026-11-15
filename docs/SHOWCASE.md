@@ -1,76 +1,44 @@
-# Showcase scenarios (draft)
+# Showcase video: 90 seconds
 
-**Goal:** show judges how our tech helps a player get better, from finding a weakness to proving it improved. Every scenario shows a feature that serves that goal. Settings, menus and options are left out.
+**One message:** ValoDrill finds the moment you keep losing, makes you replay it against bots that play like people, coaches you, and measures whether you improved.
 
-The story in one line: **the game watches how you play, finds what you lose, makes you replay that exact moment against bots that behave like people, coaches you after each attempt, and measures whether you improved.**
+Rules for the cut:
+- Every shot shows a feature that helps a player get better. No settings or menus for their own sake.
+- No shot longer than 6 s.
+- On-screen captions carry the story, so there's no voice-over to record. Music plus game sound.
+- 1920×1080, 60 fps, the HUD visible in gameplay shots.
 
-## Scenario 1: "What am I bad at?" (weakness report)
-- **Setup:** Practice → choose the sample player *weak entry* (seed 11).
-- **Show:** the weakness report. Entry duels come out as the worst finding, with a severity bar, the rate against the benchmark, and the evidence lines (round, callout, how long after contact they died).
-- **Point it makes:** the analyzer reads real match logs and names the problem in plain words, with proof.
-- **Shots:** the report screen, then slowly scrolling the evidence.
+## Shot list
 
-## Scenario 2: "Play the moment you lost" (Rehearse my mistakes)
-- **Setup:** from the report, Rehearse → round 2 (lost the opening duel at North Causeway 0.6 s after contact).
-- **Show:**
-  - The drill intro card, then the same spot, same clock, same enemy angle.
-  - Attempt 1: the player dies again.
-  - The coach's debrief after the attempt.
-  - Attempt 2: the player pre-aims the angle and wins.
-- **Point it makes:** practice is built from *your* mistakes, not generic aim training.
-- **Shots:**
-  - first person, with the minimap and the bot's thought line visible
-  - the result card showing the staircase moving
-  - the debrief text
+| # | Time | Length | Shot | Caption |
+|---|---|---|---|---|
+| 1 | 0:00 | 4 s | First person: the player peeks North Causeway and dies instantly to an enemy holding the angle | "You keep losing the same fight." |
+| 2 | 0:04 | 4 s | Black frame, logo, title | "ValoDrill: practice built from your own mistakes" |
+| 3 | 0:08 | 8 s | Weakness report: "Entry duels" as the top finding, severity bar filling, evidence lines | "It reads your matches and names the weakness, with proof." |
+| 4 | 0:16 | 5 s | Rehearsal card: "Round 2: you lost the opening duel at North Causeway 0.6 s after contact" | "Then puts you back in that exact moment." |
+| 5 | 0:21 | 6 s | Attempt 1: same spot, same clock, the player swings wide and dies again | "Same angle. Same clock." |
+| 6 | 0:27 | 7 s | Result card: the coach's debrief text appears, the difficulty staircase moves | "A coach explains what went wrong, after the round, never during it." |
+| 7 | 0:34 | 7 s | Attempt 2: the player pre-aims the angle, wins the duel, hit marker and headshot sound | "Try again until it sticks." |
+| 8 | 0:41 | 8 s | Slow motion, side view of a bot: it spots the player, pauses, turns, misses its first shot, then hits | "Bots react like people: about 250 ms, human turn speed, no wallhacks." |
+| 9 | 0:49 | 5 s | Bot thought line over its head ("holding A main", "heard footsteps") | "And they show their thinking, so you learn why you lost." |
+| 10 | 0:54 | 6 s | Persona select (flick duellist, anchor, lurker), then a quick clip against one | "Practise against the style that beats you." |
+| 11 | 1:00 | 12 s | Montage on Meridian: fly-over, buy phase, a flash going off (white-out and afterimage), a smoke, a round won | "Then take it into a full 5v5 match." |
+| 12 | 1:12 | 10 s | Evidence chart: weak-skill gain, targeted vs baseline vs random practice (+4.8 points vs baseline) | "Targeted practice improved the weak skill 2–3× more (120 simulated players)." |
+| 13 | 1:22 | 8 s | Logo, tagline, DevHacks '26 | "ValoDrill. Lose once. Learn it. Win it." |
 
-## Scenario 3: "Bots that play like people" (fair, readable bots)
-- **Setup:** any drill. Turn on spectating or the bot's-mind display if the build has it.
-- **Show:**
-  - **Fair timing:** a bot reacts after a human delay (about 240–320 ms), turns at a human speed, and misses its first shot while still settling its aim.
-  - **Visible reasoning:** its thought line explains what it's doing ("holding A main", "heard footsteps").
-- **Point it makes:**
-  - the bots are fair, with no wallhacks and no instant snaps
-  - their reasoning is visible, so the player learns why they lost
-- **Shots:**
-  - a slow-motion clip of a duel with the reaction delay marked on screen
-  - a flash scene where the bot is dazed
+Total: 90 s.
 
-## Scenario 4: "Practise against a style" (Favourite streamer / archetypes)
-- **Setup:** Favourite streamer → pick a persona (the flick duellist, the anchor, the lurker).
-- **Show:** the same site played against two personas. One rushes, one holds an off-angle.
-- **Point it makes:** players can rehearse against the kind of opponent they struggle with.
+## How each shot gets recorded
+- **Shots 1, 4–7:** Practice → sample player "weak entry" → Rehearse → round 2. Record attempts 1 and 2 as separate takes.
+- **Shot 3:** the report screen right after loading the sample. Record a slow scroll.
+- **Shots 8–9:** a drill with the camera set to watch a bot. If there's no spectator camera, record from the player and slow it down in the edit.
+- **Shot 10:** Favourite streamer → persona select → duel.
+- **Shot 11:** Play match on Meridian. Fly-over from the menu backdrop camera or a scripted camera path.
+- **Shot 12:** a chart made from `evidence/RESULTS.md`, rendered as a 1080p image and animated in the edit.
+- **Shots 2 and 13:** title cards made in the editing tool.
 
-## Scenario 5: "Take it into a real match" (Play match)
-- **Setup:** Play match on Meridian (our new three-site map).
-- **Show:**
-  - the buy phase
-  - a round with smokes and flashes (the new flash whiteout)
-  - the full tactical map (M)
-  - the round result
-- **Point it makes:** the skills practised carry into a full 5v5 game with economy and utility.
-- **Shots:** a fly-over of Meridian, the buy menu, a flash going off, the M map.
-
-## Scenario 6: "Did it work?" (evidence)
-- **Setup:** no gameplay. Show `evidence/RESULTS.md` as a clean chart.
-- **Show:** among 120 simulated players, targeted practice raised the weak skill by **+4.8 points** against baseline practice and **+3.6** against random practice with the staircase. The fairness check found 0 shots fired faster than the bot's set reaction time.
-- **Point it makes:** we measure improvement instead of just claiming it. Say plainly that these are simulated learners.
-
-## Video plan (3 minutes)
-| Time | Content |
-|---|---|
-| 0:00–0:15 | Hook: "You keep dying to the same angle. Here's a game that notices." |
-| 0:15–0:40 | Scenario 1: the weakness report |
-| 0:40–1:25 | Scenario 2: rehearse the exact moment, the coach, the win |
-| 1:25–1:50 | Scenario 3: fair bots with visible reasoning |
-| 1:50–2:10 | Scenario 4: personas |
-| 2:10–2:40 | Scenario 5: full match on Meridian |
-| 2:40–3:00 | Scenario 6: evidence chart, then the closing line |
-
-## Open items before recording
-- [ ] Minimap and M map fixed (in progress)
-- [ ] Flash overlay in the HUD (in progress)
-- [ ] Recorded sounds wired up (in progress)
-- [ ] Maps that feel like places (in progress)
-- [ ] Decide on the player models after the side-by-side (in progress)
-- [ ] A way to show reaction time on screen for Scenario 3 (a debug overlay or the bot's thought line)
-- [ ] A recording setup: fixed 1920×1080 Game view, plus Unity Recorder or OBS (to decide)
+## Before recording
+- [ ] Recording setup: Unity Recorder (package) or OBS capturing the Game view at 1080p60
+- [ ] Bridge running; bot difficulty on the setting that makes the rehearsal winnable on take 2
+- [ ] Hide the Unity editor chrome: Game view maximised, or a standalone build
+- [ ] Keep the M map out of frame, or fix its cone first (the cone points the wrong way after turning)

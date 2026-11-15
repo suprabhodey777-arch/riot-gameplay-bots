@@ -54,13 +54,14 @@ namespace Saltworks
             }
             var mr = new Rect(Mathf.Round(area.x + (area.width - mw) / 2f), Mathf.Round(area.y + (area.height - mh) / 2f), Mathf.Round(mw), Mathf.Round(mh));
             Shadow(mr, 30f, 0.6f);
-            mm.Draw(Game, PhysRect(mr), true, Game.EyePos, Game.Rig.Heading, 1f, scale);
+            Rect panel = PhysRect(mr);
+            mm.Draw(Game, panel, true, Game.EyePos, Game.Rig.Heading, 1f, scale);
             if (Event.current.type == EventType.Repaint) DrawMapLabels(mm, mr);
 
-            // North and the scale bar.
+            // North and the scale bar. The bar takes its scale from the same panel transform the map draws with.
             Lbl(new Rect(mr.xMax - 40f, mr.y + 8f, 30f, 20f), "N", mapLetter, Theme.Muted);
             Fill(new Rect(mr.xMax - 26f, mr.y + 28f, 2f, 12f), Theme.Muted);
-            float tenM = mm.PxPerM * 10f / scale;
+            float tenM = Minimap.PanelScale(panel.width, panel.height, true, mm.MapWidth, mm.MapHeight) * 10f / scale;
             if (tenM > 8f)
             {
                 float sx = mr.x, sy = mr.yMax + 12f;

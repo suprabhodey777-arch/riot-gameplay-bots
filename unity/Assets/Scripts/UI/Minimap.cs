@@ -300,43 +300,59 @@ namespace Saltworks
         }
 
         // ---- drawing ---------------------------------------------------------------------------
-        /// <summary>
-        /// The one transform of a view: sim metres (x right, y north) to panel pixels (x right, y down).
-        /// The full map is always north up and centred on the map; the corner map is centred on the player
-        /// (who therefore sits at the panel centre) and rotates about that point when the setting asks for it.
-        /// </summary>
-        void SetPanel(float w, float h, bool full, Vector2 eye, float headingDeg)
+        /// <summary>Panel pixels per sim metre: the whole map fits in 0.94 of the panel, the corner view is 32 m across.</summary>
+        public static float PanelScale(float w, float h, bool full, float mapWidth, float mapHeight)
         {
-            float scale;
-            Vector2 focus;
-            float angle;
-            if (full)
-            {
-                focus = new Vector2(mapW * 0.5f, mapH * 0.5f);
-                angle = 0f;
-                scale = Mathf.Min(w / Mathf.Max(1f, mapW), h / Mathf.Max(1f, mapH)) * 0.94f;
-            }
-            else
-            {
-                focus = eye;
-                angle = Settings.MinimapRotate ? (90f - headingDeg) * Mathf.Deg2Rad - Mathf.PI * 0.5f : 0f;
-                scale = (w * 0.5f) / (32f / Mathf.Max(0.1f, Settings.MinimapZoom));
-            }
-            pxPerM = scale;
-            float c = Mathf.Cos(angle), s = Mathf.Sin(angle);
-            Vector2 centre = new Vector2(w * 0.5f, h * 0.5f);
-            panel = Matrix4x4.identity;
-            panel.m00 = scale * c; panel.m01 = scale * s;
-            panel.m10 = scale * s; panel.m11 = -scale * c;
-            panel.m03 = centre.x - (panel.m00 * focus.x + panel.m01 * focus.y);
-            panel.m13 = centre.y - (panel.m10 * focus.x + panel.m11 * focus.y);
+            return full
+                ? Mathf.Min(w / Mathf.Max(1f, mapWidth), h / Mathf.Max(1f, mapHeight)) * 0.94f
+                : (w * 0.5f) / (32f / Mathf.Max(0.1f, Settings.MinimapZoom));
         }
 
-        Vector2 ToPanel(Vector2 sim)
+        /// <summary>
+        /// The one transform of a view: sim metres (x east, y north) to panel pixels (x right, y down).
+        /// The full map is always north up and centred on the map; the corner map is centred on the player
+        /// (who therefore sits at the panel centre) and rotates about that point when `rotate` asks for it.
+        /// </summary>
+        public static Matrix4x4 PanelMatrix(float w, float h, bool full, Vector2 eye, float headingDeg, float mapWidth, float mapHeight, float pxPerM, bool rotate)
         {
-            Vector3 p = panel.MultiplyPoint3x4(new Vector3(sim.x, sim.y, 0f));
+            Vector2 focus = full ? new Vector2(mapWidth * 0.5f, mapHeight * 0.5f) : eye;
+            float angle = !full && rotate ? (90f - headingDeg) * Mathf.Deg2Rad - Mathf.PI * 0.5f : 0f;
+            float c = Mathf.Cos(angle), s = Mathf.Sin(angle);
+            Vector2 centre = new Vector2(w * 0.5f, h * 0.5f);
+            Matrix4x4 m = Matrix4x4.identity;
+            m.m00 = pxPerM * c; m.m01 = pxPerM * s;
+            m.m10 = pxPerM * s; m.m11 = -pxPerM * c;
+            m.m03 = centre.x - (m.m00 * focus.x + m.m01 * focus.y);
+            m.m13 = centre.y - (m.m10 * focus.x + m.m11 * focus.y);
+            return m;
+        }
+
+        /// <summary>
+        /// The player's facing in the panel: the sim forward for `headingDeg` (x = sin, y = cos) carried through the
+        /// view's matrix, so it is the camera's direction on this panel and nothing else. The view cone, the arrow
+        /// and the carried-spike badge all take their direction from this one vector.
+        /// </summary>
+        public static Vector2 PanelForward(Matrix4x4 panel, float headingDeg)
+        {
+            var fwd = new Vector2(Mathf.Sin(headingDeg * Mathf.Deg2Rad), Mathf.Cos(headingDeg * Mathf.Deg2Rad));
+            Vector3 d = panel.MultiplyVector(new Vector3(fwd.x, fwd.y, 0f));
+            var dir = new Vector2(d.x, d.y);
+            return dir.sqrMagnitude < 1e-8f ? new Vector2(0f, -1f) : dir.normalized;
+        }
+
+        void SetPanel(float w, float h, bool full, Vector2 eye, float headingDeg)
+        {
+            pxPerM = PanelScale(w, h, full, mapW, mapH);
+            panel = PanelMatrix(w, h, full, eye, headingDeg, mapW, mapH, pxPerM, Settings.MinimapRotate);
+        }
+
+        Vector2 ToPanel(Matrix4x4 m, Vector2 sim)
+        {
+            Vector3 p = m.MultiplyPoint3x4(new Vector3(sim.x, sim.y, 0f));
             return new Vector2(p.x, p.y);
         }
+
+        Vector2 ToPanel(Vector2 sim) => ToPanel(panel, sim);
 
         /// <summary>Where a sim point is drawn, relative to the panel's top-left, in screen pixels (last Draw).</summary>
         public Vector2 PanelPoint(Vector2 sim)
@@ -356,22 +372,25 @@ namespace Saltworks
             if (w < 4f || h < 4f) return;
             ui = Mathf.Max(0.5f, uiScale);
             SetPanel(w, h, full, eye, headingDeg);
+            // This draw's transform and scale as values: no pass below can pick up another view's by mistake.
+            Matrix4x4 m = panel;
+            float ppm = pxPerM;
 
-            Material m = Draw2D.Mat;
-            bool tinted = m.HasProperty("_Color");
-            Color oldTint = tinted ? m.color : Color.white;
+            Material overlay = Draw2D.Mat;
+            bool tinted = overlay.HasProperty("_Color");
+            Color oldTint = tinted ? overlay.color : Color.white;
             try
             {
                 // Everything (fills, edges, icons) is clipped to the panel by the viewport.
                 GL.Viewport(new Rect(Mathf.Round(screenRect.x), Screen.height - Mathf.Round(screenRect.y) - h, w, h));
-                if (tinted) m.color = new Color(1f, 1f, 1f, Mathf.Clamp01(opacity));
+                if (tinted) overlay.color = new Color(1f, 1f, 1f, Mathf.Clamp01(opacity));
 
                 Draw2D.Begin(w, h);
                 Draw2D.Rect(0f, 0f, w, h, BackC);
-                DrawStatic(w, h);
-                DrawEdges(w, h, full);
-                if (full) DrawSpawns();
-                if (icons) DrawDynamic(g, eye, headingDeg, full);
+                DrawStatic(m, w, h);
+                DrawEdges(m, w, h, full);
+                if (full) DrawSpawns(m);
+                if (icons) DrawDynamic(g, eye, headingDeg, full, m, ppm);
                 // A crisp frame, one UI pixel wide.
                 float f = Mathf.Max(1f, Mathf.Round(ui));
                 Color frame = new Color(1f, 1f, 1f, 0.18f);
@@ -385,18 +404,18 @@ namespace Saltworks
             {
                 // Leave IMGUI's GL state as found: no open batch, the shared overlay material untinted, the full-screen viewport.
                 Draw2D.End();
-                if (tinted) m.color = oldTint;
+                if (tinted) overlay.color = oldTint;
                 GL.Viewport(new Rect(0f, 0f, Screen.width, Screen.height));
             }
         }
 
         /// <summary>The static map (floor, site and wall fills), one pass, transformed by the view's panel matrix.</summary>
-        void DrawStatic(float w, float h)
+        void DrawStatic(Matrix4x4 m, float w, float h)
         {
             for (int i = 0; i < mapTris.Length; i += 3)
             {
                 int i0 = mapTris[i], i1 = mapTris[i + 1], i2 = mapTris[i + 2];
-                Vector2 a = ToPanel(mapVerts[i0]), b = ToPanel(mapVerts[i1]), c = ToPanel(mapVerts[i2]);
+                Vector2 a = ToPanel(m, mapVerts[i0]), b = ToPanel(m, mapVerts[i1]), c = ToPanel(m, mapVerts[i2]);
                 if ((a.x < 0f && b.x < 0f && c.x < 0f) || (a.x > w && b.x > w && c.x > w)) continue;
                 if ((a.y < 0f && b.y < 0f && c.y < 0f) || (a.y > h && b.y > h && c.y > h)) continue;
                 Draw2D.TriColored(a, mapCols[i0], b, mapCols[i1], c, mapCols[i2]);
@@ -404,13 +423,13 @@ namespace Saltworks
         }
 
         /// <summary>Wall, site and (full map) callout outlines at a fixed pixel weight, with square joints.</summary>
-        void DrawEdges(float w, float h, bool full)
+        void DrawEdges(Matrix4x4 m, float w, float h, bool full)
         {
             int n = full ? edgeA.Count : calloutEdges;
             float pad = 8f * ui;
             for (int i = 0; i < n; i++)
             {
-                Vector2 a = ToPanel(edgeA[i]), b = ToPanel(edgeB[i]);
+                Vector2 a = ToPanel(m, edgeA[i]), b = ToPanel(m, edgeB[i]);
                 if ((a.x < -pad && b.x < -pad) || (a.x > w + pad && b.x > w + pad) || (a.y < -pad && b.y < -pad) || (a.y > h + pad && b.y > h + pad)) continue;
                 float lw = Mathf.Max(1f, edgeW[i] * ui);
                 Color col = edgeC[i];
@@ -420,21 +439,21 @@ namespace Saltworks
         }
 
         /// <summary>The two spawn zones: a soft team-coloured patch under each spawn point.</summary>
-        void DrawSpawns()
+        void DrawSpawns(Matrix4x4 m)
         {
             foreach (SpawnZone z in spawns)
             {
                 Color tc = Palette.Team(z.Team);
                 foreach (Vector2 p in z.Points)
                 {
-                    Vector2 q = ToPanel(p);
+                    Vector2 q = ToPanel(m, p);
                     float r = 3f * ui;
                     Draw2D.Rect(q.x - r, q.y - r, 2f * r, 2f * r, new Color(tc.r, tc.g, tc.b, 0.55f));
                 }
             }
         }
 
-        void DrawDynamic(GameController g, Vector2 eye, float headingDeg, bool full)
+        void DrawDynamic(GameController g, Vector2 eye, float headingDeg, bool full, Matrix4x4 m, float pxPerM)
         {
             WorldView world = g.World;
             float now = Time.unscaledTime;
@@ -448,7 +467,7 @@ namespace Saltworks
                 foreach (SmokeState sm in st.smokes)
                 {
                     if (sm?.pos == null) continue;
-                    Vector2 p = ToPanel(new Vector2(sm.pos.x, sm.pos.y));
+                    Vector2 p = ToPanel(m, new Vector2(sm.pos.x, sm.pos.y));
                     float rr = sm.radius * pxPerM;
                     Draw2D.Disc(p, rr, sc, 36);
                     Draw2D.Ring(p, rr - 1.2f * ui, rr, new Color(1f, 1f, 1f, 0.55f), 36);
@@ -459,7 +478,7 @@ namespace Saltworks
             SpikeState sp = st?.spike;
             if (sp != null && sp.pos != null && (sp.status == "planted" || sp.status == "dropped"))
             {
-                Vector2 p = ToPanel(new Vector2(sp.pos.x, sp.pos.y));
+                Vector2 p = ToPanel(m, new Vector2(sp.pos.x, sp.pos.y));
                 float pulse = sp.status == "planted" ? 0.6f + 0.4f * Mathf.Abs(Mathf.Sin(now * 5f)) : 1f;
                 Diamond(p, 6f * k + 1.5f * ui, new Color(0f, 0f, 0f, 0.7f));
                 Diamond(p, 6f * k, new Color(Palette.Spike.r, Palette.Spike.g, Palette.Spike.b, pulse));
@@ -472,7 +491,7 @@ namespace Saltworks
             {
                 if (b.Team != g.PlayerTeam || !b.Alive) continue;
                 Vector3 wp = b.Root.transform.position;
-                Vector2 p = ToPanel(new Vector2(wp.x, wp.z));
+                Vector2 p = ToPanel(m, new Vector2(wp.x, wp.z));
                 Dot(p, 4.5f * k, ally, ui);
                 if (st?.spike != null && st.spike.status == "carried" && st.spike.carrierId == b.Id) Diamond(p + new Vector2(0f, -9f * k), 3.5f * k, Palette.Spike);
             }
@@ -486,7 +505,7 @@ namespace Saltworks
                 if (pingAge < 1.6f)
                 {
                     float a = 1f - pingAge / 1.6f;
-                    Vector2 pp = ToPanel(t.PingPos);
+                    Vector2 pp = ToPanel(m, t.PingPos);
                     float r = (4f + 10f * (1f - a)) * k;
                     Draw2D.Ring(pp, r - 1.5f * ui, r, new Color(enemy.r, enemy.g, enemy.b, 0.9f * a), 28);
                     Draw2D.Disc(pp, 2f * k, new Color(enemy.r, enemy.g, enemy.b, a), 12);
@@ -495,7 +514,7 @@ namespace Saltworks
                 bool live = t.Visible || t.Revealed;
                 if (!live && age > 1.2f) continue;
                 float alpha = live ? 1f : 1f - age / 1.2f;
-                Vector2 p = ToPanel(t.Pos);
+                Vector2 p = ToPanel(m, t.Pos);
                 if (t.Revealed)
                 {
                     float rr = (7f + 2f * Mathf.Sin(now * 10f)) * k;
@@ -504,35 +523,54 @@ namespace Saltworks
                 Dot(p, 4.5f * k, new Color(enemy.r, enemy.g, enemy.b, alpha), ui);
             }
 
-            // The player: view cone and an arrow, both anchored on the same panel point.
-            Vector2 me = ToPanel(eye);
-            var fwd = new Vector2(Mathf.Sin(headingDeg * Mathf.Deg2Rad), Mathf.Cos(headingDeg * Mathf.Deg2Rad));
-            Vector2 up = (ToPanel(eye + fwd) - me).normalized;
-            Color accent = Settings.Accent;
+            // The player: view cone, arrow and carried spike, all anchored on the same panel point and the same
+            // panel forward, so the cone and the arrow can never point different ways.
             AgentState mine = g.Me;
-            bool alive = mine == null || mine.alive;
-            if (alive && up.sqrMagnitude > 1e-6f)
+            EmitPlayerMarker(ToPanel(m, eye), PanelForward(m, headingDeg), pxPerM, ui, full,
+                             mine == null || mine.alive, mine != null && mine.carryingSpike,
+                             HalfFovH(g), Settings.Accent, Palette.Spike, Draw2D.Tri);
+        }
+
+        /// <summary>
+        /// The player's map marker from the panel forward `up`: the 18 m view cone centred on it, then the arrow on
+        /// that same line and the carried-spike badge behind it. Both views call this one function, and `tri` receives
+        /// the very triangles that get drawn, so a check can measure the geometry without duplicating the maths.
+        /// </summary>
+        public static void EmitPlayerMarker(Vector2 me, Vector2 up, float pxPerM, float ui, bool full, bool alive,
+                                            bool carryingSpike, float coneHalf, Color accent, Color spike,
+                                            System.Action<Vector2, Vector2, Vector2, Color> tri)
+        {
+            up = up.sqrMagnitude < 1e-8f ? new Vector2(0f, -1f) : up.normalized;
+            float k = (full ? 1.2f : 1f) * ui;
+            float sz = 7f * k;
+            float o = 1.5f * ui;
+            Vector2 side = new Vector2(-up.y, up.x);
+            if (alive)
             {
                 // The camera's real horizontal field of view, and 18 m of world space along the panel transform.
-                float cone = HalfFovH(g);
                 float reach = 18f * pxPerM;
                 const int segs = 12;
                 float baseAng = Mathf.Atan2(up.y, up.x);
                 Color cc = new Color(accent.r, accent.g, accent.b, 0.2f);
                 for (int i = 0; i < segs; i++)
                 {
-                    float a0 = baseAng - cone + 2f * cone * i / segs;
-                    float a1 = baseAng - cone + 2f * cone * (i + 1) / segs;
-                    Draw2D.Tri(me, me + new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * reach, me + new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * reach, cc);
+                    float a0 = baseAng - coneHalf + 2f * coneHalf * i / segs;
+                    float a1 = baseAng - coneHalf + 2f * coneHalf * (i + 1) / segs;
+                    tri(me, me + new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * reach, me + new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * reach, cc);
                 }
             }
-            Vector2 side = new Vector2(-up.y, up.x);
-            float sz = 7f * k;
-            float o = 1.5f * ui;
+            // An arrow whose tip sits on the player's point, inside a slightly bigger dark outline.
             Color body = alive ? Color.white : new Color(0.6f, 0.6f, 0.65f);
-            Draw2D.Tri(me + up * (sz + o + 1f), me - up * (sz * 0.6f + o) + side * (sz * 0.75f + o), me - up * (sz * 0.6f + o) - side * (sz * 0.75f + o), new Color(0f, 0f, 0f, 0.8f));
-            Draw2D.Tri(me + up * sz, me - up * sz * 0.6f + side * sz * 0.75f, me - up * sz * 0.6f - side * sz * 0.75f, body);
-            if (mine != null && mine.carryingSpike) Diamond(me - up * (sz + 6f * ui), 3.5f * k, Palette.Spike);
+            tri(me + up * (sz + o + 1f), me - up * (sz * 0.6f + o) + side * (sz * 0.75f + o), me - up * (sz * 0.6f + o) - side * (sz * 0.75f + o), new Color(0f, 0f, 0f, 0.8f));
+            tri(me + up * sz, me - up * sz * 0.6f + side * sz * 0.75f, me - up * sz * 0.6f - side * sz * 0.75f, body);
+            if (carryingSpike)
+            {
+                // The spike badge rides behind the arrow, so it reads as "this is you, and you have it".
+                Vector2 dp = me - up * (sz + 6f * ui);
+                float r = 3.5f * k;
+                tri(dp + new Vector2(0f, -r), dp + new Vector2(r, 0f), dp + new Vector2(0f, r), spike);
+                tri(dp + new Vector2(0f, -r), dp + new Vector2(0f, r), dp + new Vector2(-r, 0f), spike);
+            }
         }
 
         /// <summary>Half of the camera's horizontal field of view: 2*atan(tan(vFov/2) * aspect), halved.</summary>

@@ -22,6 +22,7 @@ import { withPlayerAgent } from '../analyzer/drills.ts';
 import { analyze } from '../analyzer/analyze.ts';
 import { BENCHMARKS } from '../analyzer/benchmarks.ts';
 import { rehearsalDrill } from '../analyzer/rehearse.ts';
+import { showcaseDrill } from '../analyzer/showcase.ts';
 import { EXAM_SEED_BASE, examDrills, type NextDrill, type PlayedDrill, planNext } from '../analyzer/plan.ts';
 import { newStaircase, type StaircaseState, update } from '../analyzer/staircase.ts';
 import { debrief as writeDebrief } from '../coach/debrief.ts';
@@ -37,6 +38,8 @@ export interface SessionOptions {
   timeoutMs?: number;
   /** Offer a rehearsal of each of the worst finding's failed moments before generated drills (default true). */
   rehearsalsFirst?: boolean;
+  /** Showcase mode: the worst finding offers exactly one hand-built drill for its skill, and "next drill" replays it. */
+  showcase?: boolean;
 }
 
 export interface PracticeRecord {
@@ -151,6 +154,7 @@ export class CoachingSession {
     const finding = this.s.report.findings[0];
     // Only a credible weakness has mistakes to rehearse; a severity of 0 means the evidence is not there.
     if (!finding || finding.sampleSize === 0 || finding.severity <= 0) return [];
+    if (this.opts.showcase) return [withPlayerAgent(showcaseDrill(finding.skill), this.s.playerAgent)];
     // Each moment is rebuilt on the map it happened on, whatever map new drills use: picking a
     // different map used to drop every mistake from the history and leave nothing to rehearse.
     return finding.evidence
@@ -169,6 +173,12 @@ export class CoachingSession {
    */
   nextDrill(): NextDrill {
     const map = loadMap(this.s.mapId);
+    const shown = this.opts.showcase ? this.rehearsals()[0] : undefined;
+    if (shown) {
+      this.s.history.push({ skill: shown.skill, seed: shown.seed });
+      this.s.current = shown;
+      return { skill: shown.skill, drill: shown };
+    }
     if (this.opts.rehearsalsFirst !== false) {
       const done = new Set(this.s.rehearsed ?? []);
       const next = this.rehearsals().find((d) => !done.has(d.id));

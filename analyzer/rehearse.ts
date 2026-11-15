@@ -15,7 +15,7 @@ import type { DrillBot, DrillSpec, Situation, WeaknessEvidence, WeaknessFinding 
 import { minWallDist, spotsFor } from '../bot/nav.ts';
 import { FOV_RAD, HEARING_RANGE } from '../bot/view.ts';
 
-import { bot, type ArchetypeId, buildDrill, EXAM_SEED_BASE, PLAYER_ID, walkablePoint } from './drills.ts';
+import { backOffStart, bot, type ArchetypeId, buildDrill, EXAM_SEED_BASE, facingToward, PLAYER_ID, START_CLEAR_M, walkablePoint } from './drills.ts';
 import { calloutAt, centroid, dist } from './geo.ts';
 import { AGENT_RADIUS, siteIds, sitePoly, lineOfSight } from '../sim/geometry.ts';
 import { DEFUSE_TIME_S, DETONATION_S, PLANT_TIME_S, RUN_SPEED } from '../sim/sim.ts';
@@ -29,7 +29,7 @@ const clampN = (v: number, lo: number, hi: number): number => Math.min(hi, Math.
 
 
 /** The player starts at least this far from every enemy, and this long (s) before the contact if the ground allows. */
-export const MIN_START_DIST_M = 8;
+export const MIN_START_DIST_M = START_CLEAR_M;
 export const MIN_LEAD_S = 3;
 /** Extra margin (s) on top of walk + plant/defuse for a time-pressure rehearsal. */
 export const TIME_MARGIN_S = 3;
@@ -133,6 +133,11 @@ function routeLength(map: MapDef, from: Vec2, to: Vec2): number {
  *   nav-node    the nearest nav node that passes start-only
  *   none        the moment itself
  * `rule` says which one was used.
+ *
+ * With `confront` (opening-duel rehearsals) the player instead starts a couple of seconds before
+ * contact: the hidden point above is moved along clear ground until the first sight of an enemy
+ * is START_CONTACT_MIN_M..START_CONTACT_MAX_M m of path away, facing on along the way in. When no
+ * such ground exists the point above stands, like before.
  */
 export function approachStart(
   map: MapDef,
@@ -140,6 +145,37 @@ export function approachStart(
   enemies: Vec2[],
   side: Team,
   minDist = MIN_START_DIST_M,
+  confront = false,
+): { pos: Vec2; walkS: number; rule: HideRule; yaw: number | null } {
+  const base = walkBackStart(map, moment, enemies, side, minDist);
+  if (!confront || base.rule === 'none') return { ...base, yaw: null };
+  // Start a couple of seconds before contact instead of a lead's run back: use the hidden point
+  // the walk-back search found, then adjust it along the ground until the first sight of an
+  // enemy is START_CONTACT_MIN_M..START_CONTACT_MAX_M of path away. Same hiding rule either way.
+  const watchers: Watcher[] = enemies.map((e) => ({ pos: e, yaw: yawTo(e, moment) }));
+  const ok =
+    base.rule === 'strict'
+      ? (p: Vec2) => unseen(map, p, enemies, minDist) && robustlyHidden(map, p, moment, watchers, true)
+      : base.rule === 'fov'
+        ? (p: Vec2) => unseen(map, p, enemies, minDist) && robustlyHidden(map, p, moment, watchers, false)
+        : (p: Vec2) => unseen(map, p, enemies, minDist);
+  const refined = backOffStart(map, base.pos, enemies, ok, (p) => walkablePoint(map, p, 5));
+  if (!refined) return { ...base, yaw: null };
+  return {
+    pos: refined.spawn,
+    walkS: Math.round((routeLength(map, refined.spawn, moment) / RUN_SPEED) * 10) / 10,
+    rule: base.rule,
+    yaw: refined.yaw,
+  };
+}
+
+/** Walk back from the moment toward the side's spawn: the hidden start the approach is built from. */
+function walkBackStart(
+  map: MapDef,
+  moment: Vec2,
+  enemies: Vec2[],
+  side: Team,
+  minDist: number,
 ): { pos: Vec2; walkS: number; rule: HideRule } {
   const lead = MIN_LEAD_S * RUN_SPEED;
   const watchers: Watcher[] = enemies.map((e) => ({ pos: e, yaw: yawTo(e, moment) }));
@@ -148,7 +184,11 @@ export function approachStart(
     { rule: 'fov', ok: (p) => unseen(map, p, enemies, minDist) && robustlyHidden(map, p, moment, watchers, false) },
     { rule: 'start-only', ok: (p) => unseen(map, p, enemies, minDist) },
   ];
-  const done = (pos: Vec2, rule: HideRule) => ({ pos, walkS: Math.round((routeLength(map, pos, moment) / RUN_SPEED) * 10) / 10, rule });
+  const done = (pos: Vec2, rule: HideRule) => ({
+    pos,
+    walkS: Math.round((routeLength(map, pos, moment) / RUN_SPEED) * 10) / 10,
+    rule,
+  });
 
   // Candidate points along each route back to a spawn, with their distance from the moment.
   const cands: { pos: Vec2; d: number }[] = [];
@@ -264,7 +304,8 @@ export function rehearsalDrill(evidence: WeaknessEvidence, finding: WeaknessFind
   }
 
   // The player starts back along the approach, out of every enemy's sight (a smoke needs more room to land).
-  const start = approachStart(map, moment, enemyPos, s.side, finding.skill === 'smoke_usage' ? 12 : MIN_START_DIST_M);
+  // The opening-duel rehearsal starts a couple of seconds before contact instead, around the corner.
+  const start = approachStart(map, moment, enemyPos, s.side, finding.skill === 'smoke_usage' ? 12 : MIN_START_DIST_M, finding.skill === 'entry');
   const spawn = start.pos;
 
   const enemyTeam = s.side === 'attack' ? 'defense' : 'attack';
@@ -276,6 +317,8 @@ export function rehearsalDrill(evidence: WeaknessEvidence, finding: WeaknessFind
   const planted = s.spikePlanted ? { site: s.spikePlanted.site, pos: place(s.spikePlanted.pos, 77) } : null;
   const ids = siteIds(map);
   const siteGoal = planted ? planted.pos : centroid(sitePoly(map, s.site && ids.includes(s.site) ? s.site : ids[0]));
+  // Facing: along the route into the fight (entry) or toward the objective (the site or the spike).
+  const facing = start.yaw ?? facingToward(map, spawn, finding.skill === 'entry' ? moment : siteGoal);
 
   // The clock: the walk back is time the player spends again, so the moment of contact keeps its clock.
   let left: number;
@@ -300,7 +343,7 @@ export function rehearsalDrill(evidence: WeaknessEvidence, finding: WeaknessFind
     mapId: map.id,
     seed,
     difficulty: REHEARSAL_DIFFICULTY,
-    player: { agent: finding.skill === 'smoke_usage' ? 'haze' : 'rook', id: PLAYER_ID, team: s.side, spawn, hp: 100, carryingSpike: hasSpike },
+    player: { agent: finding.skill === 'smoke_usage' ? 'haze' : 'rook', id: PLAYER_ID, team: s.side, spawn, yaw: facing, hp: 100, carryingSpike: hasSpike },
     bots,
     roundTimeLeftS: left,
     spikePlanted: planted ? { ...planted, secondsLeft: left } : null,

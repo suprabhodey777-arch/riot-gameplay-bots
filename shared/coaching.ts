@@ -121,11 +121,25 @@ export interface DrillSpec {
   /** 0 (easiest) to 1 (hardest); set by the staircase. */
   difficulty: number;
   /** Agent is filled by drill builders; optional only for older serialized drills. */
-  player: { agent?: AgentId; id: string; team: Team; spawn: Vec2; hp: number; carryingSpike: boolean };
+  player: {
+    agent?: AgentId;
+    id: string;
+    team: Team;
+    spawn: Vec2;
+    /**
+     * Which way the player faces at tick 0, in radians (the sim's yaw convention: atan2(dy, dx)).
+     * Left out by older specs, which keep the team's default facing.
+     */
+    yaw?: number;
+    hp: number;
+    carryingSpike: boolean;
+  };
   bots: DrillBot[];
   roundTimeLeftS: number;
   /** Set for retake and post-plant drills. */
   spikePlanted: { site: SiteId; pos: Vec2; secondsLeft: number } | null;
+  /** Optional on-screen objective marker (showcase drills). */
+  objective?: { label: string; pos: Vec2 };
 }
 
 /** What happened when a drill was played. */

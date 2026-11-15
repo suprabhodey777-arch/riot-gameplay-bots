@@ -529,6 +529,8 @@ namespace Saltworks
         public string id;
         public string team;
         public Vec2 spawn;
+        /// <summary>Facing at tick 0 in radians (sim convention); 0 when the spec is older and has none.</summary>
+        public float yaw;
         public float hp = 100f;
         public bool carryingSpike;
         /// <summary>Possibly present in v4 drill specs; DrillMsg.playerAgent wins.</summary>
@@ -550,6 +552,12 @@ namespace Saltworks
         public float secondsLeft;
     }
 
+    public class DrillObjective
+    {
+        public string label;
+        public Vec2 pos;
+    }
+
     public class DrillSpec
     {
         public string id;
@@ -563,6 +571,8 @@ namespace Saltworks
         public List<DrillBotSpec> bots = new List<DrillBotSpec>();
         public float roundTimeLeftS;
         public SpikePlantedSpec spikePlanted;
+        /// <summary>Showcase drills: an on-screen objective marker (label and sim position).</summary>
+        public DrillObjective objective;
         /// <summary>bots-wire.3 drills may carry a loadout { primary, secondary, armor, credits }.</summary>
         public LoadoutInfo loadout;
     }

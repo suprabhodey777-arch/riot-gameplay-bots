@@ -1122,6 +1122,7 @@ namespace Saltworks
             Fx.Clear();
             World.StartDrill(d, 1f / Rules.tickRate);
             PlayerAgent = d.playerAgent ?? d.spec?.player?.agent ?? World.Agent(PlayerId)?.agent ?? PickedAgentId;
+            // The state's start yaw (from the drill spec) sets the view, so a drill faces down its route.
             Rig.ResetFor(World.Agent(PlayerId));
             AgentState mine = World.Agent(PlayerId);
             Predictor.Configure(Walls, Rules);

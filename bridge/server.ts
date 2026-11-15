@@ -355,7 +355,8 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.BRIDGE_PORT ?? 7777);
-  const server = createBridgeServer();
+  // Showcase mode by default for the demo: each weakness offers its one hand-built drill. BRIDGE_SHOWCASE=0 restores generated drills.
+  const server = createBridgeServer({ showcase: process.env.BRIDGE_SHOWCASE !== '0' });
   server.on('error', (err) => { console.error(err.message); process.exitCode = 1; });
   // Build each map's waypoint graph now, so the first drill does not stall on it (~170 ms).
   for (const id of PLAYABLE_MAPS) navFor(loadMap(id));

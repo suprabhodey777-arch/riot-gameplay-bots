@@ -477,6 +477,7 @@ namespace Saltworks
                 Draw2D.End();
             }
             if (alive && !Game.Paused) DrawDamageIndicators(now);
+            if (alive && !Game.Paused && !Game.MapOpen) DrawObjective();
 
             // Blinded: FlashOverlay's white-out and afterimage over the world and the crosshair.
             FlashOverlay.Draw(new Rect(0f, 0f, W, H), Game.BlindSecondsLeft, Game.BlindTotalSeconds, false);
