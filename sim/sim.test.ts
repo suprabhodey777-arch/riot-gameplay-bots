@@ -73,11 +73,11 @@ describe('fighting', () => {
     expect(r.state.agents[1].alive).toBe(true);
   });
 
-  test('smoke blocks shots and sight, then expires after 15 s', () => {
+  test('smoke blocks sight but not bullets, then expires after 15 s', () => {
     const sim = createSim({ map: arena(), seed: 1, agents: [...duel, { id: 'd2', team: 'defense', isBot: true }] });
     const r = sim.step([input('a', { smokeAt: { x: 10, y: 10 }, fire: head })]);
     expect(r.events.some((e) => e.type === 'smoke')).toBe(true);
-    expect(r.events.some((e) => e.type === 'damage')).toBe(false);
+    expect(r.events.some((e) => e.type === 'damage')).toBe(true);
     expect(r.events.some((e) => e.type === 'spotted')).toBe(false);
     expect(r.state.smokes[0].radius).toBe(4.5);
     expect(r.state.agents[0].smokesLeft).toBe(2);

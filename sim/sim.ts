@@ -327,7 +327,8 @@ export function createSim(opts: CreateSimOptions): Sim {
       const target = agents.find((x) => x.id === inp.fire?.targetId);
       if (!target || target.team === a.team || target.hp <= 0 || !live(target.id)) continue;
       if (a.blindUntilTick > s.tick || inp.fire.result === 'miss') continue;
-      if (!lineOfSight(a.pos, target.pos, walls, s.smokes)) continue;
+      // Smoke blocks vision, not bullets: a shot only needs a clear line through walls.
+      if (!lineOfSight(a.pos, target.pos, walls)) continue;
       const part = inp.fire.result;
       let amount = 0;
       for (let pellet = 0; pellet < w.pellets; pellet++) {
