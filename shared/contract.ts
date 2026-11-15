@@ -46,6 +46,7 @@ export const AGENTS: Record<AgentId, { role: 'duelist' | 'controller' | 'initiat
   pike: { role: 'sentinel', kit: { smoke: 1, flash: 0, dash: 0, recon: 2 } },
 };
 export const agentForArchetype = (id: string): AgentId => ({
+  zephyr: 'rook', atlas: 'haze', ember: 'pike', wisp: 'pike', nova: 'wren',
   'entry-duelist': 'rook', 'utility-controller': 'haze', 'patient-lurker': 'pike', 'off-angle-anchor': 'pike', baseline: 'wren',
 } as Record<string, AgentId>)[id] ?? 'wren';
 

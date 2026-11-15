@@ -1,7 +1,7 @@
 import type { Loadout } from '../shared/weapons.ts';
 import { agentForArchetype, type AgentId } from '../shared/contract.ts';
 import type { BotTraits } from '../shared/coaching.ts';
-import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
+import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, SiteId, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { createRng } from '../sim/rng.ts';
 import { createSim, type Scenario, type Sim } from '../sim/sim.ts';
 import { type Bot, createBot } from './bot.ts';
@@ -53,7 +53,7 @@ const sanitize = (i: PlayerInput, fallbackYaw: number): PlayerInput => {
   return { ...i, move: { x, y }, yaw: Number.isFinite(i.yaw) ? i.yaw : fallbackYaw };
 };
 
-export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgent[]; scenario?: Scenario; /** Bot team behaviour (default true); see BotOptions.teamPlay. */ teamPlay?: boolean }): Match {
+export function createMatch(opts: { map: MapDef; seed: number; site?: SiteId; agents: MatchAgent[]; scenario?: Scenario; /** Bot team behaviour (default true); see BotOptions.teamPlay. */ teamPlay?: boolean }): Match {
   const agents = opts.agents.map(a => {
     const archetypeId = a.archetypeId ?? ARCHETYPES.find(b => JSON.stringify(b.traits) === JSON.stringify(a.traits ?? DEFAULT_TRAITS))?.id ?? 'baseline';
     return { ...a, archetypeId, agent: a.agent ?? (a.isBot ? agentForArchetype(archetypeId) : 'rook') };
@@ -69,7 +69,7 @@ export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgen
   for (const a of agents) {
     if (!a.isBot) continue;
     const rng = createRng((Math.imul(opts.seed >>> 0, 2654435761) ^ hashStr(a.id)) >>> 0);
-    bots.set(a.id, createBot({ id: a.id, map: opts.map, archetypeId: a.archetypeId, traits: a.traits ?? (a.archetypeId ? archetypeById(a.archetypeId).traits : DEFAULT_TRAITS), rng, siteSeed: opts.seed, hold: a.hold, teamPlay: opts.teamPlay }));
+    bots.set(a.id, createBot({ id: a.id, map: opts.map, archetypeId: a.archetypeId, traits: a.traits ?? (a.archetypeId ? archetypeById(a.archetypeId).traits : DEFAULT_TRAITS), rng, siteSeed: opts.seed, site: opts.site, hold: a.hold, teamPlay: opts.teamPlay }));
     health.set(a.id, createHealth());
   }
   const faults = new Map<string, Fault>();

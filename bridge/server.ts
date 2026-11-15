@@ -1,3 +1,7 @@
+import { StreamerOverlay } from './streamer.ts';
+import { PERSONAS, isPersona, personaById, type PersonaId } from '../shared/personas.ts';
+import { personaOffer } from '../analyzer/plan.ts';
+import { siteIds } from '../sim/geometry.ts';
 import { setTimeout, clearTimeout } from 'node:timers';
 import { WEAPONS } from '../shared/weapons.ts';
 import { MatchGame } from '../session/match-game.ts';
@@ -19,7 +23,7 @@ import { buildDrill, withPlayerAgent } from '../analyzer/drills.ts';
 import { archetypeById } from '../bot/traits.ts';
 import { debrief } from '../coach/debrief.ts';
 import { DEFUSE_TIME_S, PLANT_TIME_S, RUN_SPEED, TICK_RATE, FLASH_MAX_RANGE_M, FLASH_FUSE_S, FLASH_BLIND_S, DASH_DISTANCE_M, RECON_MAX_RANGE_M, RECON_RADIUS_M, RECON_REVEAL_S, RUN_HEARING_M, WALK_SPEED, CROUCH_SPEED } from '../sim/sim.ts';
-import { PROTOCOL, type BridgeInput, type ClientMessage, type Rules, type ServerMessage } from './protocol.ts';
+import { PROTOCOL, type BridgeInput, type ClientMessage, type Rules, type ServerMessage, type Protocol } from './protocol.ts';
 
 export const RULES: Rules = {
   weapons: WEAPONS,
@@ -89,7 +93,9 @@ export function createBridgeServer(options: SessionOptions = {}): Server {
 
 /** Handle one ordered NDJSON stream; exported for transport-independent verification. */
 export function serveBridgeConnection(socket: Socket, options: SessionOptions = {}): void {
-  let protocol: 'bots-wire.1' | 'bots-wire.2' | typeof PROTOCOL = PROTOCOL;
+  let protocol: Protocol = PROTOCOL;
+  let overlay = new StreamerOverlay(1);
+  const personaTeam = (): Record<string, PersonaId> => Object.fromEntries(fullMatch ? fullMatch.wallets.filter(w => isPersona(w.archetypeId)).map(w => [w.id, w.archetypeId as PersonaId]) : active?.run.spec.bots.filter(b => isPersona(b.archetypeId)).map(b => [b.id, b.archetypeId as PersonaId]) ?? []);
   let pickedMap: string | undefined;
   let pickedAgent: AgentId | undefined;
   let logs: MatchLog[] = [];
@@ -113,10 +119,10 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
     send({ type: 'step', state, events: [], thoughts: {}, done: false });
   };
   const scheduleBuy = () => { clearBuyTimer(); buyTimer = setTimeout(startMatchRound, 20000); buyTimer.unref(); };
-  const send = (msg: ServerMessage): void => { if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(weaponLegacy(msg)) : protocol === 'bots-wire.2' ? weaponLegacy(msg) : ammoInHand(msg)) + '\n'); };
+  const send = (msg: ServerMessage): void => { if (protocol !== PROTOCOL && ['chat', 'alert', 'persona_line', 'personas', 'duel_end'].includes(msg.type)) return; if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(weaponLegacy(msg)) : protocol === 'bots-wire.2' ? weaponLegacy(msg) : ammoInHand(msg)) + '\n'); };
   const report = (): void => {
     const staircases = Object.fromEntries(SKILLS.map((s) => [s, { difficulty: session.staircase(s).difficulty }])) as Record<Skill, { difficulty: number }>;
-    send({ type: 'report', report: session.report, rehearsals: session.rehearsals().map((d, index) => ({ index, title: d.title, brief: d.goal, skill: d.skill })), staircases, played: played.length, agentAdvice: recommendAgents([...logs, ...played], session.report) });
+    send({ type: 'report', report: session.report, rehearsals: session.rehearsals().map((d, index) => ({ index, title: d.title, brief: d.goal, skill: d.skill })), staircases, played: played.length, agentAdvice: recommendAgents([...logs, ...played], session.report), ...(protocol === PROTOCOL ? { personaOffer: personaOffer(session.report) } : {}) });
   };
   const finish = async (abandon = false): Promise<void> => {
     if (!active) throw new Error('No live drill');
@@ -161,13 +167,15 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   const handle = async (raw: unknown): Promise<void> => {
     if (!object(raw) || typeof raw.type !== 'string') throw new Error('Expected an object with a type');
     const msg = raw as unknown as ClientMessage;
-    if (fullMatch && ['match', 'load_history', 'next_drill', 'retry', 'rehearse', 'versus', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('Abandon the match before changing mode');
+    if (fullMatch && ['match', 'duel', 'load_history', 'next_drill', 'retry', 'rehearse', 'versus', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('Abandon the match before changing mode');
     if (protocol === 'bots-wire.1' && ['maps', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('This command requires bots-wire.2');
+    if (protocol !== PROTOCOL && (['personas', 'duel', 'streamer'].includes(msg.type) || (msg.type === 'match' && (msg.enemyPersonas !== undefined || msg.allyPersonas !== undefined)))) throw new Error('This command requires bots-wire.4');
     switch (msg.type) {
       case 'hello':
-        if (fullMatch && msg.protocol !== PROTOCOL) throw new Error('Match mode requires bots-wire.3');
-        if (msg.protocol !== PROTOCOL && msg.protocol !== 'bots-wire.1' && msg.protocol !== 'bots-wire.2') throw new Error(`Expected protocol ${PROTOCOL}`);
+        if (fullMatch && msg.protocol !== protocol) throw new Error('Match mode requires bots-wire.3');
+        if (msg.protocol !== PROTOCOL && msg.protocol !== 'bots-wire.1' && msg.protocol !== 'bots-wire.2' && msg.protocol !== 'bots-wire.3') throw new Error(`Expected protocol ${PROTOCOL}`);
         protocol = msg.protocol;
+        if (protocol !== PROTOCOL) overlay.toggle(false);
         clientMap = session.toJSON().mapId;
         send({ type: 'hello', protocol, map: loadMap(clientMap), rules: RULES });
         break;
@@ -204,6 +212,9 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         const replacement = CoachingSession.fromHistory(next, next[0]?.playerId ?? 'player', { ...options, seed, mapId: pickedMap ?? next[0]?.mapId ?? DEFAULT_MAP_ID });
         loadMap(replacement.toJSON().mapId);
         if (active) await finish(true);
+        const streaming = overlay.on;
+        overlay = new StreamerOverlay(seed);
+        overlay.toggle(streaming);
         logs = next;
         played = [];
         session = CoachingSession.fromJSON({ ...replacement.toJSON(), playerAgent: pickedAgent }, options);
@@ -233,21 +244,37 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
       }
       case 'versus': {
         skill(msg.skill);
+        if (isPersona(msg.archetype) && protocol !== PROTOCOL) throw new Error('Personas require bots-wire.4');
         const archetype = archetypeById(msg.archetype);
         if (active) await finish(true);
         const spec = buildDrill(msg.skill, 0.3, loadMap(session.toJSON().mapId), 1 + sequence++ % 8999);
-        begin({ ...spec, id: `versus-${spec.id}`, bots: spec.bots.map((b) => ({ ...b, archetypeId: archetype.id, traits: { ...archetype.traits } })) }, true);
+        begin({ ...spec, goal: isPersona(archetype.id) ? `${spec.goal} ${personaById(archetype.id).beatTip}` : spec.goal, id: `versus-${spec.id}`, bots: spec.bots.map((b) => ({ ...b, archetypeId: archetype.id, traits: { ...archetype.traits } })) }, true);
         break;
       }
+      case 'personas':
+        send({ type: 'personas', personas: PERSONAS }); break;
+      case 'streamer':
+        if (typeof msg.on !== 'boolean') throw new Error('Invalid streamer toggle');
+        overlay.toggle(msg.on); break;
+      case 'duel': {
+        const map = loadMap(msg.map);
+        personaById(msg.persona);
+        if (!siteIds(map).includes(msg.site)) throw new Error('Unknown site');
+        if (active) await finish(true);
+        clearBuyTimer();
+        fullMatch = new MatchGame({ map: msg.map, agent: pickedAgent ?? 'rook', playerId: session.playerId, seed: ++sequence, duel: { persona: msg.persona, site: msg.site } });
+        send({ type: 'map', map }); startMatchRound(); break;
+      }
       case 'match': {
-        if (protocol !== PROTOCOL) throw new Error('Match mode requires bots-wire.3');
+        if (protocol !== PROTOCOL && protocol !== 'bots-wire.3') throw new Error('Match mode requires bots-wire.3');
         loadMap(msg.map);
         if (!Object.hasOwn(AGENTS, msg.agent)) throw new Error('Unknown agent');
+        for (const [ids, length] of [[msg.enemyPersonas, 5], [msg.allyPersonas, 4]] as const) if (ids !== undefined && (!Array.isArray(ids) || ids.length !== length || !ids.every(isPersona))) throw new Error('Invalid persona team');
         if (active) await finish(true);
         clearBuyTimer();
         pickedMap = msg.map; pickedAgent = msg.agent;
         session = CoachingSession.fromJSON({ ...session.toJSON(), mapId: msg.map, playerAgent: msg.agent }, options);
-        fullMatch = new MatchGame({ map: msg.map, agent: msg.agent, playerId: session.playerId, seed: ++sequence, matchId: `bridge-match-${sequence}` });
+        fullMatch = new MatchGame({ map: msg.map, agent: msg.agent, playerId: session.playerId, seed: ++sequence, matchId: `bridge-match-${sequence}`, enemyPersonas: msg.enemyPersonas, allyPersonas: msg.allyPersonas });
         send({ type: 'map', map: loadMap(msg.map) }); send(fullMatch.buyPhase()); scheduleBuy(); break;
       }
       case 'buy': case 'sell':
@@ -259,8 +286,15 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
       case 'input': {
         if (fullMatch) {
           validateInput(msg.input);
+          const before = fullMatch.state();
+          const personas = personaTeam();
           const messages = fullMatch.step({ ...msg.input, agentId: session.playerId });
-          for (const message of messages) send(message);
+          for (const message of messages) {
+            if (message.type === 'buy_phase' && fullMatch.duel) continue;
+            send(message);
+            if (message.type === 'step' && protocol === PROTOCOL) for (const event of overlay.observe(before, message.state, message.events, session.playerId, personas, message.thoughts, { ...msg.input, agentId: session.playerId })) send(event);
+          }
+          if (fullMatch.duel && fullMatch.phase === 'buy') startMatchRound();
           if (fullMatch.phase === 'buy') scheduleBuy();
           if (fullMatch.phase === 'ended') {
             played.push(fullMatch.log()); fullMatch = null;
@@ -272,10 +306,12 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         }
         if (!active) throw new Error('No live drill');
         validateInput(msg.input);
+        const before = active.run.state();
         const step = active.run.step({ ...msg.input, agentId: active.run.spec.player.id });
         const thoughts: Record<string, string> = {};
         for (const t of step.trace) thoughts[t.botId] = t.node;
         send({ type: 'step', state: step.state, events: step.events, thoughts, done: step.done });
+        if (protocol === PROTOCOL) for (const event of overlay.observe(before, step.state, step.events, session.playerId, personaTeam(), thoughts, { ...msg.input, agentId: session.playerId })) send(event);
         if (step.done) await finish();
         break;
       }

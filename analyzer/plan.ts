@@ -1,3 +1,4 @@
+import { personaById, PERSONA_TRAITS, type PersonaId } from '../shared/personas.ts';
 /**
  * Session planner and the transfer exam.
  *
@@ -65,4 +66,17 @@ export function examDrills(map: MapDef, seed = 0): DrillSpec[] {
     }
   }
   return out;
+}
+
+/** An optional offer: ordinary planning and the held-out evidence stay unchanged. */
+export function personaOffer(report: WeaknessReport) {
+  const skill = report.findings[0]?.skill ?? 'entry';
+  const persona: PersonaId = skill === 'clutch' ? 'wisp' : skill === 'time_pressure' ? 'zephyr' : 'ember';
+  const profile = personaById(persona);
+  return { persona, skill, title: `Learn from ${profile.name}`, beatTip: profile.beatTip };
+}
+export function personaDrill(report: WeaknessReport, map: MapDef, seed: number, difficulty = .3): DrillSpec {
+  const offer = personaOffer(report);
+  const drill = buildDrill(offer.skill, difficulty, map, seed);
+  return { ...drill, id: `persona-${drill.id}`, title: offer.title, goal: `${drill.goal} ${offer.beatTip}`, bots: drill.bots.map(b => ({ ...b, archetypeId: offer.persona, traits: { ...PERSONA_TRAITS[offer.persona] } })) };
 }

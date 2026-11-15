@@ -1,3 +1,4 @@
+import { isPersona, PERSONA_WEAPONS } from '../shared/personas.ts';
 import { AGENTS, agentForArchetype, type AgentId } from '../shared/contract.ts';
 /**
  * Drill generators: one per skill. A drill is a DrillSpec (the shared shape the
@@ -252,7 +253,7 @@ export function drillSimOptions(spec: DrillSpec): CreateSimOptions {
   const map = loadMap(spec.mapId);
   const agents: CreateSimOptions['agents'] = [
     { id: spec.player.id, team: spec.player.team, isBot: false, loadout: spec.loadout, agent: withPlayerAgent(spec).player.agent },
-    ...spec.bots.map((b) => ({ id: b.id, team: b.team, isBot: true, loadout: spec.eco ? undefined : spec.loadout, agent: agentForArchetype(b.archetypeId) })),
+    ...spec.bots.map((b) => ({ id: b.id, team: b.team, isBot: true, loadout: isPersona(b.archetypeId) ? { primary: spec.eco && PERSONA_WEAPONS[b.archetypeId].includes('hammer') ? 'hammer' as const : PERSONA_WEAPONS[b.archetypeId][0], secondary: 'hammer' as const, armor: null, credits: 0 } : spec.eco ? undefined : spec.loadout, agent: agentForArchetype(b.archetypeId) })),
   ];
   const scenarioAgents: NonNullable<NonNullable<CreateSimOptions['scenario']>['agents']> = {
     [spec.player.id]: { spawn: spec.player.spawn, hp: spec.player.hp, carryingSpike: spec.player.carryingSpike },

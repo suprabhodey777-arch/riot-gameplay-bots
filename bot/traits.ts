@@ -1,3 +1,4 @@
+import { PERSONAS, PERSONA_TRAITS } from '../shared/personas.ts';
 import type { Archetype, BotTraits } from '../shared/coaching.ts';
 
 /** The plain generic bot: average everything. */
@@ -77,6 +78,8 @@ export const ARCHETYPES: Archetype[] = [
 ];
 
 export const archetypeById = (id: string): Archetype => {
+  const persona = PERSONAS.find(p => p.id === id);
+  if (persona) return { id, name: persona.name, description: persona.style, traits: { ...PERSONA_TRAITS[persona.id] } };
   const a = ARCHETYPES.find((x) => x.id === id);
   if (!a) throw new Error(`Unknown archetype ${id}`);
   return a;

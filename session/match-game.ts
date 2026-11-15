@@ -1,3 +1,7 @@
+import { isPersona, personaById, PERSONA_WEAPONS, type PersonaId } from '../shared/personas.ts';
+import { pointInPolygon, sitePoly } from '../sim/geometry.ts';
+import { navFor, spotsFor } from '../bot/nav.ts';
+import type { SiteId } from '../shared/contract.ts';
 import { AGENTS, type AgentId, type MatchLog, type PlayerInput, type SimEvent, type SimState, type Team } from '../shared/contract.ts';
 import { ARMOR, WEAPONS, roundType, weaponSlot, type ArmorId, type Loadout, type RoundType, type WeaponId } from '../shared/weapons.ts';
 import { loadMap } from '../shared/maps/index.ts';
@@ -22,6 +26,7 @@ export class MatchGame {
   timeS = 20;
   match: Match | null = null;
   private seed: number;
+  readonly duel?: { persona: PersonaId; site: SiteId };
   private losses = { player: 0, enemy: 0 };
   private types: { player: RoundType; enemy: RoundType } = { player: 'pistol', enemy: 'pistol' };
   private purchases: SimEvent[] = [];
@@ -29,17 +34,25 @@ export class MatchGame {
   private deaths = 0;
   private heads = 0;
 
-  constructor(opts: { map: string; agent: AgentId; playerId?: string; seed?: number; matchId?: string }) {
-    loadMap(opts.map);
+  constructor(opts: { map: string; agent: AgentId; playerId?: string; seed?: number; matchId?: string; enemyPersonas?: PersonaId[]; allyPersonas?: PersonaId[]; duel?: { persona: PersonaId; site: SiteId } }) {
+    const map = loadMap(opts.map);
+    if (opts.duel) { personaById(opts.duel.persona); sitePoly(map, opts.duel.site); }
+    for (const [ids, length] of [[opts.enemyPersonas, 5], [opts.allyPersonas, 4]] as const) if (ids && (ids.length !== length || !ids.every(isPersona))) throw new Error('Invalid persona team');
+    this.duel = opts.duel;
     this.mapId = opts.map; this.playerId = opts.playerId ?? 'player'; this.seed = opts.seed ?? 1;
     this.wallets = Array.from({ length: 10 }, (_, i) => ({ id: i === 0 ? this.playerId : i < 5 ? `ally-${i}` : `enemy-${i - 4}`, ally: i < 5,
       agent: i === 0 ? opts.agent : (['rook', 'haze', 'wren', 'pike'] as const)[i % 4],
       archetypeId: ['entry-duelist', 'utility-controller', 'baseline', 'patient-lurker', 'off-angle-anchor'][i % 5],
       credits: 800, primary: null, secondary: 'pin', armor: null, armorPoints: 0, purchases: new Map(), previousWeapons: new Map() }));
+    if (opts.duel) this.wallets.splice(1, 8);
+    for (const [i, w] of this.wallets.entries()) {
+      const persona = opts.duel && !w.ally ? opts.duel.persona : w.ally ? opts.allyPersonas?.[i - 1] : opts.enemyPersonas?.[i - 5];
+      if (persona) { w.archetypeId = persona; w.agent = personaById(persona).agent; }
+    }
     this.recorder = createRecorder({ matchId: opts.matchId ?? `match-${this.seed}`, mapId: this.mapId, playerId: this.playerId, role: AGENTS[opts.agent].role });
     this.prepareBuy();
   }
-  side(): Team { return this.round <= 6 ? 'attack' : 'defense'; }
+  side(): Team { return this.duel || this.round <= 6 ? 'attack' : 'defense'; }
   private team(w: Wallet): Team { return w.ally ? this.side() : this.side() === 'attack' ? 'defense' : 'attack'; }
   private loadout(w: Wallet): Loadout { return { primary: w.primary, secondary: w.secondary, armor: w.armor, credits: w.credits }; }
   loadoutMessage(): Extract<ServerMessage, { type: 'loadout' }> {
@@ -50,14 +63,19 @@ export class MatchGame {
   }
   private prepareBuy(): void {
     this.phase = 'buy'; this.timeS = 20; this.match = null; this.purchases = [];
-    if (this.round === 7) {
+    if (this.duel) {
+      // Duels reset full equipment each round; the 5v5 economy remains independent.
+      for (const w of this.wallets) { w.credits = 9000; w.primary = null; w.secondary = 'hammer'; w.armor = null; w.armorPoints = 0; }
+      const player = this.wallets[0]; player.primary = 'lancer'; player.armor = 'heavy'; player.armorPoints = ARMOR.heavy.points;
+    }
+    if (!this.duel && this.round === 7) {
       this.losses = { player: 0, enemy: 0 };
       for (const w of this.wallets) { w.credits = 800; w.primary = null; w.secondary = 'pin'; w.armor = null; w.armorPoints = 0; }
     }
     for (const w of this.wallets) { w.purchases.clear(); w.previousWeapons.clear(); w.armorBefore = undefined; }
     for (const ally of [true, false]) {
       const group = this.wallets.filter(w => w.ally === ally);
-      const type = roundType(this.round, group.reduce((n, w) => n + w.credits, 0) / group.length);
+      const type = this.duel ? 'full buy' : roundType(this.round, group.reduce((n, w) => n + w.credits, 0) / group.length);
       this.types[ally ? 'player' : 'enemy'] = type;
       for (const w of group.filter(w => w.id !== this.playerId)) this.botBuy(w, type);
     }
@@ -95,6 +113,14 @@ export class MatchGame {
   }
   private botBuy(w: Wallet, type: RoundType): void {
     const tryBuy = (item: string) => { try { this.purchase(w, item); } catch { /* Save when retained equipment or credits preclude this purchase. */ } };
+    if (isPersona(w.archetypeId)) {
+      const preferred = PERSONA_WEAPONS[w.archetypeId];
+      const weapon = preferred.find(id => WEAPONS[id].price <= w.credits);
+      if (weapon && (type !== 'pistol' && type !== 'eco' || WEAPONS[weapon].price <= 800 || this.duel)) tryBuy(weapon);
+      else if (preferred.includes('hammer')) tryBuy('hammer');
+      if (type === 'full buy' || this.duel) tryBuy('heavy');
+      return;
+    }
     if (type === 'pistol') { tryBuy('hammer'); return; }
     if (type === 'eco') { if (w.credits >= 1500) tryBuy('hammer'); return; }
     if (type === 'force') { if (!w.primary) tryBuy(w.credits >= 2200 ? 'brick' : 'wasp'); tryBuy('light'); return; }
@@ -108,7 +134,17 @@ export class MatchGame {
   }
   ready(): void {
     if (this.phase !== 'buy') throw new Error('No buy phase');
-    this.match = createMatch({ map: loadMap(this.mapId), seed: this.seed + this.round, teamPlay: true,
+    const map = loadMap(this.mapId);
+    const duelSpots = this.duel ? spotsFor(map, this.duel.site, 'attack') : [];
+    const inside = this.duel ? navFor(map).nodes.filter(p => pointInPolygon(p, sitePoly(map, this.duel!.site))) : [];
+    const enemySpawn = duelSpots[0]?.pos;
+    const distanceFromEnemy = (p: { x: number; y: number }) => Math.hypot(p.x - enemySpawn!.x, p.y - enemySpawn!.y);
+    const playerSpawn = inside.sort((a, b) => distanceFromEnemy(b) - distanceFromEnemy(a))[0];
+    this.match = createMatch({ map, site: this.duel?.site, scenario: this.duel ? { roundTimeLeftS: 45, agents: Object.fromEntries(this.wallets.map(w => {
+      const spawn = w.ally ? playerSpawn ?? enemySpawn! : enemySpawn!;
+      const opponent = w.ally ? enemySpawn! : playerSpawn ?? enemySpawn!;
+      return [w.id, { spawn, yaw: Math.atan2(opponent.y - spawn.y, opponent.x - spawn.x), carryingSpike: false }];
+    })) } : undefined, seed: this.seed + this.round, teamPlay: true,
       agents: this.wallets.map(w => ({ id: w.id, team: this.team(w), isBot: w.id !== this.playerId, agent: w.agent, archetypeId: w.archetypeId, loadout: { ...this.loadout(w), armorPoints: w.armorPoints } })) });
     this.phase = 'live';
     this.recorder.beginRound(this.match.state(), undefined, { roundType: this.types.player, loadout: this.loadout(this.wallets[0]) });
@@ -144,8 +180,11 @@ export class MatchGame {
     const counts = new Map(this.wallets.map(w => [w.id, kills.filter(e => e.killer === w.id).length]));
     const mvp = [...this.wallets].sort((a, b) => Number(this.team(b) === end.winner) - Number(this.team(a) === end.winner) || counts.get(b.id)! - counts.get(a.id)!)[0].id;
     messages.push({ type: 'round_result', winner: end.winner, how: end.reason, creditsEarned, score: { ...this.score }, mvp });
-    if (this.score.player === 7 || this.score.enemy === 7) {
-      this.phase = 'ended'; messages.push({ type: 'match_end', score: { ...this.score }, won: this.score.player === 7, stats: { kills: this.kills, deaths: this.deaths, headshotPct: this.kills ? this.heads / this.kills : 0 } });
+    const target = this.duel ? 5 : 7;
+    if (this.score.player === target || this.score.enemy === target) {
+      this.phase = 'ended';
+      const stats = { kills: this.kills, deaths: this.deaths, headshotPct: this.kills ? this.heads / this.kills : 0 };
+      messages.push(this.duel ? { type: 'duel_end', score: { ...this.score }, beatTip: personaById(this.duel.persona).beatTip, stats } : { type: 'match_end', score: { ...this.score }, won: this.score.player === target, stats });
     } else { this.round++; this.prepareBuy(); messages.push(this.buyPhase()); }
     return messages;
   }

@@ -66,7 +66,7 @@ export interface Fairness {
 }
 
 /** Tracks, independently of the bots' own memory, when each shooter first saw each target. */
-function fairnessHook(f: Fairness, player: () => SimulatedPlayer | null) {
+export function fairnessHook(f: Fairness, player: () => SimulatedPlayer | null) {
   const trackers = new WeakMap<DrillRun, Map<string, { since: number; last: number }>>();
   return (run: DrillRun, before: SimState, playerInput: PlayerInput): void => {
     const spec = run.spec;

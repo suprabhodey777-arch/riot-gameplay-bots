@@ -1,3 +1,5 @@
+import { isPersona } from '../shared/personas.ts';
+import { createPersonaMoves } from './persona.ts';
 import { WEAPONS, equipped } from '../shared/weapons.ts';
 import type { BotTraits } from '../shared/coaching.ts';
 import type { FireIntent, MapDef, PlayerInput, SimState, SimEvent, SiteId, TraceEntry, Vec2 } from '../shared/contract.ts';
@@ -29,6 +31,7 @@ export interface BotOptions {
   rng: Rng;
   /** Mixed into the team's site choice so different matches pick different sites. */
   siteSeed?: number;
+  site?: SiteId;
   /** Stand here, facing `yaw`, until an enemy is seen (rehearsal drills). Overrides the role's own hold spot. */
   hold?: { pos: Vec2; yaw: number };
 }
@@ -49,7 +52,12 @@ export interface Bot {
   traits(): BotTraits;
 }
 
-interface Action {
+export interface Action {
+  flashAt?: Vec2 | null;
+  reconAt?: Vec2 | null;
+  dash?: boolean;
+  smokeAt?: Vec2 | null;
+  scoped?: boolean;
   node: string;
   target: string;
   reason: string;
@@ -61,7 +69,6 @@ interface Action {
   plant?: boolean;
   defuse?: boolean;
   holding?: boolean;
-  smokeAt?: Vec2 | null;
   forceTrace?: boolean;
 }
 
@@ -86,8 +93,9 @@ export function createBot(opts: BotOptions): Bot {
   const { id, map, rng } = opts;
   let traits: BotTraits = { ...opts.traits };
   const memory = createMemory();
+  const personaMoves = isPersona(opts.archetypeId) ? createPersonaMoves(opts.archetypeId, map, id, opts.site) : null;
   const sites = siteIds(map);
-  const defenseSite: SiteId = sites[Math.floor(rng.next() * sites.length)];
+  const defenseSite: SiteId = opts.site ?? sites[Math.floor(rng.next() * sites.length)];
   const holdRoll = rng.int(3);
 
   let lastKey = '';
@@ -290,7 +298,7 @@ export function createBot(opts: BotOptions): Bot {
 
     // attack
     const attackers = state.agents.filter((a) => a.team === 'attack').map((a) => a.id).sort();
-    const planSite: SiteId = sites[hashStr(`${opts.siteSeed ?? 0}:${attackers[0]}`) % sites.length];
+    const planSite: SiteId = opts.site ?? sites[hashStr(`${opts.siteSeed ?? 0}:${attackers[0]}`) % sites.length];
     const site = sp?.status === 'planted' ? sp.site : planSite;
 
     if (sp?.status === 'dropped') {
@@ -418,18 +426,19 @@ export function createBot(opts: BotOptions): Bot {
     if (!me.alive) return { input: idle, trace: [], node: 'dead', holding: true };
     if (me.blindUntilTick > view.tick) return { input: idle, trace: [], node: 'blinded', holding: true };
     if (me.ammo[equipped(me)] === 0 || me.reloadingUntilTick > state.tick) return { input: { ...idle, reload: true, slot: me.slot === 'primary' && me.reserve[equipped(me)] === 0 ? 'secondary' : undefined }, trace: [], node: 'reload', holding: true };
-    const act = decideAction(view, state);
+    const base = decideAction(view, state);
+    const act = personaMoves ? personaMoves(view, events, base) : base;
     const threat = [...view.visible, ...view.remembered].find(e => dist(me.pos, e.pos) <= 25);
     const lurker = opts.archetypeId === 'patient-lurker' || (!opts.archetypeId && traits.patience > 0.8);
-    if (team) act.walk = lurker && !!threat;
-    let flashAt: Vec2 | null = null;
-    let reconAt: Vec2 | null = null;
-    let dash = false;
+    if (team && !personaMoves) act.walk = lurker && !!threat;
+    let flashAt: Vec2 | null = act.flashAt ?? null;
+    let reconAt: Vec2 | null = act.reconAt ?? null;
+    let dash = act.dash ?? false;
     const moving = !!act.move && Math.hypot(act.move.x, act.move.y) > 0;
     // Use known angles or the approach to site, never hidden enemy positions.
     const ahead = moving && path ? alongPath(me.pos, path.slice(pathIdx), 12) : null;
     const angle = threat?.pos ?? (act.node === 'push' ? ahead : null);
-    if (team && view.tick >= utilityUntil && angle) {
+    if (team && !personaMoves && view.tick >= utilityUntil && angle) {
       if ((me.agent === 'rook' || me.agent === 'wren') && me.abilities.flash > 0 && dist(me.pos, angle) <= 20) {
         flashAt = { ...angle };
         flashPoint = flashAt;
@@ -443,7 +452,7 @@ export function createBot(opts: BotOptions): Bot {
     // It never turns a post-plant hold into a chase.
     const heard = heardEvents.slice().reverse().find(e => e.type === 'footstep' && e.loud && state.agents.some(a => a.id === e.agent && a.team !== me.team) && dist(me.pos, e.pos) <= RUN_HEARING_M);
     if (heard?.type === 'footstep' && !flashAt && view.tick >= utilityUntil) act.yaw = bearing(me.pos, heard.pos);
-    let smokeAt = smokeFor(view, act);
+    let smokeAt = personaMoves ? act.smokeAt ?? null : smokeFor(view, act);
     if (smokeAt && me.team === 'attack' && view.spike?.status === 'planted' && !lineOfSight(me.pos, view.spike.pos, [], [{ pos: smokeAt, radius: SMOKE_RADIUS }])) smokeAt = null;
     let thrownNow = false;
     if (smokeAt) {
