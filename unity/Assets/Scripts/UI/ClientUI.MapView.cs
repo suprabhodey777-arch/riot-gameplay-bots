@@ -116,7 +116,7 @@ namespace Saltworks
             for (int i = 0; i < spawns.Count; i++)
             {
                 Vector2 p = mm.PanelPoint(spawns[i].Sim) / scale + mr.position;
-                string t = spawns[i].Team == "attack" ? "A T T A C K E R   S P A W N" : "D E F E N D E R   S P A W N";
+                string t = spawns[i].Team == "attack" ? "ATTACKER SPAWN" : "DEFENDER SPAWN";
                 float tw = TextW(t, tinyCaps) + 16f;
                 var r = new Rect(p.x - tw / 2f, p.y + 12f, tw, 22f);
                 if (!Inside(r, mr) || Overlaps(r)) r.y = p.y - 34f;

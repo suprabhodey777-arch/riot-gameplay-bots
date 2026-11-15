@@ -124,8 +124,8 @@ namespace Saltworks
 
         void DrawMapSelect()
         {
-            float x0 = 64f, top = 48f;
-            float y = Header(x0, top, W - 2f * x0 - 200f, "Practice  //  map select", "Choose a map",
+            float x0 = 80f, top = 56f;
+            float y = Header(x0, top, W - 2f * x0 - 200f, "Practice", "Choose a map",
                 "Drills are built on this map. Rehearsals of your own mistakes need the map the history was played on; on another map the coach generates fresh drills instead.");
             List<MapInfo> maps = ShownMaps();
             bool idle = Idle;
@@ -154,10 +154,10 @@ namespace Saltworks
                     float h = Anim(StableKey("mapcard:" + id), idle && Hover(cr));
                     Color ac = Settings.Accent;
                     Card(cr, loaded ? ac : new Color(1f, 1f, 1f, 0.12f + 0.3f * h), h);
-                    if (loaded) PlateLine(cr, new Color(ac.r, ac.g, ac.b, 0.8f));
+
                     // The layout preview: the loaded map is drawn from its data; another map shows its name until picked.
-                    var pv = new Rect(cr.x + 14f, cr.y + 16f, cr.width - 28f, ch * 0.56f);
-                    Fill(pv, new Color(0.03f, 0.035f, 0.05f, 0.95f));
+                    var pv = new Rect(cr.x + 1f, cr.y + 2f, cr.width - 2f, ch * 0.56f);
+                    Fill(pv, new Color(Theme.Base.r * 0.6f, Theme.Base.g * 0.6f, Theme.Base.b * 0.6f, 0.96f));
                     if (loaded && Game.Map != null)
                     {
                         if (Event.current.type == EventType.Repaint)
@@ -183,7 +183,7 @@ namespace Saltworks
                 }
                 if (maps.Count == 0) Lbl(new Rect(x0, y + 20f, 600f, 24f), "The bridge listed no maps; the current one stays.", bodyBold, Theme.Muted);
             }
-            float by = H - 40f - Theme.ButtonH;
+            float by = H - 48f - Theme.ButtonH;
             WaitingLine(new Rect(x0 + 340f, by + 14f, 400f, 20f));
             string keep = string.IsNullOrEmpty(Game.MapName) ? "Keep the current map" : "Keep " + Game.MapName;
             if (GButton(new Rect(x0, by, 300f, Theme.ButtonH), keep, 2, idle)) Game.Do(Game.KeepCurrentMap);
@@ -390,7 +390,7 @@ namespace Saltworks
         {
             float x = col.x, w = col.width, y = col.y;
             // Next drill: the main call to action.
-            var cta = new Rect(x, y, w, 150f);
+            var cta = new Rect(x, y, w, 166f);
             Card(cta, Settings.Accent);
             Lbl(new Rect(cta.x + 20f, cta.y + 18f, w - 40f, 18f), Spaced("Next practice drill"), tinyCaps, Settings.Accent);
             Para(cta.x + 20f, cta.y + 40f, w - 40f, "A rehearsal of a failed moment first, then generated drills at your current difficulty.", small, Theme.Muted);
@@ -428,7 +428,7 @@ namespace Saltworks
                 int key = StableKey("versus:" + a.Id);
                 float h = CardHover(br, key, idle);
                 Plate(br, Color.Lerp(Theme.ButtonC, Theme.ButtonHoverC, h));
-                PlateLine(br, Color.Lerp(Theme.Line, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, 0.85f), h));
+                PlateLine(br, new Color(1f, 1f, 1f, 0.10f + 0.2f * h));
                 Lbl(new Rect(br.x + 14f, br.y + 8f, br.width - 28f, 20f), a.Label, bodyBold, idle ? Theme.Ink : Theme.Faint);
                 Lbl(new Rect(br.x + 14f, br.y + 28f, br.width - 28f, 36f), a.Blurb, tipStyle, Theme.Muted);
                 string id = a.Id;
@@ -464,9 +464,9 @@ namespace Saltworks
             {
                 float gh = TextH(spec.goal, body, leftW - 40f) + 44f;
                 var gr = new Rect(x, y, leftW, gh);
-                Plate(gr, new Color(Settings.Accent.r * 0.15f, Settings.Accent.g * 0.15f, Settings.Accent.b * 0.15f, 0.9f));
-                Fill(new Rect(gr.x + 2f, gr.y + 10f, 3f, gr.height - 20f), Settings.Accent);
-                Lbl(new Rect(gr.x + 20f, gr.y + 10f, gr.width - 40f, 18f), Spaced("Goal"), tinyCaps, Settings.Accent);
+                Plate(gr, new Color(1f, 1f, 1f, 0.04f));
+                PlateLine(gr, Theme.Line);
+                Lbl(new Rect(gr.x + 20f, gr.y + 10f, gr.width - 40f, 18f), "GOAL", tinyCaps, Theme.Muted);
                 Para(gr.x + 20f, gr.y + 30f, gr.width - 40f, spec.goal, body, Theme.Ink);
                 y = gr.yMax + Theme.S4;
             }
@@ -512,7 +512,7 @@ namespace Saltworks
                 if (y + rowH > maxY) break;
                 float kw = Mathf.Min(keyW, TextW(c[0], keyCap) + 14f);
                 KeyCapAt(new Rect(x, y + 2f, kw, 22f), c[0], new Color(1f, 1f, 1f, 0.09f), Theme.Ink);
-                Lbl(new Rect(x + keyW + 10f, y, w - keyW - 10f, 26f), c[1], smallMid, Theme.Muted);
+                FitLine(new Rect(x + keyW + 10f, y, w - keyW - 10f, 26f), c[1], smallMid, Theme.Muted, false);
                 y += rowH;
             }
         }

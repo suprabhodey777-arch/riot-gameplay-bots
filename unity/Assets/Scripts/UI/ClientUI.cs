@@ -27,7 +27,7 @@ namespace Saltworks
         float scale = 1f;
         float W, H;
         bool ready;
-        int stylesAccent = -1;
+        int stylesAccent = -1, stylesFont = -1;
         AppScreen shownScreen = (AppScreen)(-1);
         bool shownSettings;
         float screenAt;
@@ -73,9 +73,37 @@ namespace Saltworks
             return t;
         }
 
+        /// <summary>Bold text at this size or larger is set in the display face.</summary>
+        const int DisplayFrom = 17;
+        /// <summary>The condensed face reads smaller than a grotesque at the same size; grow it a little.</summary>
+        const float DisplayGrow = 1.12f;
+        /// <summary>Vertical correction for the display face, as a fraction of its size (its caps sit high or low in the line box).</summary>
+        const float DisplayNudge = 0f;
+
+        /// <summary>A display-face style at an exact size (titles, numbers, buttons).</summary>
+        static GUIStyle DisplayText(GUIStyle from, int size, TextAnchor a)
+        {
+            GUIStyle s = Text(from, Mathf.Max(DisplayFrom, size), FontStyle.Bold, Color.white, a, false);
+            if (size < DisplayFrom) s.fontSize = Theme.DisplayIsReal ? Mathf.RoundToInt(size * DisplayGrow) : size;
+            return s;
+        }
+
         static GUIStyle Text(GUIStyle from, int size, FontStyle fs, Color c, TextAnchor a = TextAnchor.UpperLeft, bool wrap = true)
         {
             var s = new GUIStyle(from) { fontSize = size, fontStyle = fs, alignment = a, wordWrap = wrap, richText = false };
+            // Type (docs/art-direction.md): large bold text is the condensed display face, small bold text the
+            // body face's bold cut, everything else the body face. With no OS face found, the built-in font stays.
+            bool bold = fs == FontStyle.Bold;
+            if (bold && size >= DisplayFrom && Theme.DisplayFont != null)
+            {
+                s.font = Theme.DisplayFont;
+                s.fontStyle = Theme.DisplayUsesBold ? FontStyle.Bold : FontStyle.Normal;
+                s.fontSize = Mathf.RoundToInt(size * DisplayGrow);
+                s.contentOffset = new Vector2(0f, s.fontSize * DisplayNudge);
+            }
+            else if (bold && Theme.BodyBoldFont != null) s.font = Theme.BodyBoldFont;
+            else if (Theme.BodyFont != null) s.font = Theme.BodyFont;
+            s.clipping = TextClipping.Overflow;
             s.normal.textColor = c;
             s.hover.textColor = c;
             s.active.textColor = c;
@@ -84,18 +112,23 @@ namespace Saltworks
 
         void EnsureStyles()
         {
-            if (ready && stylesAccent == Settings.AccentColor) return;
+            if (ready && stylesAccent == Settings.AccentColor && stylesFont == Theme.FontVersion) return;
+            stylesFont = Theme.FontVersion;
+            chatStyle = null;
             foreach (Texture2D t in owned) if (t != null) Destroy(t);
             owned.Clear();
+            // Destroy is deferred to the end of the frame, so these would still look alive below: drop them now.
+            fadeLeft = null;
+            fadeDown = null;
             crispStyles.Clear();
             ready = true;
             stylesAccent = Settings.AccentColor;
             Color accent = Settings.Accent;
 
-            Texture2D texWhite = Own(Theme.Chamfer(Color.white, Theme.Cut));
+            Texture2D texWhite = Own(Theme.Chamfer(Color.white, Theme.PrimaryCut, new Color(0f, 0f, 0f, 0f), 0f, false));
             Texture2D texTrack = Own(Theme.Rounded(new Color(1f, 1f, 1f, 0.14f), 3));
-            Texture2D texThumb = Own(Theme.Chamfer(Color.white, 4, new Color(accent.r, accent.g, accent.b, 1f), 2.5f));
-            Texture2D texThumbHover = Own(Theme.Chamfer(Theme.Lighten(accent, 0.6f), 4, accent, 2.5f));
+            Texture2D texThumb = Own(Theme.Rounded(Theme.Ink, 9));
+            Texture2D texThumbHover = Own(Theme.Rounded(Color.white, 9));
 
             GUIStyle lbl = GUI.skin.label;
             Color white = Theme.Ink, grey = Theme.Muted;
@@ -110,10 +143,10 @@ namespace Saltworks
             caption = Text(lbl, Theme.Caption, FontStyle.Bold, grey, TextAnchor.UpperLeft, false);
             mono = Text(lbl, 15, FontStyle.Bold, Theme.Lighten(accent, 0.35f), TextAnchor.UpperLeft, false);
 
-            roundWhite = new GUIStyle { border = Theme.Border(Theme.Cut) };
+            roundWhite = new GUIStyle { border = Theme.Border(Theme.PrimaryCut) };
             roundWhite.normal.background = texWhite;
             roundSmall = new GUIStyle { border = Theme.Border(4) };
-            roundSmall.normal.background = Own(Theme.Chamfer(Color.white, 4));
+            roundSmall.normal.background = Own(Theme.Rounded(Color.white, 3));
 
             slider = new GUIStyle(GUI.skin.horizontalSlider) { border = new RectOffset(5, 5, 3, 3), fixedHeight = 6f, margin = new RectOffset(4, 4, 10, 10), padding = new RectOffset(0, 0, 0, 0), overflow = new RectOffset(0, 0, 0, 0) };
             slider.normal.background = texTrack;
@@ -132,8 +165,8 @@ namespace Saltworks
             hudBig = Text(lbl, 40, FontStyle.Bold, white, TextAnchor.LowerLeft, false);
             hudCenter = Text(lbl, 18, FontStyle.Bold, white, TextAnchor.MiddleCenter, false);
             feed = Text(lbl, 15, FontStyle.Bold, white, TextAnchor.MiddleRight, false);
-            banner = Text(lbl, 46, FontStyle.Bold, white, TextAnchor.MiddleCenter, false);
-            bannerSub = Text(lbl, 20, FontStyle.Normal, white, TextAnchor.MiddleCenter, true);
+            banner = Text(lbl, 40, FontStyle.Bold, white, TextAnchor.MiddleCenter, false);
+            bannerSub = Text(lbl, 17, FontStyle.Normal, white, TextAnchor.MiddleCenter, false);
             botName = Text(lbl, 15, FontStyle.Bold, white, TextAnchor.LowerCenter, false);
             botLine = Text(lbl, 13, FontStyle.Normal, white, TextAnchor.LowerCenter, false);
             mapLetter = Text(lbl, 17, FontStyle.Bold, white, TextAnchor.MiddleCenter, false);
@@ -154,7 +187,7 @@ namespace Saltworks
             slotKey = Text(lbl, 13, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             slotCount = Text(lbl, 15, FontStyle.Bold, Color.white, TextAnchor.LowerRight, false);
             slotName = Text(lbl, 12, FontStyle.Bold, grey, TextAnchor.UpperCenter, false);
-            modeStyle = Text(lbl, 14, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
+            modeStyle = Text(lbl, 13, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             EnsureMatchStyles();
         }
 
@@ -180,11 +213,29 @@ namespace Saltworks
             if (Event.current.type != EventType.Repaint) return;
             Color old = GUI.color;
             GUI.color = new Color(c.r, c.g, c.b, c.a * old.a);
-            float m = Mathf.Min(r.width, r.height);
-            // Thin shapes use a smaller cut so the 9-slice borders never overlap.
-            if (m >= 26f) roundWhite.Draw(r, false, false, false, false);
-            else if (m >= 12f) roundSmall.Draw(r, false, false, false, false);
+            // Flat, square-cornered: panels, cards and controls are plain rectangles.
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = old;
+        }
+
+        /// <summary>The primary button's shape: a rectangle with one chamfer (bottom right).</summary>
+        void PrimaryPlate(Rect r, Color c)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            Color old = GUI.color;
+            GUI.color = new Color(c.r, c.g, c.b, c.a * old.a);
+            if (Mathf.Min(r.width, r.height) >= 26f) roundWhite.Draw(r, false, false, false, false);
             else GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = old;
+        }
+
+        /// <summary>A small round dot (status marks, pips).</summary>
+        void Dot(Rect r, Color c)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            Color old = GUI.color;
+            GUI.color = new Color(c.r, c.g, c.b, c.a * old.a);
+            roundSmall.Draw(r, false, false, false, false);
             GUI.color = old;
         }
 
@@ -192,8 +243,13 @@ namespace Saltworks
         {
             if (string.IsNullOrEmpty(text)) return;
             Color old = GUI.contentColor;
+            // A soft shadow: a wider faint copy under a tighter dark one, so text reads on a bright floor.
+            GUI.contentColor = new Color(0f, 0f, 0f, 0.32f * c.a);
+            TextAt(new Rect(r.x, r.y + 2.5f, r.width, r.height), text, s);
+            GUI.contentColor = new Color(0f, 0f, 0f, 0.4f * c.a);
+            TextAt(new Rect(r.x - 1f, r.y + 1f, r.width, r.height), text, s);
             GUI.contentColor = new Color(0f, 0f, 0f, 0.7f * c.a);
-            TextAt(new Rect(r.x + 1.25f, r.y + 1.25f, r.width, r.height), text, s);
+            TextAt(new Rect(r.x + 1f, r.y + 1f, r.width, r.height), text, s);
             GUI.contentColor = c;
             TextAt(r, text, s);
             GUI.contentColor = old;
@@ -238,6 +294,7 @@ namespace Saltworks
         void OnGUI()
         {
             if (Game == null) return;
+            if (GUI.skin.font != Theme.BodyFont) GUI.skin.font = Theme.BodyFont;
             EnsureStyles();
             scale = Mathf.Clamp(Screen.height / VirtualHeight, 0.6f, 3f);
             W = Screen.width / scale;
@@ -250,7 +307,7 @@ namespace Saltworks
 
             bool menu = Game.Screen != AppScreen.Playing;
             bool settings = Game.SettingsOpen;
-            if (menu && Game.Screen != AppScreen.Buy) Backdrop(Game.Screen == AppScreen.Intro ? 0.5f : 1f);
+            if (menu && Game.Screen != AppScreen.Buy) Backdrop(Game.Screen == AppScreen.Intro ? 0.45f : Game.Screen == AppScreen.Menu && !settings ? 0.6f : 1f);
             // With the settings open over a menu, the menu under them is not drawn (its buttons would take the clicks).
             if (!(menu && settings))
             {
@@ -316,7 +373,7 @@ namespace Saltworks
                 fpsText = Mathf.RoundToInt(Game.Fps) + " fps   " + (1000f / Mathf.Max(1f, Game.Fps)).ToString("0.0") + " ms   worst " + Game.WorstMs.ToString("0.0") + " ms\nprediction error " + Game.Predictor.LastError.ToString("0.00") + " m";
             }
             // In a round: bottom left above the movement chip (clear of the spike line and the weapon panel).
-            var r = Game.Screen == AppScreen.Playing ? new Rect(22f, H - 236f, 330f, 40f) : new Rect(24f, H - 52f, 330f, 40f);
+            var r = Game.Screen == AppScreen.Playing ? new Rect(36f, H - 206f, 330f, 40f) : new Rect(24f, H - 52f, 330f, 40f);
             Shadowed(r, fpsText, fpsStyle, Game.Fps >= 110f ? Palette.Ok : Game.Fps >= 60f ? Palette.Warn : Palette.Bad);
         }
 
@@ -327,9 +384,8 @@ namespace Saltworks
             float y = Game.Screen == AppScreen.Playing ? 124f : H - 84f;
             float w = Mathf.Min(680f, Mathf.Max(320f, TextW(Game.Toast, toastStyle) + 60f));
             var r = new Rect(W / 2f - w / 2f, y, w, 44f);
-            Shadow(r, 12f, 0.5f);
-            Plate(r, new Color(0.42f, 0.11f, 0.12f, 0.96f));
-            Fill(new Rect(r.x + 2f, r.y + 10f, 3f, r.height - 20f), Palette.Bad);
+            Plate(r, new Color(0.16f, 0.07f, 0.075f, 0.95f));
+            Fill(new Rect(r.x, r.y, 2f, r.height), Palette.Bad);
             Lbl(new Rect(r.x + 16f, r.y, r.width - 32f, r.height), Game.Toast, toastStyle, Color.white);
         }
 
@@ -343,6 +399,7 @@ namespace Saltworks
         DrillMsg hudDrill;
         string hudTitleStr = "", hudSkillStr = "", hudSetupStr = "", hudGoalStr = "";
         float hudGoalH, hudInfoW = -1f;
+        string hudLineStr = "";
         Color hudSetupColor = Color.white;
 
         void CacheDrillStrings(float infoW)
@@ -352,14 +409,19 @@ namespace Saltworks
             hudInfoW = infoW;
             DrillSpec spec = hudDrill?.spec;
             hudTitleStr = spec?.title ?? "";
-            hudSkillStr = spec == null ? "" : Upper(GameController.SkillName(spec.skill)) + "   \u00b7   DIFFICULTY " + spec.difficulty.ToString("0.00");
+            string setup0 = Game.MapName ?? "";
+            if (!string.IsNullOrEmpty(Game.PlayerAgent)) setup0 += (setup0.Length > 0 ? " / " : "") + Agents.NameOf(Game.PlayerAgent);
+            hudSkillStr = spec == null ? "" : Upper(GameController.SkillName(spec.skill)) + "   \u00b7   DIFFICULTY " + spec.difficulty.ToString("0.00") + (setup0.Length > 0 ? "   \u00b7   " + Upper(setup0) : "");
             string setup = Game.MapName;
             if (!string.IsNullOrEmpty(Game.PlayerAgent))
                 setup += (setup.Length > 0 ? "   \u00b7   " : "") + Agents.NameOf(Game.PlayerAgent) + " (" + (Agents.Get(Game.PlayerAgent)?.Role ?? "agent") + ")";
             hudSetupStr = setup;
             hudSetupColor = string.IsNullOrEmpty(Game.PlayerAgent) ? Color.white : Agents.ColorOf(Game.PlayerAgent);
             hudGoalStr = spec?.goal ?? "";
-            hudGoalH = Mathf.Min(80f, TextH(hudGoalStr, hudGoal, infoW - 24f));
+            hudGoalH = TextH(hudGoalStr, hudGoal, infoW - 28f);
+            // The collapsed line: what this round is, in a few words.
+            hudLineStr = Game.InMatch ? "MATCH" + (setup.Length > 0 ? "   \u00b7   " + Upper(setup) : "")
+                : Upper(hudTitleStr) + (spec != null ? "   \u00b7   " + Upper(GameController.SkillName(spec.skill)) : "");
         }
 
         void DrawHud()
@@ -414,14 +476,18 @@ namespace Saltworks
             // The tactical map (M) or the peek (Tab) covers the play view; the round's HUD stays on top of it.
             if (Game.FullMap) DrawTacticalMap(Game.MapPeek && !Game.MapOpen);
 
-            // Top left: minimap, then the drill info beside it.
-            float infoX = 20f;
+            // The HUD's only backing: a dark gradient at the bottom edge.
+            if (!Game.FullMap) HudBottomFade();
+
+            // Top left: minimap, with one line of objective text under it.
+            float infoY = 24f;
             if (Settings.MinimapOn && !Game.FullMap)
             {
                 float ms = Settings.MinimapSize;
-                var mr = new Rect(20f, 18f, ms, ms);
+                var mr = new Rect(24f, 24f, ms, ms);
                 DrawMap(mr, Settings.MinimapOpacity);
-                infoX = mr.xMax + 20f;
+                PlateLine(new Rect(mr.x - 1f, mr.y - 1f, mr.width + 2f, mr.height + 2f), new Color(1f, 1f, 1f, 0.12f));
+                infoY = mr.yMax + 10f;
             }
 
             // Top centre: the score bug and round clock.
@@ -429,35 +495,39 @@ namespace Saltworks
             if (alive && Game.World.IsRevealed(Game.PlayerId))
             {
                 float pulse = 0.7f + 0.3f * Mathf.Sin(now * 10f);
-                var rr = new Rect(W / 2f - 120f, 168f, 240f, 28f);
                 Color rc = Agents.AbilityColor(Ability.Recon);
-                Plate(rr, new Color(rc.r * 0.35f, rc.g * 0.2f, rc.b * 0.25f, 0.88f));
-                Shadowed(rr, "YOU ARE REVEALED", hudCenter, new Color(rc.r, rc.g, rc.b, pulse));
+                Shadowed(new Rect(W / 2f - 160f, 132f, 320f, 26f), "YOU ARE REVEALED", hudCenter, new Color(rc.r, rc.g, rc.b, pulse));
             }
 
-            // Drill, map and agent: a quiet card beside the minimap, clear of the score bug.
-            float iw = Mathf.Min(420f, W / 2f - 170f - infoX);
-            if (iw >= 180f && !Game.FullMap) CacheDrillStrings(iw);
-            if (hudDrill?.spec != null && iw >= 180f && !Game.FullMap)
+            // The drill card shows for 5 s at round start, then collapses to one objective line.
+            float iw = Mathf.Clamp(W / 2f - 280f, 220f, 380f);
+            if (!Game.FullMap) CacheDrillStrings(iw);
+            if (hudDrill?.spec != null && !Game.FullMap)
             {
-                float ih = 12f + 24f + (Game.InMatch ? 0f : 20f) + (hudSetupStr.Length > 0 ? 20f : 0f) + (hudGoalStr.Length > 0 && !Game.InMatch ? hudGoalH + 6f : 0f) + 10f;
-                var r = new Rect(infoX, 18f, iw, ih);
-                Plate(r, new Color(0.02f, 0.025f, 0.04f, 0.55f));
-                Fill(new Rect(r.x + 2f, r.y + 10f, 3f, 22f), Palette.Team(Game.PlayerTeam));
-                float x = r.x + 14f, w = r.width - 24f, y = r.y + 10f;
-                Shadowed(new Rect(x, y, w, 24f), Game.InMatch ? "Match" : hudTitleStr, hudTitle, Color.white);
-                y += 26f;
-                if (!Game.InMatch)
+                float since = now - screenAt;
+                float cardK = Game.InMatch ? 0f : 1f - Mathf.Clamp01((since - 5f) / 0.35f);
+                if (cardK > 0.01f)
                 {
-                    Shadowed(new Rect(x, y, w, 20f), hudSkillStr, hudSkill, Palette.Team(Game.PlayerTeam));
+                    float ih = 14f + 26f + 20f + (hudGoalStr.Length > 0 ? hudGoalH + 8f : 0f) + 12f;
+                    var r = new Rect(24f, infoY, iw, ih);
+                    Color oldC = GUI.color;
+                    GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * cardK);
+                    Fill(r, new Color(Theme.PanelC.r, Theme.PanelC.g, Theme.PanelC.b, 0.86f));
+                    PlateLine(r, Theme.Line);
+                    Fill(new Rect(r.x, r.y, r.width, 2f), Palette.Team(Game.PlayerTeam));
+                    float x = r.x + 14f, w = r.width - 28f, y = r.y + 14f;
+                    Condensed(new Rect(x, y, w, 24f), Upper(hudTitleStr), hudTitle, Theme.Ink);
+                    y += 26f;
+                    Condensed(new Rect(x, y, w, 18f), hudSkillStr, hudSkill, Theme.Muted);
                     y += 20f;
+                    if (hudGoalStr.Length > 0) Lbl(new Rect(x, y + 4f, w, hudGoalH), hudGoalStr, hudGoal, Theme.Ink);
+                    GUI.color = oldC;
                 }
-                if (hudSetupStr.Length > 0)
+                else
                 {
-                    Shadowed(new Rect(x, y, w, 20f), hudSetupStr, hudSkill, hudSetupColor);
-                    y += 20f;
+                    Fill(new Rect(24f, infoY + 3f, 2f, 14f), Palette.Team(Game.PlayerTeam));
+                    Condensed(new Rect(34f, infoY, iw - 10f, 20f), hudLineStr, hudSkill, Theme.Ink, 1f, true);
                 }
-                if (hudGoalStr.Length > 0 && !Game.InMatch) Shadowed(new Rect(x, y + 4f, w, hudGoalH), hudGoalStr, hudGoal, new Color(0.9f, 0.9f, 0.92f));
             }
 
             // Top right: kill feed (the tactical map's legend takes that corner while it is open).
@@ -474,11 +544,8 @@ namespace Saltworks
             UpdateSpikeText(s);
             if (spikeStr.Length > 0)
             {
-                var sr = new Rect(W - 440f, H - 160f, 420f, 30f);
-                // On a dark plate: dim text straight on a sunlit floor could not be read.
-                Plate(new Rect(sr.x + 100f, sr.y - 22f, sr.width - 100f, sr.height + 26f), new Color(0.02f, 0.025f, 0.04f, 0.78f));
-                Shadowed(new Rect(sr.x, sr.y, sr.width - 12f, sr.height), spikeStr, spikeStyle, s.spike != null && s.spike.status == "planted" ? new Color(1f, 0.6f, 0.6f) : Color.white);
-                Lbl(new Rect(sr.x, sr.y - 18f, sr.width - 12f, 18f), "S P I K E", capRight, new Color(0.75f, 0.77f, 0.82f));
+                var sr = new Rect(W - 36f - 520f, H - 166f, 520f, 20f);
+                Shadowed(sr, Upper(spikeStr), hudLineR, s.spike != null && s.spike.status == "planted" ? Palette.Spike : Theme.Ink);
             }
 
             // Centre: plant / defuse progress and hints.
@@ -505,7 +572,8 @@ namespace Saltworks
                 }
                 var pr = new Rect(cx - 150f, cy + 76f, 300f, 10f);
                 Shadowed(new Rect(pr.x, pr.y - 28f, pr.width, 24f), progressStr, hudCenter, Color.white);
-                Plate(pr, new Color(0f, 0f, 0f, 0.5f));
+                pr = new Rect(pr.x, pr.y, pr.width, 4f);
+                Fill(pr, new Color(0f, 0f, 0f, 0.5f));
                 if (progress > 0.01f) Fill(new Rect(pr.x, pr.y, Mathf.Max(10f, pr.width * Mathf.Clamp01(progress)), pr.height), defusing ? Palette.Defense : Palette.Attack);
             }
             else if (alive && !Game.DrillDone)
@@ -524,14 +592,13 @@ namespace Saltworks
             {
                 bool ok = Game.Result.success;
                 float k = Theme.Ease((now - (Game.VerdictUntil - 2.5f)) / 0.3f);
-                var br = new Rect(0f, H * 0.28f + (1f - k) * 20f, W, 124f);
-                Fill(br, new Color(0.03f, 0.04f, 0.06f, 0.86f * k));
-                Fill(new Rect(W / 2f - W * 0.5f * k, br.y, W * k, 3f), ok ? Palette.Ok : Palette.Bad);
-                Fill(new Rect(W / 2f - W * 0.5f * k, br.yMax - 3f, W * k, 3f), ok ? Palette.Ok : Palette.Bad);
+                var br = new Rect(0f, H * 0.27f, W, 104f);
                 Color vc = ok ? Palette.Ok : Palette.Bad;
+                Fill(br, new Color(Theme.Base.r, Theme.Base.g, Theme.Base.b, 0.8f * k));
+                Fill(new Rect(W / 2f - 90f * k, br.yMax - 2f, 180f * k, 2f), new Color(vc.r, vc.g, vc.b, k));
                 vc.a = k;
-                Condensed(new Rect(0f, br.y + 10f, W, 60f), Spaced(ok ? "Drill complete" : "Not this time"), banner, vc, 0.86f, true);
-                Shadowed(new Rect(40f, br.y + 74f, W - 80f, 40f), Game.Result.headline ?? "", bannerSub, new Color(1f, 1f, 1f, k));
+                Shadowed(new Rect(0f, br.y + 8f, W, 50f), ok ? "DRILL COMPLETE" : "NOT THIS TIME", banner, vc);
+                FitLine(new Rect(40f, br.y + 62f, W - 80f, 28f), Game.Result.headline ?? "", bannerSub, new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, k));
             }
             if (Settings.StreamerMode && !Game.FullMap) DrawStreamerOverlay(now, true);
             if (Game.InMatch) DrawRoundBanners(now);
@@ -588,7 +655,7 @@ namespace Saltworks
             int key = (mode == "crouch" ? 0 : mode == "walk" ? 2 : 4) + (moving ? 1 : 0);
             Color c;
             if (mode == "crouch" || mode == "walk") c = Palette.Ok;
-            else c = moving ? Palette.Warn : new Color(0.8f, 0.82f, 0.86f);
+            else c = moving ? Palette.Warn : Theme.Muted;
             if (key != modeKey)
             {
                 modeKey = key;
@@ -597,12 +664,11 @@ namespace Saltworks
                 else modeStr = moving ? "RUNNING  heard within " + Game.Rules.runHearingM.ToString("0") + " m" : "STILL";
                 modeWidth = modeStyle.CalcSize(new GUIContent(modeStr)).x;
             }
-            Plate(new Rect(r.x, r.y, modeWidth + 32f, r.height), new Color(0.02f, 0.025f, 0.04f, 0.68f));
-            Fill(new Rect(r.x + 3f, r.y + 6f, 3f, r.height - 12f), c);
-            // A footprint-like dot that pulses with the stride while moving.
-            float pulse = moving ? 0.5f + 0.5f * Mathf.Abs(Mathf.Sin(Time.time * (mode == "run" ? 9f : 5f))) : 0.4f;
-            Plate(new Rect(r.x + 12f, r.y + r.height / 2f - 3f, 6f, 6f), new Color(c.r, c.g, c.b, pulse));
-            Shadowed(new Rect(r.x + 24f, r.y, modeWidth + 6f, r.height), modeStr, modeStyle, c);
+            // A footprint-like dot that pulses with the stride while moving, then the words; no plate.
+            float pulse = moving ? 0.5f + 0.5f * Mathf.Abs(Mathf.Sin(Time.time * (mode == "run" ? 9f : 5f))) : 0.5f;
+            Fill(new Rect(r.x + 1f, r.center.y - 2f, 6f, 6f), new Color(0f, 0f, 0f, 0.45f));
+            Fill(new Rect(r.x, r.center.y - 3f, 6f, 6f), new Color(c.r, c.g, c.b, pulse));
+            Shadowed(new Rect(r.x + 14f, r.y, modeWidth + 6f, r.height), modeStr, modeStyle, c);
         }
 
         float modeWidth;
