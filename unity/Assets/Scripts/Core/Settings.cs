@@ -150,6 +150,23 @@ namespace Saltworks
         public static int AccentColor;
         public static WorldPaletteId World = WorldPaletteId.Day;
 
+        // ---- round 4 ------------------------------------------------------------------------------
+        public static readonly string[] GfxNames = { "Low", "Medium", "High", "Ultra" };
+        public static readonly string[] HandNames = { "Right", "Left" };
+        /// <summary>0 Low, 1 Medium, 2 High, 3 Ultra (shadows, bloom, prop density, resolution scale).</summary>
+        public static int GfxPreset = 2;
+        public static bool DamageNumbers = true;
+        /// <summary>Vertical field of view of the weapon camera, degrees.</summary>
+        public static float ViewmodelFov = 60f;
+        /// <summary>Viewmodel offsets, -1..1 (about 4 cm each way).</summary>
+        public static float ViewmodelX, ViewmodelY, ViewmodelZ;
+        public static bool ViewmodelLeft;
+        public static bool InvertY;
+        public static bool ToggleCrouch;
+        public static bool ToggleWalk;
+        /// <summary>Scoped sensitivity, relative to the zoom (1 = the same turn per screen width as unscoped).</summary>
+        public static float ScopedSens = 1f;
+
         /// <summary>Bumped on every change, so caches can tell they are stale.</summary>
         public static int Version { get; private set; }
 
@@ -210,6 +227,17 @@ namespace Saltworks
             AllyColor = PlayerPrefs.GetInt(P + "col.ally", 0);
             AccentColor = PlayerPrefs.GetInt(P + "col.accent", 0);
             World = (WorldPaletteId)Mathf.Clamp(PlayerPrefs.GetInt(P + "col.world", 0), 0, PaletteNames.Length - 1);
+            GfxPreset = PlayerPrefs.GetInt(P + "gfx", GfxPreset);
+            DamageNumbers = PlayerPrefs.GetInt(P + "dmgnum", 1) == 1;
+            ViewmodelFov = PlayerPrefs.GetFloat(P + "vm.fov", ViewmodelFov);
+            ViewmodelX = PlayerPrefs.GetFloat(P + "vm.x", 0f);
+            ViewmodelY = PlayerPrefs.GetFloat(P + "vm.y", 0f);
+            ViewmodelZ = PlayerPrefs.GetFloat(P + "vm.z", 0f);
+            ViewmodelLeft = PlayerPrefs.GetInt(P + "vm.left", 0) == 1;
+            InvertY = PlayerPrefs.GetInt(P + "inverty", 0) == 1;
+            ToggleCrouch = PlayerPrefs.GetInt(P + "tog.crouch", 0) == 1;
+            ToggleWalk = PlayerPrefs.GetInt(P + "tog.walk", 0) == 1;
+            ScopedSens = PlayerPrefs.GetFloat(P + "sens.scoped", ScopedSens);
             Clamp();
             Version++;
         }
@@ -238,6 +266,12 @@ namespace Saltworks
             EnemyColor = Mathf.Clamp(EnemyColor, 0, EnemyColors.Length - 1);
             AllyColor = Mathf.Clamp(AllyColor, 0, AllyColors.Length - 1);
             AccentColor = Mathf.Clamp(AccentColor, 0, AccentColors.Length - 1);
+            GfxPreset = Mathf.Clamp(GfxPreset, 0, GfxNames.Length - 1);
+            ViewmodelFov = Mathf.Clamp(ViewmodelFov, 45f, 80f);
+            ViewmodelX = Mathf.Clamp(ViewmodelX, -1f, 1f);
+            ViewmodelY = Mathf.Clamp(ViewmodelY, -1f, 1f);
+            ViewmodelZ = Mathf.Clamp(ViewmodelZ, -1f, 1f);
+            ScopedSens = Mathf.Clamp(ScopedSens, 0.2f, 2f);
         }
 
         /// <summary>Writes everything to PlayerPrefs (call when the settings screen closes, or after a hotkey toggle).</summary>
@@ -276,6 +310,17 @@ namespace Saltworks
             PlayerPrefs.SetInt(P + "col.ally", AllyColor);
             PlayerPrefs.SetInt(P + "col.accent", AccentColor);
             PlayerPrefs.SetInt(P + "col.world", (int)World);
+            PlayerPrefs.SetInt(P + "gfx", GfxPreset);
+            PlayerPrefs.SetInt(P + "dmgnum", DamageNumbers ? 1 : 0);
+            PlayerPrefs.SetFloat(P + "vm.fov", ViewmodelFov);
+            PlayerPrefs.SetFloat(P + "vm.x", ViewmodelX);
+            PlayerPrefs.SetFloat(P + "vm.y", ViewmodelY);
+            PlayerPrefs.SetFloat(P + "vm.z", ViewmodelZ);
+            PlayerPrefs.SetInt(P + "vm.left", ViewmodelLeft ? 1 : 0);
+            PlayerPrefs.SetInt(P + "inverty", InvertY ? 1 : 0);
+            PlayerPrefs.SetInt(P + "tog.crouch", ToggleCrouch ? 1 : 0);
+            PlayerPrefs.SetInt(P + "tog.walk", ToggleWalk ? 1 : 0);
+            PlayerPrefs.SetFloat(P + "sens.scoped", ScopedSens);
             PlayerPrefs.Save();
         }
 
@@ -302,6 +347,7 @@ namespace Saltworks
             int cap = FrameCaps[Mathf.Clamp(FrameCap, 0, FrameCaps.Length - 1)];
             Application.targetFrameRate = VSync ? -1 : (cap <= 0 ? -1 : cap);
             AudioListener.volume = Volume;
+            Gfx.ApplyQuality();
         }
     }
 }

@@ -20,13 +20,16 @@ namespace Saltworks
             WorldLook.Prune();
             BuildFloor(root.transform, w, h);
 
-            Texture2D wallTex = Mats.WallTexture();
+            Textures.Pair concrete = Textures.Concrete();
+            Textures.Pair metal = Textures.PaintedMetal();
+            Textures.Pair crate = Textures.Crate();
+            Textures.Pair trimTex = Textures.Trim();
             var matCache = new Dictionary<string, Material>();
-            Material Get(string key, Color c, Surface kind)
+            Material Get(string key, Color c, Surface kind, Textures.Pair tex, float gloss, float bump)
             {
                 if (!matCache.TryGetValue(key, out Material m))
                 {
-                    m = Mats.LitTextured(c, wallTex, 0.08f);
+                    m = Mats.World(c, tex.Albedo, tex.Normal, bump, gloss, 0f, gloss, 1f);
                     WorldLook.Register(m, c, kind);
                     matCache[key] = m;
                 }
@@ -41,10 +44,20 @@ namespace Saltworks
                 if (wall.points == null || wall.points.Count < 3) continue;
                 bool outer = wall.id != null && wall.id.StartsWith("outer");
                 Color side, top;
-                if (outer) { side = Palette.Outer; top = Palette.Outer; }
-                else if (wall.height <= 1.5f) { side = Palette.Crate; top = Palette.CrateTop; }
-                else if (wall.height <= 3.2f) { side = Palette.Pillar; top = Palette.WallTop; }
-                else { side = Palette.Wall; top = Palette.WallTop; }
+                Textures.Pair sideTex;
+                float sideGloss = 0.3f;
+                if (outer) { side = Palette.Outer; top = Palette.Outer; sideTex = concrete; }
+                else if (wall.height <= 1.5f) { side = Palette.Crate; top = Palette.CrateTop; sideTex = crate; sideGloss = 0.2f; }
+                else if (wall.height <= 3.2f) { side = Palette.Pillar; top = Palette.WallTop; sideTex = metal; sideGloss = 0.45f; }
+                else
+                {
+                    side = Palette.Wall;
+                    top = Palette.WallTop;
+                    // Tall walls alternate between cast concrete and painted panels, by id, so a map reads as built.
+                    bool panels = StableHash(wall.id) % 3 == 0;
+                    sideTex = panels ? metal : concrete;
+                    if (panels) sideGloss = 0.45f;
+                }
                 Color trim = new Color(side.r * 0.66f, side.g * 0.66f, side.b * 0.68f);
                 float height = Mathf.Max(0.05f, wall.height);
                 Mesh mesh = Prism(wall.points, height, Mathf.Min(TrimHeight, height * 0.3f));
@@ -53,7 +66,13 @@ namespace Saltworks
                 go.transform.SetParent(walls, false);
                 go.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var mr = go.AddComponent<MeshRenderer>();
-                mr.sharedMaterials = new[] { Get("s" + side, side, Surface.Wall), Get("t" + top, top, Surface.Wall), Get("r" + trim, trim, Surface.Trim) };
+                string tk = sideTex.Albedo != null ? sideTex.Albedo.name : "";
+                mr.sharedMaterials = new[]
+                {
+                    Get("s" + side + tk, side, Surface.Wall, sideTex, sideGloss, 1f),
+                    Get("t" + top, top, Surface.Wall, concrete, 0.25f, 0.8f),
+                    Get("r" + trim, trim, Surface.Trim, trimTex, 0.45f, 1f),
+                };
                 go.AddComponent<MeshCollider>().sharedMesh = mesh;
                 ContactShadow(contact, wall.points, ContactWidth, 0.006f);
             }
@@ -119,6 +138,18 @@ namespace Saltworks
         /// <summary>Height of the darker trim strip at the base of every wall.</summary>
         public const float TrimHeight = 0.28f;
         public const float ContactWidth = 0.7f;
+
+        /// <summary>FNV-1a of a string, non-negative and the same on every run (string.GetHashCode is not guaranteed).</summary>
+        public static int StableHash(string s)
+        {
+            unchecked
+            {
+                uint h = 2166136261u;
+                if (s != null)
+                    foreach (char ch in s) h = (h ^ ch) * 16777619u;
+                return (int)(h & 0x7fffffff);
+            }
+        }
 
         /// <summary>A translucent column of light over a site's letter, visible from across the map, with a floor ring.</summary>
         static void SiteBeacon(Transform parent, string letter, Vector3 at, Color c)
@@ -197,6 +228,12 @@ namespace Saltworks
         /// </summary>
         static Vector2 FreeSpot(List<Vec2> poly, MapDef map, float clearance)
         {
+            return FindFreeSpot(poly, map, clearance);
+        }
+
+        /// <summary>Public form of FreeSpot (PropBuilder places the plant-zone stencil with it).</summary>
+        public static Vector2 FindFreeSpot(List<Vec2> poly, MapDef map, float clearance)
+        {
             Vector2 cen = Geo.Centroid(poly);
             if (Clear(cen, map, clearance)) return cen;
             float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
@@ -228,6 +265,12 @@ namespace Saltworks
 
         static bool Clear(Vector2 p, MapDef map, float clearance)
         {
+            return IsClear(p, map, clearance);
+        }
+
+        /// <summary>Is `p` on open floor at least `clearance` metres from every wall?</summary>
+        public static bool IsClear(Vector2 p, MapDef map, float clearance)
+        {
             if (map.walls == null) return true;
             foreach (WallDef w in map.walls)
             {
@@ -256,7 +299,8 @@ namespace Saltworks
             };
             Mesh m = FlatPolygon(pts, 0f, 4f);
             floor.AddComponent<MeshFilter>().sharedMesh = m;
-            Material fm = Mats.LitTextured(Palette.Floor, Mats.FloorTexture(), 0.18f);
+            Textures.Pair tiles = Textures.FloorTiles();
+            Material fm = Mats.World(Palette.Floor, tiles.Albedo, tiles.Normal, 1f, 0.5f, 0f, 0.5f, 0f);
             WorldLook.Register(fm, Palette.Floor, Surface.Floor);
             floor.AddComponent<MeshRenderer>().sharedMaterial = fm;
             var box = floor.AddComponent<BoxCollider>();
@@ -270,9 +314,10 @@ namespace Saltworks
             {
                 new Vec2 { x = -300, y = -300 }, new Vec2 { x = w + 300, y = -300 }, new Vec2 { x = w + 300, y = h + 300 }, new Vec2 { x = -300, y = h + 300 },
             };
-            ground.AddComponent<MeshFilter>().sharedMesh = FlatPolygon(gpts, -0.04f);
+            ground.AddComponent<MeshFilter>().sharedMesh = FlatPolygon(gpts, -0.04f, 6f);
             // Its own material (not the shared Lit cache), so the palette tint does not leak onto bots.
-            Material gm = Mats.LitTextured(Palette.Ground, Texture2D.whiteTexture, 0.05f);
+            Textures.Pair gt = Textures.Ground();
+            Material gm = Mats.World(Palette.Ground, gt.Albedo, gt.Normal, 0.8f, 0.12f, 0f, 0.12f, 0f);
             WorldLook.Register(gm, Palette.Ground, Surface.Ground);
             ground.AddComponent<MeshRenderer>().sharedMaterial = gm;
         }
@@ -324,6 +369,7 @@ namespace Saltworks
         {
             public readonly List<Vector3> Verts = new List<Vector3>();
             public readonly List<Vector2> Uvs = new List<Vector2>();
+            public readonly List<Color> Colors = new List<Color>();
             public readonly List<int>[] Tris;
 
             public MeshBuilder(int submeshes)
@@ -334,8 +380,15 @@ namespace Saltworks
 
             public int Add(Vector3 v, Vector2 uv)
             {
+                return Add(v, uv, new Color(1f, 1f, 1f, 0f));
+            }
+
+            /// <summary>A vertex with a colour (RGB: baked occlusion/tint; A: WorldLit's metal mask, 0 here).</summary>
+            public int Add(Vector3 v, Vector2 uv, Color c)
+            {
                 Verts.Add(v);
                 Uvs.Add(uv);
+                Colors.Add(c);
                 return Verts.Count - 1;
             }
 
@@ -353,9 +406,12 @@ namespace Saltworks
                 if (Verts.Count > 65000) m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
                 m.SetVertices(Verts);
                 m.SetUVs(0, Uvs);
+                m.SetColors(Colors);
                 m.subMeshCount = Tris.Length;
                 for (int i = 0; i < Tris.Length; i++) m.SetTriangles(Tris[i], i);
                 m.RecalculateNormals();
+                // Tangents for the procedural normal maps (Saltworks/WorldLit).
+                m.RecalculateTangents();
                 m.RecalculateBounds();
                 return m;
             }
@@ -437,18 +493,27 @@ namespace Saltworks
 
         /// <summary>
         /// Wall prism: submesh 0 = sides, 1 = top cap, 2 = the darker base trim (the bottom `trimH` metres of the sides).
-        /// Flat-shaded, UVs in 2 m units.
+        /// Flat-shaded, UVs in 2 m units. Vertex colours bake a soft occlusion gradient: darker at the foot of the wall,
+        /// full brightness from about 1.3 m up.
         /// </summary>
         public static Mesh Prism(List<Vec2> pts, float height, float trimH = 0f)
         {
             List<Vector2> p = ToCounterClockwise(pts);
             var b = new MeshBuilder(3);
             const float uvScale = 0.5f;
+            const float aoHeight = 1.3f;
             trimH = Mathf.Clamp(trimH, 0f, height * 0.5f);
+            Color Ao(float y)
+            {
+                float k = Mathf.Clamp01(y / aoHeight);
+                k = 1f - (1f - k) * (1f - k);
+                float v = Mathf.Lerp(0.72f, 1f, k);
+                return new Color(v, v, v, 0f);
+            }
 
             List<int> cap = Triangulate(p);
             int baseTop = b.Verts.Count;
-            foreach (Vector2 v in p) b.Add(new Vector3(v.x, height, v.y), new Vector2(v.x, v.y) * uvScale);
+            foreach (Vector2 v in p) b.Add(new Vector3(v.x, height, v.y), new Vector2(v.x, v.y) * uvScale, new Color(1f, 1f, 1f, 0f));
             for (int i = 0; i < cap.Count; i += 3) b.Tri(1, baseTop + cap[i], baseTop + cap[i + 1], baseTop + cap[i + 2], Vector3.up);
 
             float run = 0f;
@@ -464,19 +529,26 @@ namespace Saltworks
                 float y0 = trimH;
                 if (trimH > 0f)
                 {
-                    int t0 = b.Add(new Vector3(a2.x, 0f, a2.y), new Vector2(run, 0f) * uvScale);
-                    int t1 = b.Add(new Vector3(c2.x, 0f, c2.y), new Vector2(run + len, 0f) * uvScale);
-                    int t2 = b.Add(new Vector3(c2.x, trimH, c2.y), new Vector2(run + len, trimH) * uvScale);
-                    int t3 = b.Add(new Vector3(a2.x, trimH, a2.y), new Vector2(run, trimH) * uvScale);
+                    int t0 = b.Add(new Vector3(a2.x, 0f, a2.y), new Vector2(run, 0f) * uvScale, Ao(0f));
+                    int t1 = b.Add(new Vector3(c2.x, 0f, c2.y), new Vector2(run + len, 0f) * uvScale, Ao(0f));
+                    int t2 = b.Add(new Vector3(c2.x, trimH, c2.y), new Vector2(run + len, trimH) * uvScale, Ao(trimH));
+                    int t3 = b.Add(new Vector3(a2.x, trimH, a2.y), new Vector2(run, trimH) * uvScale, Ao(trimH));
                     b.Tri(2, t0, t1, t2, normal);
                     b.Tri(2, t0, t2, t3, normal);
                 }
-                int v0 = b.Add(new Vector3(a2.x, y0, a2.y), new Vector2(run, y0) * uvScale);
-                int v1 = b.Add(new Vector3(c2.x, y0, c2.y), new Vector2(run + len, y0) * uvScale);
-                int v2 = b.Add(new Vector3(c2.x, height, c2.y), new Vector2(run + len, height) * uvScale);
-                int v3 = b.Add(new Vector3(a2.x, height, a2.y), new Vector2(run, height) * uvScale);
-                b.Tri(0, v0, v1, v2, normal);
-                b.Tri(0, v0, v2, v3, normal);
+                // Two rows: the occlusion gradient up to aoHeight, then plain wall to the top.
+                float mid = Mathf.Clamp(aoHeight, y0, height);
+                float[] ys = mid > y0 + 1e-3f && mid < height - 1e-3f ? new[] { y0, mid, height } : new[] { y0, height };
+                for (int r = 0; r + 1 < ys.Length; r++)
+                {
+                    float ya = ys[r], yb = ys[r + 1];
+                    int v0 = b.Add(new Vector3(a2.x, ya, a2.y), new Vector2(run, ya) * uvScale, Ao(ya));
+                    int v1 = b.Add(new Vector3(c2.x, ya, c2.y), new Vector2(run + len, ya) * uvScale, Ao(ya));
+                    int v2 = b.Add(new Vector3(c2.x, yb, c2.y), new Vector2(run + len, yb) * uvScale, Ao(yb));
+                    int v3 = b.Add(new Vector3(a2.x, yb, a2.y), new Vector2(run, yb) * uvScale, Ao(yb));
+                    b.Tri(0, v0, v1, v2, normal);
+                    b.Tri(0, v0, v2, v3, normal);
+                }
                 run += len;
             }
             return b.ToMesh();

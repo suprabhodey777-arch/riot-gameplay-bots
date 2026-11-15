@@ -31,13 +31,17 @@ namespace Saltworks
         public GameObject Root;
         public CapsuleCollider BodyCollider;
         public SphereCollider HeadCollider;
+        public BotRig Rig;
 
         Transform tilt;
         float deathStart = -1f;
         GameObject revealShell;
         Transform dazed;
         float blindSince;
-        MeshRenderer bodyR, headR, bandR;
+        Vector3 lastPos;
+        bool hasLastPos;
+        Vector3 vel;
+        bool crouched;
         /// <summary>Cached HUD strings (built once per bot, or when their input changes).</summary>
         public string LabelLine;
         public string ThoughtShown;
@@ -56,16 +60,14 @@ namespace Saltworks
             return ThoughtShown;
         }
 
-        /// <summary>Re-tints body, head and band (enemy highlight or ally colour from the settings).</summary>
+        /// <summary>Re-tints the armour (enemy highlight or ally colour from the settings).</summary>
         public void Recolor(Color tc)
         {
-            if (bodyR != null) bodyR.sharedMaterial = Mats.Lit(Color.Lerp(tc, Color.white, 0.15f));
-            if (headR != null) headR.sharedMaterial = Mats.Lit(Color.Lerp(tc, Color.white, 0.55f));
-            if (bandR != null) bandR.sharedMaterial = Mats.Lit(tc * 0.8f);
+            Rig?.Recolor(tc);
         }
 
-        public Vector3 HeadPos => Root.transform.position + Vector3.up * HeadY;
-        public Vector3 ChestPos => Root.transform.position + Vector3.up * 1.2f;
+        public Vector3 HeadPos => Root.transform.position + Vector3.up * (Rig != null ? Rig.HeadHeight : HeadY);
+        public Vector3 ChestPos => Root.transform.position + Vector3.up * (crouched ? 0.85f : 1.2f);
 
         static GameObject Part(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Material mat, bool keepCollider)
         {
@@ -94,31 +96,27 @@ namespace Saltworks
             tilt = new GameObject("Tilt").transform;
             tilt.SetParent(Root.transform, false);
 
-            // Capsule primitive: radius 0.5, height 2. Scaled to radius 0.4, height 1.8.
-            GameObject body = Part(PrimitiveType.Capsule, tilt, new Vector3(0f, Height / 2f, 0f), new Vector3(Radius * 2f, Height / 2f, Radius * 2f), Mats.Lit(Color.Lerp(tc, Color.white, 0.15f)), true);
-            body.name = "Body";
-            BodyCollider = body.GetComponent<CapsuleCollider>();
+            // Hit volumes (no renderers): a capsule of radius 0.4, height 1.8, and a head sphere of radius 0.15 at 1.65 m.
+            var body = new GameObject("Body collider");
+            body.transform.SetParent(Root.transform, false);
+            BodyCollider = body.AddComponent<CapsuleCollider>();
+            BodyCollider.radius = Radius;
+            BodyCollider.height = Height;
+            BodyCollider.center = new Vector3(0f, Height / 2f, 0f);
+            BodyCollider.direction = 1;
             body.AddComponent<BotPart>().Bot = this;
-            bodyR = body.GetComponent<MeshRenderer>();
 
-            // Sphere primitive: radius 0.5. Scaled to radius 0.15 at y 1.65.
-            GameObject head = Part(PrimitiveType.Sphere, tilt, new Vector3(0f, HeadY, 0f), Vector3.one * HeadRadius * 2f, Mats.Lit(Color.Lerp(tc, Color.white, 0.55f)), true);
-            head.name = "Head";
-            HeadCollider = head.GetComponent<SphereCollider>();
-            headR = head.GetComponent<MeshRenderer>();
+            var head = new GameObject("Head collider");
+            head.transform.SetParent(Root.transform, false);
+            HeadCollider = head.AddComponent<SphereCollider>();
+            HeadCollider.radius = HeadRadius;
+            HeadCollider.center = new Vector3(0f, HeadY, 0f);
             var hp = head.AddComponent<BotPart>();
             hp.Bot = this;
             hp.Head = true;
 
-            Material dark = Mats.Lit(new Color(0.18f, 0.19f, 0.23f));
-            Part(PrimitiveType.Cube, tilt, new Vector3(0f, HeadY + 0.01f, 0.13f), new Vector3(0.22f, 0.07f, 0.06f), Mats.Emissive(new Color(0.95f, 0.98f, 1f), 0.6f), false).name = "Visor";
-            GameObject bandGo = Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.25f, 0.0f), new Vector3(0.84f, 0.12f, 0.84f), Mats.Lit(tc * 0.8f), false);
-            bandGo.name = "Band";
-            bandR = bandGo.GetComponent<MeshRenderer>();
-            Part(PrimitiveType.Cube, tilt, new Vector3(0.18f, 1.25f, 0.5f), new Vector3(0.08f, 0.1f, 0.55f), dark, false).name = "Gun";
-            // The pack carries the agent's colour, so Rook, Haze, Wren and Pike read apart at a glance.
-            Material pack = string.IsNullOrEmpty(agent) ? dark : Mats.Lit(Color.Lerp(Agents.ColorOf(agent), dark.color, 0.25f));
-            Part(PrimitiveType.Cube, tilt, new Vector3(0f, 1.45f, -0.4f), new Vector3(0.4f, 0.45f, 0.14f), pack, false).name = "Pack";
+            Rig = new BotRig(tilt, tc, string.IsNullOrEmpty(agent) ? new Color(0.6f, 0.62f, 0.68f) : Agents.ColorOf(agent));
+            Rig.SetWeapon(null);
 
             // Recon silhouette: a slightly larger shell drawn through walls, off until revealed.
             revealShell = new GameObject("Reveal");
@@ -172,6 +170,28 @@ namespace Saltworks
             Root.transform.SetPositionAndRotation(pos, Quaternion.Euler(0f, headingDeg, 0f));
         }
 
+        /// <summary>The bot fired (a damage event it caused): muzzle flash and recoil.</summary>
+        public void Shot()
+        {
+            Rig?.Shot();
+        }
+
+        public void SetWeapon(string id)
+        {
+            if (!string.IsNullOrEmpty(id)) Rig?.SetWeapon(id);
+        }
+
+        /// <summary>Crouch, when the sim says so: the pose drops and the hit volumes with it.</summary>
+        public void SetCrouch(bool c)
+        {
+            if (c == crouched) return;
+            crouched = c;
+            float hgt = c ? 1.35f : Height;
+            BodyCollider.height = hgt;
+            BodyCollider.center = new Vector3(0f, hgt / 2f, 0f);
+            HeadCollider.center = new Vector3(0f, c ? 1.25f : HeadY, 0f);
+        }
+
         public void SetAlive(bool alive)
         {
             if (alive == Alive) return;
@@ -189,16 +209,29 @@ namespace Saltworks
 
         public void Animate()
         {
+            float dt = Time.deltaTime;
+            Vector3 p = Root.transform.position;
+            if (hasLastPos && dt > 1e-5f)
+            {
+                Vector3 v = (p - lastPos) / dt;
+                v.y = 0f;
+                // Interpolated positions move in short straight runs; smooth the velocity a little.
+                vel = Vector3.Lerp(vel, v, 1f - Mathf.Exp(-dt * 14f));
+            }
+            lastPos = p;
+            hasLastPos = true;
+            Rig?.Animate(dt, vel, Root.transform.eulerAngles.y, crouched, Alive);
             if (Alive || deathStart < 0f) return;
             float t = Mathf.Clamp01((Time.time - deathStart) / 0.55f);
             float e = t * t * (3f - 2f * t);
             // Falls backwards around the feet and settles on the floor.
             tilt.localRotation = Quaternion.Euler(-88f * e, 0f, 12f * e);
-            tilt.localPosition = new Vector3(0f, Radius * e * 0.9f, -0.1f * e);
+            tilt.localPosition = new Vector3(0f, Radius * e * 0.5f, -0.1f * e);
         }
 
         public void Destroy()
         {
+            Rig?.Destroy();
             if (Root != null) Object.Destroy(Root);
         }
     }
@@ -231,6 +264,9 @@ namespace Saltworks
         public readonly Dictionary<string, BotView> Bots = new Dictionary<string, BotView>();
 
         float stepTime;
+        /// <summary>Bullet holes, sparks and shells (pooled).</summary>
+        public ImpactFx Impacts { get; private set; }
+        Material tracerMat;
         readonly Dictionary<string, AgentState> prevMap = new Dictionary<string, AgentState>();
         readonly Dictionary<string, AgentState> currMap = new Dictionary<string, AgentState>();
         readonly Dictionary<string, SmokeView> smokes = new Dictionary<string, SmokeView>();
@@ -258,7 +294,9 @@ namespace Saltworks
             botsRoot = new GameObject("Bots").transform;
             fxRoot = new GameObject("Effects").transform;
             lineMat = Mats.Line();
+            tracerMat = Mats.Additive(Textures.Tracer(), Color.white, 1.6f, 3300);
             revealMat = Mats.Reveal(RevealColor);
+            Impacts = gameObject.AddComponent<ImpactFx>();
             BuildSpike();
         }
 
@@ -314,6 +352,7 @@ namespace Saltworks
             }
             smokes.Clear();
             revealedByEvent.Clear();
+            Impacts?.Clear();
             Prev = Curr = null;
             prevMap.Clear();
             currMap.Clear();
@@ -441,29 +480,53 @@ namespace Saltworks
 
         public void Tracer(Vector3 from, Vector3 to, Color color, float life)
         {
+            Tracer(from, to, color, life, false);
+        }
+
+        /// <summary>A pooled tracer; `bright` ones (the player's) are thin additive streaks, others soft lines.</summary>
+        public void Tracer(Vector3 from, Vector3 to, Color color, float life, bool bright)
+        {
             TracerView t = null;
             foreach (TracerView x in tracers)
                 if (!x.Line.gameObject.activeSelf) { t = x; break; }
             if (t == null)
             {
-                var go = new GameObject("Tracer");
-                go.transform.SetParent(fxRoot, false);
-                var lr = go.AddComponent<LineRenderer>();
-                lr.sharedMaterial = lineMat;
-                lr.positionCount = 2;
-                lr.useWorldSpace = true;
-                lr.widthMultiplier = 0.03f;
-                lr.shadowCastingMode = ShadowCastingMode.Off;
-                lr.receiveShadows = false;
-                t = new TracerView { Line = lr };
-                tracers.Add(t);
+                if (tracers.Count >= 64) t = tracers[0];
+                else
+                {
+                    var go = new GameObject("Tracer");
+                    go.transform.SetParent(fxRoot, false);
+                    var lr = go.AddComponent<LineRenderer>();
+                    lr.positionCount = 2;
+                    lr.useWorldSpace = true;
+                    lr.shadowCastingMode = ShadowCastingMode.Off;
+                    lr.receiveShadows = false;
+                    lr.textureMode = LineTextureMode.Stretch;
+                    t = new TracerView { Line = lr };
+                    tracers.Add(t);
+                }
             }
+            t.Line.sharedMaterial = bright ? tracerMat : lineMat;
+            t.Line.widthMultiplier = bright ? 0.022f : 0.03f;
             t.Line.gameObject.SetActive(true);
             t.Line.SetPosition(0, from);
             t.Line.SetPosition(1, to);
             t.Born = Time.time;
             t.Life = life;
             t.Color = color;
+        }
+
+        /// <summary>A bot fired: flash and kick on its model, and its tracer starts from the muzzle.</summary>
+        public void NoteShot(string id)
+        {
+            if (id != null && Bots.TryGetValue(id, out BotView b)) b.Shot();
+        }
+
+        /// <summary>A bot's muzzle in the world (the chest for the player or an unknown id).</summary>
+        public Vector3 MuzzleOf(string id, Vector3 fallback)
+        {
+            if (id != null && Bots.TryGetValue(id, out BotView b) && b.Rig != null) return b.Rig.MuzzlePos;
+            return fallback;
         }
 
         /// <summary>How deep `p` is inside a live smoke, 0 (outside) to 1 (centre).</summary>
@@ -503,8 +566,13 @@ namespace Saltworks
             }
             foreach (BotView b in Bots.Values)
             {
-                if (!currMap.ContainsKey(b.Id)) continue;
-                if (b.Alive) b.SetPose(InterpPos(b.Id), InterpHeading(b.Id));
+                if (!currMap.TryGetValue(b.Id, out AgentState st)) continue;
+                if (b.Alive)
+                {
+                    b.SetPose(InterpPos(b.Id), InterpHeading(b.Id));
+                    b.SetCrouch(st.crouch);
+                    b.SetWeapon(st.WeaponInHand);
+                }
                 b.Animate();
                 // Only enemies revealed for the player's team are drawn through walls.
                 b.SetEffects(b.Team != PlayerTeam && IsRevealed(b.Id), IsBlind(b.Id));

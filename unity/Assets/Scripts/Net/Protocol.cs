@@ -10,7 +10,9 @@ namespace Saltworks
 {
     public static class Wire
     {
-        public const string Protocol = "bots-wire.2";
+        /// <summary>bots-wire.3 (docs/weapons-economy.md): weapons, economy and match mode. Falls back to .2, then .1.</summary>
+        public const string Protocol = "bots-wire.3";
+        public const string Protocol2 = "bots-wire.2";
         public const string LegacyProtocol = "bots-wire.1";
 
         static readonly JsonSerializer Serializer = JsonSerializer.Create(new JsonSerializerSettings
@@ -79,6 +81,30 @@ namespace Saltworks
             return new JObject { ["type"] = "pick_agent", ["agent"] = id };
         }
 
+        // ---- bots-wire.3: match mode and the buy phase --------------------------------------
+        public static JObject Match(string map, string agent)
+        {
+            var o = new JObject { ["type"] = "match" };
+            if (!string.IsNullOrEmpty(map)) o["map"] = map;
+            if (!string.IsNullOrEmpty(agent)) o["agent"] = agent;
+            return o;
+        }
+
+        public static JObject Buy(string item)
+        {
+            return new JObject { ["type"] = "buy", ["item"] = item };
+        }
+
+        public static JObject Sell(string item)
+        {
+            return new JObject { ["type"] = "sell", ["item"] = item };
+        }
+
+        public static JObject Ready()
+        {
+            return new JObject { ["type"] = "ready" };
+        }
+
         public static JObject Input(PlayerInputMsg i)
         {
             JToken fire = JValue.CreateNull();
@@ -101,6 +127,10 @@ namespace Saltworks
             if (i.hasFlash) input["flashAt"] = V2(i.flashX, i.flashY);
             if (i.dash) input["dash"] = true;
             if (i.hasRecon) input["reconAt"] = V2(i.reconX, i.reconY);
+            // bots-wire.3, also optional: only sent when used, so an older bridge never sees them.
+            if (i.reload) input["reload"] = true;
+            if (!string.IsNullOrEmpty(i.slot)) input["slot"] = i.slot;
+            if (i.scoped) input["scoped"] = true;
             return new JObject { ["type"] = "input", ["input"] = input };
         }
     }
@@ -120,6 +150,11 @@ namespace Saltworks
         public bool dash;
         public bool hasRecon;
         public float reconX, reconY;
+        // bots-wire.3
+        public bool reload;
+        /// <summary>"primary" or "secondary" on the tick the player switches; null otherwise.</summary>
+        public string slot;
+        public bool scoped;
     }
 
     public enum Ability
@@ -233,6 +268,10 @@ namespace Saltworks
         public float crouchSpeedMps = 2f;
         /// <summary>The four agents with role and kit; shape read leniently by Agents.MergeFromRules.</summary>
         public JToken agents;
+        /// <summary>bots-wire.3: the weapon table with spray patterns; read leniently by Weapons.MergeFromRules.</summary>
+        public JToken weapons;
+        /// <summary>bots-wire.3: armour table, if the bridge sends one (read leniently).</summary>
+        public JToken armor;
 
         /// <summary>Not in rules: sim/sim.ts RECON_FUSE_S.</summary>
         public const float ReconFuseS = 0.5f;
@@ -265,6 +304,55 @@ namespace Saltworks
         public AbilityCharges abilities;
         public int blindUntilTick;
         public int revealedUntilTick;
+        // bots-wire.3 (contract v5); every field may be absent, then null / 0.
+        public int? credits;
+        /// <summary>"light" / "heavy" / null, or armour points as a number; see ArmorPoints and ArmorKind.</summary>
+        public JToken armor;
+        public string primary;
+        public string secondary;
+        /// <summary>"primary" or "secondary".</summary>
+        public string slot;
+        public int? ammo;
+        public int? reserve;
+        public int reloadingUntilTick;
+        public bool scoped;
+        /// <summary>Not in the contract; read if a bridge sends it, for the bots' crouch pose.</summary>
+        public bool crouch;
+
+        /// <summary>The weapon in hand: the slot's weapon, else the primary, else the Pin.</summary>
+        public string WeaponInHand
+        {
+            get
+            {
+                if (slot == "secondary" && !string.IsNullOrEmpty(secondary)) return secondary;
+                if (!string.IsNullOrEmpty(primary) && slot != "secondary") return primary;
+                return !string.IsNullOrEmpty(secondary) ? secondary : null;
+            }
+        }
+
+        /// <summary>Armour points left, when known (a number in `armor`), else -1.</summary>
+        public int ArmorPoints
+        {
+            get
+            {
+                if (armor == null) return -1;
+                if (armor.Type == JTokenType.Integer || armor.Type == JTokenType.Float) return (int)(double)armor;
+                if (armor is JObject o && o["points"] != null && (o["points"].Type == JTokenType.Integer || o["points"].Type == JTokenType.Float)) return (int)(double)o["points"];
+                return -1;
+            }
+        }
+
+        /// <summary>"light", "heavy" or null.</summary>
+        public string ArmorKind
+        {
+            get
+            {
+                if (armor == null) return null;
+                if (armor.Type == JTokenType.String) return (string)armor;
+                if (armor is JObject o && o["kind"] != null && o["kind"].Type == JTokenType.String) return (string)o["kind"];
+                return null;
+            }
+        }
 
         /// <summary>Charges left; without v4 abilities only the smoke count (smokesLeft) is known.</summary>
         public int Charges(Ability a)
@@ -341,6 +429,10 @@ namespace Saltworks
         public Vec2 from;
         public Vec2 to;
         public bool loud;
+        // bots-wire.3 events: reload, buy, switch; kills may carry the weapon.
+        public string weapon;
+        public string item;
+        public string slot;
     }
 
     // ---- shared/coaching.ts -----------------------------------------------------
@@ -410,6 +502,8 @@ namespace Saltworks
         public List<DrillBotSpec> bots = new List<DrillBotSpec>();
         public float roundTimeLeftS;
         public SpikePlantedSpec spikePlanted;
+        /// <summary>bots-wire.3 drills may carry a loadout { primary, secondary, armor, credits }.</summary>
+        public LoadoutInfo loadout;
     }
 
     public class DrillResult
@@ -571,5 +665,79 @@ namespace Saltworks
     {
         public string agent;
         public JToken kit;
+    }
+
+    // ---- bots-wire.3: match mode -------------------------------------------------------------
+    public class ScoreInfo
+    {
+        public int player;
+        public int enemy;
+    }
+
+    /// <summary>A loadout: the `loadout` message, and the shape inside buy_phase.team[].</summary>
+    public class LoadoutInfo
+    {
+        public int? credits;
+        public string primary;
+        public string secondary;
+        /// <summary>"light", "heavy" or null (read leniently: a number or an object is tolerated).</summary>
+        public JToken armor;
+
+        public string ArmorKind
+        {
+            get
+            {
+                if (armor == null) return null;
+                if (armor.Type == JTokenType.String) return (string)armor;
+                if (armor is JObject o && o["kind"] != null && o["kind"].Type == JTokenType.String) return (string)o["kind"];
+                return null;
+            }
+        }
+    }
+
+    public class TeamMember
+    {
+        public string id;
+        public int credits;
+        public LoadoutInfo loadout;
+    }
+
+    public class BuyPhaseMsg
+    {
+        public int round;
+        public string roundType;
+        public int credits;
+        public float timeS = 20f;
+        public ScoreInfo score;
+        public string side;
+        public List<TeamMember> team = new List<TeamMember>();
+        /// <summary>Not in the doc's example; read if present.</summary>
+        public LoadoutInfo loadout;
+    }
+
+    public class RoundResultMsg
+    {
+        public string winner;
+        public string how;
+        public int creditsEarned;
+        public ScoreInfo score;
+        public string mvp;
+        public int round;
+    }
+
+    public class MatchStats
+    {
+        public int kills;
+        public int deaths;
+        public float headshotPct;
+        public int? assists;
+        public int? damage;
+    }
+
+    public class MatchEndMsg
+    {
+        public ScoreInfo score;
+        public bool won;
+        public MatchStats stats;
     }
 }

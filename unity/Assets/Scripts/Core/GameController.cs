@@ -19,6 +19,11 @@ namespace Saltworks
         Intro,
         Playing,
         Result,
+        // round 4
+        Menu,
+        MatchSetup,
+        Buy,
+        MatchEnd,
     }
 
     public class FeedItem
@@ -28,6 +33,26 @@ namespace Saltworks
         public float At;
         /// <summary>Measured text width (virtual pixels), cached by the HUD; -1 until measured.</summary>
         public float Width = -1f;
+        // A kill: drawn as "killer [weapon icon] (headshot) victim".
+        public bool IsKill;
+        public string Killer;
+        public string Victim;
+        public string Weapon;
+        public bool Head;
+        public Color KillerColor;
+        public Color VictimColor;
+        public float KillerW = -1f;
+        public float VictimW = -1f;
+    }
+
+    /// <summary>A floating damage number over a hit bot (the damage-numbers setting).</summary>
+    public struct DamageNumber
+    {
+        public Vector3 World;
+        public int Amount;
+        public bool Head;
+        public float At;
+        public string Text;
     }
 
     public struct Choice
@@ -44,7 +69,7 @@ namespace Saltworks
         }
     }
 
-    public class GameController : MonoBehaviour
+    public partial class GameController : MonoBehaviour
     {
         public const int SampleSeed = 11;
 
@@ -163,7 +188,8 @@ namespace Saltworks
         Vector2? pendingRecon;
         bool pendingDash;
         bool abandoning;
-        bool legacyHelloSent;
+        /// <summary>0: the bots-wire.3 hello is out; 1: fell back to .2; 2: fell back to .1.</summary>
+        int helloFallback;
         bool mapChosen;
         bool agentChosen;
         int blindSeenUntil;
@@ -198,6 +224,10 @@ namespace Saltworks
             WorldLook.Setup(Rig.Cam);
             World = new GameObject("World").AddComponent<WorldView>();
             Fx = World.gameObject.AddComponent<AbilityFx>();
+            Rig.Gun = Gun;
+            if (Rig.Weapon != null) Rig.Weapon.Gun = Gun;
+            if (Rig.Weapon != null) Rig.Weapon.Impacts = World.Impacts;
+            ApplyGraphics();
             font = Mats.DefaultFont();
             textMat = Mats.WorldText(font);
             Font.textureRebuilt += OnFontTextureRebuilt;
@@ -262,7 +292,7 @@ namespace Saltworks
         {
             Screen = AppScreen.Connect;
             WaitingFor = null;
-            legacyHelloSent = false;
+            helloFallback = 0;
             Client.Connect(BridgeClient.DefaultHost, BridgeClient.PortFromEnv());
         }
 
@@ -336,6 +366,30 @@ namespace Saltworks
             Screen = AppScreen.Choose;
         }
 
+        /// <summary>The main menu (after the hello, and from the setup screens).</summary>
+        public void OpenMenu()
+        {
+            if (Screen == AppScreen.Connect) return;
+            Screen = AppScreen.Menu;
+        }
+
+        /// <summary>Practice: the coaching flow (sample player, map, agent, report, drills).</summary>
+        public void OpenPractice()
+        {
+            RehearseFocus = false;
+            Screen = Report != null ? AppScreen.Report : AppScreen.Choose;
+        }
+
+        /// <summary>Rehearse: the report's rehearsals (a sample player is picked first if there is no report yet).</summary>
+        public void OpenRehearse()
+        {
+            RehearseFocus = true;
+            Screen = Report != null ? AppScreen.Report : AppScreen.Choose;
+        }
+
+        /// <summary>Set when the menu's Rehearse opened the report, so it can scroll to the rehearsals.</summary>
+        public bool RehearseFocus;
+
         /// <summary>After a report: the map choice, then the agent select, then the report (each only once per session).</summary>
         AppScreen NextSetupScreen()
         {
@@ -402,14 +456,20 @@ namespace Saltworks
             while (guard++ < 500 && Client.TryDequeue(out JObject msg)) Handle(msg);
             WorldLook.Apply();
             TrackFps();
+            UpdateGraphics();
             if (GameInput.Pressed(GameKey.Fps))
             {
                 Settings.ShowFps = !Settings.ShowFps;
                 Settings.Save();
             }
-            // Esc closes the settings first, on any screen.
+            // Esc closes the settings first, on any screen; then an open buy menu.
             bool escForSettings = SettingsOpen && GameInput.Pressed(GameKey.Pause);
             if (escForSettings) CloseSettings();
+            else if (BuyOpen && Screen == AppScreen.Playing && GameInput.Pressed(GameKey.Pause))
+            {
+                BuyOpen = false;
+                escForSettings = true;
+            }
 
             switch (Screen)
             {
@@ -429,10 +489,11 @@ namespace Saltworks
                     Rig.Orbit(Map);
                     break;
             }
+            TickMatch();
             FullMap = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
             if (Screen == AppScreen.Playing || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
             if (Screen != AppScreen.Playing && Aiming.HasValue) CancelAim();
-            bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null && !SettingsOpen;
+            bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null && !SettingsOpen && !BuyOpen && !(InMatch && DrillDone && MatchEnd != null);
             Cursor.lockState = lockIt ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !lockIt;
         }
@@ -469,6 +530,7 @@ namespace Saltworks
                     Result = null;
                     World.Clear();
                     Fx.Clear();
+                    ResetMatch();
                 }
             }
         }
@@ -481,6 +543,7 @@ namespace Saltworks
                 else Paused = true;
             }
             if (!Paused && !fireArmed && !GameInput.FireHeld) fireArmed = true;
+            if (!GameInput.FireHeld) semiReleased = true;
             if (!Paused && GameInput.Pressed(GameKey.Minimap))
             {
                 Settings.MinimapOn = !Settings.MinimapOn;
@@ -490,15 +553,27 @@ namespace Saltworks
             AgentState me = Me;
             bool alive = me != null && me.alive;
             bool active = !Paused && !DrillDone && Connected;
-            bool control = active && alive;
+            bool control = active && alive && !BuyOpen;
+            float now = Time.unscaledTime;
+            if (!Paused && GameInput.Pressed(GameKey.Buy) && BuyPhaseActive) BuyOpen = !BuyOpen;
+            Rig.SensScale = Rig.ScopeSensFactor();
             if (control) Rig.Look(GameInput.LookDelta());
-            bool crouch = control && GameInput.Held(GameKey.Crouch);
-            bool walk = control && GameInput.Held(GameKey.Walk);
+            if (Settings.ToggleCrouch) { if (control && GameInput.Pressed(GameKey.Crouch)) crouchToggled = !crouchToggled; }
+            else crouchToggled = false;
+            if (Settings.ToggleWalk) { if (control && GameInput.Pressed(GameKey.Walk)) walkToggled = !walkToggled; }
+            else walkToggled = false;
+            bool crouch = control && (Settings.ToggleCrouch ? crouchToggled : GameInput.Held(GameKey.Crouch));
+            bool walk = control && (Settings.ToggleWalk ? walkToggled : GameInput.Held(GameKey.Walk));
+            crouchNow = crouch;
+            walkNow = walk;
             float fwd = (GameInput.Held(GameKey.Forward) ? 1f : 0f) - (GameInput.Held(GameKey.Back) ? 1f : 0f);
             float right = (GameInput.Held(GameKey.Right) ? 1f : 0f) - (GameInput.Held(GameKey.Left) ? 1f : 0f);
             Vector2 mv = control ? Rig.MoveVector(fwd, right) : Vector2.zero;
             MoveMode = crouch ? "crouch" : walk ? "walk" : "run";
             Moving = control && (fwd != 0f || right != 0f);
+
+            if (control) WeaponInput(now);
+            Gun.Tick(now, Time.unscaledDeltaTime, control && GameInput.FireHeld, Moving, MoveMode, Rig.DashKickAmount > 0.35f, control && GameInput.AimHeld);
 
             // Movement goes out with the next ticks (averaged over each 50 ms window), and the eye moves now.
             if (active) SendLoop(mv * SpeedFor(crouch, walk));
@@ -520,7 +595,7 @@ namespace Saltworks
             }
             else CancelAim();
 
-            if (Result != null && Time.unscaledTime >= VerdictUntil) Screen = AppScreen.Result;
+            if (Result != null && !InMatch && Time.unscaledTime >= VerdictUntil) Screen = AppScreen.Result;
         }
 
         float SpeedFor(bool crouch, bool walk)
@@ -626,12 +701,25 @@ namespace Saltworks
         void QueueFire()
         {
             if (!fireArmed || !GameInput.FireHeld || pendingFire.HasValue) return;
-            int needTicks = Mathf.Max(1, Mathf.CeilToInt(Rules.fireIntervalS * Rules.tickRate - 0.001f));
-            // The shot goes out with the next tick; keep sent shots at least fireIntervalS apart in sim time.
+            float now = Time.unscaledTime;
+            WeaponInfo w = Gun.Weapon;
+            // Semi-automatic weapons fire once per click.
+            if (!w.Auto && !semiReleased) return;
+            if (!Gun.CanFire(now))
+            {
+                if (Gun.Ammo <= 0 && GameInput.FireHeld) Gun.RequestReload(now);
+                return;
+            }
+            float interval = w.FireIntervalS > 0f ? w.FireIntervalS : Rules.fireIntervalS;
+            int needTicks = Mathf.Max(1, Mathf.CeilToInt(interval * Rules.tickRate - 0.001f));
+            // The shot goes out with the next tick; keep sent shots at least the weapon's interval apart in sim time.
             if (ticksSent + 1 - lastFireTick < needTicks) return;
-            pendingFire = Rig.Fire(World, PlayerTeam);
+            Gun.PlanShot(now);
+            pendingFire = Rig.Fire(World, PlayerTeam, Gun);
             lastFireTick = ticksSent + 1;
-            LastShotAt = Time.unscaledTime;
+            LastShotAt = now;
+            semiReleased = false;
+            ShotsFired++;
         }
 
         /// <summary>
@@ -663,8 +751,8 @@ namespace Saltworks
             AgentState me = Me;
             bool alive = me != null && me.alive;
             var input = new PlayerInputMsg();
-            input.walk = alive && GameInput.Held(GameKey.Walk);
-            input.crouch = alive && GameInput.Held(GameKey.Crouch);
+            input.walk = alive && walkNow;
+            input.crouch = alive && crouchNow;
             float speed = SpeedFor(input.crouch, input.walk);
             Vector2 mv = alive && speed > 0f ? windowVel / speed : Vector2.zero;
             if (mv.sqrMagnitude > 1f) mv.Normalize();
@@ -707,6 +795,15 @@ namespace Saltworks
                 input.dash = alive;
                 pendingDash = false;
             }
+            // bots-wire.3 weapon fields, only to a bridge that speaks it.
+            if (V3 && alive)
+            {
+                if (Gun.PendingReload) input.reload = true;
+                if (!string.IsNullOrEmpty(Gun.PendingSlot)) input.slot = Gun.PendingSlot;
+                input.scoped = Gun.Scoped;
+            }
+            Gun.PendingReload = false;
+            Gun.PendingSlot = null;
             if (Client.Send(Wire.Input(input)))
             {
                 ticksSent++;
@@ -738,15 +835,25 @@ namespace Saltworks
                     case "step": OnStep(Wire.Read<StepMsg>(o)); break;
                     case "result": OnResult(Wire.Read<ResultMsg>(o)); break;
                     case "debrief": Debrief = Wire.Read<DebriefMsg>(o); break;
+                    case "buy_phase": OnBuyPhase(o); break;
+                    case "loadout": OnLoadout(o); break;
+                    case "round_result": OnRoundResult(o); break;
+                    case "match_end": OnMatchEnd(o); break;
                     case "error":
                         ErrorMsg e = Wire.Read<ErrorMsg>(o);
-                        if (Screen == AppScreen.Connect && !legacyHelloSent)
+                        if (Screen == AppScreen.Connect && helloFallback < 2)
                         {
-                            // An error before any hello: a bots-wire.1 bridge refusing our bots-wire.2 hello. Speak .1.
-                            legacyHelloSent = true;
-                            Client.Send(Wire.Hello(Wire.LegacyProtocol));
+                            // An error before any hello: an older bridge refusing our hello. Step down: .3, then .2, then .1.
+                            helloFallback++;
+                            Client.Send(Wire.Hello(helloFallback == 1 ? Wire.Protocol2 : Wire.LegacyProtocol));
                             break;
                         }
+                        if (WaitingFor == "match")
+                        {
+                            InMatch = false;
+                            WaitingFor = null;
+                        }
+                        if (WaitingFor == "buy") WaitingFor = null;
                         // Inputs already in flight when a drill ends are answered with errors; those are expected.
                         if (!(DrillDone && Screen == AppScreen.Playing)) ShowToast("Bridge: " + (e?.message ?? "error"));
                         if (WaitingFor != "result") WaitingFor = null;
@@ -782,12 +889,14 @@ namespace Saltworks
 
         void OnHello(HelloMsg h)
         {
-            V2 = h.protocol == Wire.Protocol;
+            V3 = h.protocol == Wire.Protocol || (h.rules != null && h.rules.weapons != null && h.rules.weapons.Type != JTokenType.Null);
+            V2 = h.protocol == Wire.Protocol2 || V3;
             if (!V2 && h.protocol != Wire.LegacyProtocol)
                 ShowToast("The bridge speaks " + h.protocol + ", this client expects " + Wire.Protocol + ".");
             Rules = h.rules ?? new Rules();
             if (Rules.tickRate <= 0f) Rules.tickRate = 20f;
             Agents.MergeFromRules(Rules.agents);
+            Weapons.MergeFromRules(Rules.weapons, Rules.armor);
             if (h.map != null) LoadMap(h.map);
             World.Clear();
             Fx.Clear();
@@ -797,7 +906,8 @@ namespace Saltworks
             Debrief = null;
             WaitingFor = null;
             Maps = null;
-            Screen = AppScreen.Choose;
+            ResetMatch();
+            Screen = AppScreen.Menu;
             if (!V2)
             {
                 // A bots-wire.1 bridge: one map, no agents. Skip both select screens.
@@ -822,6 +932,8 @@ namespace Saltworks
             Walls = new Walls2D(m);
             Predictor.Configure(Walls, Rules);
             Minimap.Build(m);
+            RebuildProps();
+            WorldLook.RefreshReflections(m);
             sitePolys.Clear();
             foreach (KeyValuePair<string, List<Vec2>> site in m.SiteList()) sitePolys.Add(site.Value);
         }
@@ -911,7 +1023,25 @@ namespace Saltworks
             Minimap.Clear();
             LastShotAt = -10f;
             WaitingFor = null;
-            Screen = AppScreen.Intro;
+            ResetGunFor(d, mine);
+            DamageNumbers.Clear();
+            if (InMatch)
+            {
+                // A match round: no intro card, straight into the round (the buy menu may still be open over it).
+                MatchRoundStarted(d);
+                Screen = AppScreen.Playing;
+                Begin2();
+            }
+            else Screen = AppScreen.Intro;
+        }
+
+        /// <summary>Begin without the intro check (match rounds).</summary>
+        void Begin2()
+        {
+            Paused = false;
+            sendAcc = 0f;
+            tickDisp = Vector2.zero;
+            fireArmed = false;
         }
 
         void OnStep(StepMsg st)
@@ -920,6 +1050,8 @@ namespace Saltworks
             World.ApplyStep(st.state, st.thoughts);
             AgentState me = st.state.Agent(PlayerId);
             if (me != null) Predictor.Reconcile(st.state.tick, Geo.ToV2(me.pos), me.alive);
+            if (me != null) Gun.Sync(me, st.state, Rules.tickRate, Time.unscaledTime);
+            if (me != null && me.credits.HasValue) Credits = me.credits.Value;
             if (st.events != null) foreach (SimEvent e in st.events) OnEvent(e);
             TrackBlind(st.state);
             UpdatePlant();
@@ -942,6 +1074,13 @@ namespace Saltworks
             ResultAt = Time.unscaledTime;
             DrillDone = true;
             if (WaitingFor == "result") WaitingFor = null;
+            if (InMatch)
+            {
+                // Match rounds end with round_result; the drill-style result screen is not shown.
+                Result = null;
+                abandoning = false;
+                return;
+            }
             if (Screen == AppScreen.Playing && !abandoning)
                 VerdictUntil = Time.unscaledTime + 2.5f;
             else
@@ -989,13 +1128,16 @@ namespace Saltworks
                         HitMarkerHead = e.part == "head";
                         HitMarkerKill = false;
                         Rig.PlayHitTick();
+                        AddDamageNumber(e);
                     }
                     if (e.victim == PlayerId) DamageAt = now;
                     if (e.attacker != PlayerId && e.attackerPos != null && e.victimPos != null)
                     {
                         AgentState a = World.Agent(e.attacker);
                         Color c = Palette.Team(a != null ? a.team : "defense");
-                        World.Tracer(Geo.ToWorld(e.attackerPos, 1.45f), Geo.ToWorld(e.victimPos, 1.3f), new Color(c.r, c.g, c.b, 0.9f), 0.12f);
+                        World.NoteShot(e.attacker);
+                        Vector3 from = World.MuzzleOf(e.attacker, Geo.ToWorld(e.attackerPos, 1.45f));
+                        World.Tracer(from, Geo.ToWorld(e.victimPos, 1.3f), new Color(c.r, c.g, c.b, 0.9f), 0.12f);
                     }
                     break;
                 case "kill":
@@ -1004,9 +1146,20 @@ namespace Saltworks
                         HitMarkerAt = now;
                         HitMarkerKill = true;
                         HitMarkerHead = e.part == "head";
+                        MatchKills++;
+                        if (e.part == "head") MatchHeadKills++;
                     }
-                    if (e.victim == PlayerId) DamageAt = now;
-                    AddFeed(Name(e.killer) + "  killed  " + Name(e.victim) + (e.part == "head" ? "  (headshot)" : ""), TeamColorOf(e.killer));
+                    if (e.victim == PlayerId)
+                    {
+                        DamageAt = now;
+                        MatchDeaths++;
+                    }
+                    AddKill(e);
+                    break;
+                case "reload":
+                case "buy":
+                case "switch":
+                    // bots-wire.3 bookkeeping events: the next state already carries their effect.
                     break;
                 case "smoke":
                     AddFeed(Name(e.agent) + " threw a smoke", new Color(0.85f, 0.83f, 0.95f));

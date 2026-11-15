@@ -1,5 +1,6 @@
-// First-person camera, procedural gun viewmodel, muzzle flash, the client-side
-// shot raycast and the smoke aim point. Lives on the main camera.
+// First-person camera, the weapon viewmodel (Viewmodel), the client-side shot
+// raycast with spray, spread and pellets, camera recoil and the smoke aim
+// point. Lives on the main camera.
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -27,7 +28,13 @@ namespace Saltworks
         public const float RangeMarginM = 0.75f;
 
         public float Sensitivity = 1f;
+        /// <summary>Extra sensitivity factor (the scope sets it).</summary>
+        public float SensScale = 1f;
         public Camera Cam { get; private set; }
+        public Viewmodel Weapon { get; private set; }
+        public Glow Bloom { get; private set; }
+        /// <summary>The player's weapons (set by GameController).</summary>
+        public Gunplay Gun;
 
         /// <summary>Unity heading (eulerAngles.y) in degrees.</summary>
         public float Heading;
@@ -35,16 +42,12 @@ namespace Saltworks
 
         float eye = EyeStand;
         float deathLerp;
-        Transform viewmodel;
-        Transform muzzle;
-        GameObject flash;
-        Light flashLight;
-        float flashUntil;
         float recoil;
+        float shake;
         float bobPhase;
         Vector3 lastGround;
+        Vector2 lastLook;
         AudioSource audioSrc;
-        AudioClip shotClip;
         AudioClip tickClip;
 
         void Awake()
@@ -57,61 +60,16 @@ namespace Saltworks
             audioSrc = gameObject.AddComponent<AudioSource>();
             audioSrc.playOnAwake = false;
             audioSrc.spatialBlend = 0f;
-            shotClip = Synth.Shot();
             tickClip = Synth.Tick();
-            BuildViewmodel();
+            Weapon = gameObject.AddComponent<Viewmodel>();
+            Weapon.Init(Cam);
+            Bloom = gameObject.AddComponent<Glow>();
             SetViewmodelVisible(false);
-        }
-
-        void BuildViewmodel()
-        {
-            viewmodel = new GameObject("Viewmodel").transform;
-            viewmodel.SetParent(transform, false);
-            viewmodel.localPosition = new Vector3(0.2f, -0.2f, 0.42f);
-            Material body = Mats.Lit(Palette.Gun);
-            Material trim = Mats.Lit(new Color(0.85f, 0.86f, 0.9f));
-            Material accent = Mats.Emissive(new Color(0.35f, 0.95f, 0.9f), 0.8f);
-            Piece(PrimitiveType.Cube, new Vector3(0f, 0f, 0f), new Vector3(0.07f, 0.09f, 0.34f), body);
-            Piece(PrimitiveType.Cube, new Vector3(0f, 0.005f, 0.24f), new Vector3(0.035f, 0.035f, 0.2f), trim);
-            Piece(PrimitiveType.Cube, new Vector3(0f, -0.09f, -0.06f), new Vector3(0.05f, 0.12f, 0.06f), body).transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
-            Piece(PrimitiveType.Cube, new Vector3(0f, -0.08f, 0.07f), new Vector3(0.045f, 0.1f, 0.05f), trim);
-            Piece(PrimitiveType.Cube, new Vector3(0f, 0.06f, 0.02f), new Vector3(0.025f, 0.03f, 0.09f), body);
-            Piece(PrimitiveType.Cube, new Vector3(0.036f, 0.01f, 0.05f), new Vector3(0.004f, 0.02f, 0.2f), accent);
-            muzzle = new GameObject("Muzzle").transform;
-            muzzle.SetParent(viewmodel, false);
-            muzzle.localPosition = new Vector3(0f, 0.005f, 0.36f);
-            flash = Piece(PrimitiveType.Sphere, new Vector3(0f, 0.005f, 0.38f), Vector3.one * 0.07f, Mats.Unlit(new Color(1f, 0.85f, 0.45f)));
-            flash.name = "Muzzle flash";
-            var lgo = new GameObject("Flash light");
-            lgo.transform.SetParent(muzzle, false);
-            flashLight = lgo.AddComponent<Light>();
-            flashLight.type = LightType.Point;
-            flashLight.color = new Color(1f, 0.8f, 0.5f);
-            flashLight.range = 6f;
-            flashLight.intensity = 2.5f;
-            flashLight.shadows = LightShadows.None;
-            flash.SetActive(false);
-            flashLight.enabled = false;
-        }
-
-        GameObject Piece(PrimitiveType t, Vector3 pos, Vector3 scale, Material m)
-        {
-            GameObject go = GameObject.CreatePrimitive(t);
-            go.transform.SetParent(viewmodel, false);
-            go.transform.localPosition = pos;
-            go.transform.localScale = scale;
-            var mr = go.GetComponent<MeshRenderer>();
-            mr.sharedMaterial = m;
-            mr.shadowCastingMode = ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-            Collider c = go.GetComponent<Collider>();
-            if (c != null) Destroy(c);
-            return go;
         }
 
         public void SetViewmodelVisible(bool v)
         {
-            if (viewmodel != null && viewmodel.gameObject.activeSelf != v) viewmodel.gameObject.SetActive(v);
+            if (Weapon != null) Weapon.SetVisible(v);
         }
 
         public void ResetFor(AgentState me)
@@ -121,13 +79,16 @@ namespace Saltworks
             eye = EyeStand;
             deathLerp = 0f;
             recoil = 0f;
+            shake = 0f;
             fovKick = 0f;
             if (me != null) lastGround = Geo.ToWorld(me.pos);
         }
 
         public void Look(Vector2 deltaDeg)
         {
-            float s = Settings.RigSensitivity;
+            float s = Settings.RigSensitivity * SensScale;
+            if (Settings.InvertY) deltaDeg.y = -deltaDeg.y;
+            lastLook = deltaDeg;
             Heading = Mathf.Repeat(Heading + deltaDeg.x * s, 360f);
             Pitch = Mathf.Clamp(Pitch - deltaDeg.y * s, -85f, 85f);
         }
@@ -155,31 +116,26 @@ namespace Saltworks
         /// <summary>Places the eye over the interpolated sim position. Call every frame during a drill.</summary>
         public void Place(Vector3 ground, bool crouch, bool alive)
         {
+            float dt = Time.deltaTime;
             float target = crouch ? EyeCrouch : EyeStand;
-            eye = Mathf.MoveTowards(eye, target, Time.deltaTime * 4f);
-            deathLerp = Mathf.MoveTowards(deathLerp, alive ? 0f : 1f, Time.deltaTime * 2f);
+            eye = Mathf.MoveTowards(eye, target, dt * 4f);
+            deathLerp = Mathf.MoveTowards(deathLerp, alive ? 0f : 1f, dt * 2f);
 
-            float speed = Time.deltaTime > 0f ? (new Vector3(ground.x - lastGround.x, 0f, ground.z - lastGround.z)).magnitude / Time.deltaTime : 0f;
+            float speed = dt > 0f ? (new Vector3(ground.x - lastGround.x, 0f, ground.z - lastGround.z)).magnitude / dt : 0f;
             lastGround = ground;
             float moving = Mathf.Clamp01(speed / 6f);
-            bobPhase += Time.deltaTime * Mathf.Lerp(0f, 11f, moving);
+            bobPhase += dt * Mathf.Lerp(0f, 11f, moving);
             float bob = Mathf.Sin(bobPhase) * 0.025f * moving;
 
+            Vector2 kick = Gun != null ? Gun.Kick : Vector2.zero;
             float y = Mathf.Lerp(eye + bob, 0.35f, deathLerp);
             transform.position = new Vector3(ground.x, y, ground.z);
-            transform.rotation = Quaternion.Euler(Pitch - recoil * 1.2f, Heading, 25f * deathLerp);
+            transform.rotation = Quaternion.Euler(Pitch - kick.x - shake, Heading + kick.y, 25f * deathLerp);
 
-            recoil = Mathf.MoveTowards(recoil, 0f, Time.deltaTime * 9f);
-            if (viewmodel != null)
-            {
-                viewmodel.localPosition = new Vector3(0.2f + Mathf.Cos(bobPhase * 0.5f) * 0.006f * moving, -0.2f + bob * 0.4f, 0.42f - recoil * 0.06f);
-                viewmodel.localRotation = Quaternion.Euler(-recoil * 6f, 0f, 0f);
-            }
-            if (flash.activeSelf && Time.time >= flashUntil)
-            {
-                flash.SetActive(false);
-                flashLight.enabled = false;
-            }
+            recoil = Mathf.MoveTowards(recoil, 0f, dt * 9f);
+            shake = Mathf.MoveTowards(shake, 0f, dt * 30f);
+            if (Weapon != null) Weapon.Frame(dt, moving, crouch, lastLook);
+            lastLook = Vector2.zero;
         }
 
         /// <summary>Overview camera for the menus: a slow orbit above the map.</summary>
@@ -199,7 +155,23 @@ namespace Saltworks
             fovKick = Mathf.MoveTowards(fovKick, 0f, Time.deltaTime / 0.35f);
             // A quick widen that eases back: the dash's sense of speed.
             float kick = DashFovKickDeg * fovKick * fovKick;
-            if (Cam != null) Cam.fieldOfView = Camera.HorizontalToVerticalFieldOfView(Mathf.Min(150f, Settings.FovH + kick), Mathf.Max(0.1f, Cam.aspect));
+            float h = Mathf.Min(150f, Settings.FovH + kick);
+            float scope = Gun != null ? Gun.Scope01 : 0f;
+            if (scope > 0f)
+            {
+                float t0 = Mathf.Tan(h * 0.5f * Mathf.Deg2Rad);
+                float t1 = t0 / Gunplay.ScopeZoom;
+                h = 2f * Mathf.Atan(Mathf.Lerp(t0, t1, scope)) * Mathf.Rad2Deg;
+            }
+            if (Cam != null) Cam.fieldOfView = Camera.HorizontalToVerticalFieldOfView(h, Mathf.Max(0.1f, Cam.aspect));
+        }
+
+        /// <summary>Sensitivity factor while scoped: the zoom's ratio times the scoped-sensitivity setting.</summary>
+        public float ScopeSensFactor()
+        {
+            float scope = Gun != null ? Gun.Scope01 : 0f;
+            if (scope <= 0.5f) return 1f;
+            return Settings.ScopedSens / Gunplay.ScopeZoom;
         }
 
         public const float DashFovKickDeg = 16f;
@@ -222,40 +194,77 @@ namespace Saltworks
             return Cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
         }
 
+        /// <summary>The aim direction (without the camera kick) turned by a spray/spread offset (x pitch up, y yaw right).</summary>
+        Vector3 ShotDir(Vector2 off)
+        {
+            return Quaternion.Euler(Pitch - off.x, Heading + off.y, 0f) * Vector3.forward;
+        }
+
         /// <summary>
-        /// The shot, per docs/unity-bridge.md: a ray from the camera through the crosshair against walls and bot
-        /// colliders. Head sphere = head, body capsule = body; walls, teammates or nothing = miss, reported against
-        /// the living enemy closest to the aim direction.
+        /// The shot, per docs/unity-bridge.md and docs/weapons-economy.md: rays from the eye along the aim plus this
+        /// bullet's spray offset and spread (one per pellet), against walls and bot colliders. Head sphere = head, body
+        /// capsule = body; walls, teammates or nothing = miss, reported against the living enemy closest to the aim
+        /// direction. For pellets the target hit most is reported, "head" if any pellet found its head.
         /// </summary>
-        public ShotOutcome Fire(WorldView world, string myTeam)
+        public ShotOutcome Fire(WorldView world, string myTeam, Gunplay gun)
         {
             Physics.SyncTransforms();
-            Ray ray = AimRay();
-            var outcome = new ShotOutcome { Result = "miss", TargetId = "", End = ray.origin + ray.direction * 80f };
-            if (Physics.Raycast(ray, out RaycastHit hit, MaxShotRange, ~0, QueryTriggerInteraction.Ignore))
+            WeaponInfo w = gun.Weapon;
+            Vector3 origin = transform.position;
+            Vector3 muzzle = Weapon != null ? Weapon.MuzzleWorld(transform) : origin;
+            var outcome = new ShotOutcome { Result = "miss", TargetId = "", End = origin + ShotDir(Vector2.zero) * 80f };
+            string bestId = null;
+            int bestHits = 0;
+            bool bestHead = false;
+            string curId = null;
+            int curHits = 0;
+            bool curHead = false;
+            int n = Mathf.Max(1, gun.OffsetCount);
+            for (int i = 0; i < n; i++)
             {
-                outcome.End = hit.point;
-                BotPart part = hit.collider.GetComponent<BotPart>();
-                if (part != null && part.Bot != null && part.Bot.Alive && part.Bot.Team != myTeam)
+                Vector3 dir = ShotDir(gun.Offsets[i]);
+                var ray = new Ray(origin, dir);
+                Vector3 end = origin + dir * 80f;
+                if (Physics.Raycast(ray, out RaycastHit hit, MaxShotRange, ~0, QueryTriggerInteraction.Ignore))
                 {
-                    bool head = part.Head;
-                    // The head sphere sits inside the capsule's top, so the ray meets the capsule first: test the head too.
-                    if (!head && part.Bot.HeadCollider != null && part.Bot.HeadCollider.enabled)
-                        head = part.Bot.HeadCollider.Raycast(ray, out RaycastHit _, MaxShotRange);
-                    outcome.TargetId = part.Bot.Id;
-                    outcome.Result = head ? "head" : "body";
+                    end = hit.point;
+                    BotPart part = hit.collider.GetComponent<BotPart>();
+                    if (part != null && part.Bot != null)
+                    {
+                        if (part.Bot.Alive && part.Bot.Team != myTeam)
+                        {
+                            bool head = part.Head;
+                            // The head sphere sits inside the capsule's top, so the ray meets the capsule first: test the head too.
+                            if (!head && part.Bot.HeadCollider != null && part.Bot.HeadCollider.enabled)
+                                head = part.Bot.HeadCollider.Raycast(ray, out RaycastHit _, MaxShotRange);
+                            // Tally per target (pellets): the first target, or a second one, keeps a count.
+                            if (curId == null || curId == part.Bot.Id) { curId = part.Bot.Id; curHits++; curHead |= head; }
+                            else if (bestId == null || bestId == part.Bot.Id) { bestId = part.Bot.Id; bestHits++; bestHead |= head; }
+                            world.Impacts?.BodyHit(hit.point, dir, Palette.Relation(part.Bot.Team, myTeam));
+                        }
+                    }
+                    else world.Impacts?.Impact(hit.point, hit.normal, dir);
                 }
+                if (i == 0) outcome.End = end;
+                // One tracer per trigger pull for single-bullet guns; every other pellet for the Brick.
+                if (i == 0 || (n > 1 && i % 2 == 0))
+                    world.Tracer(muzzle, end, new Color(1f, 0.9f, 0.62f, n > 1 ? 0.55f : 0.9f), n > 1 ? 0.05f : 0.07f, true);
             }
-            if (outcome.Result == "miss") outcome.TargetId = NearestAimed(world, myTeam, ray);
+            if (bestId != null && (bestHits > curHits || (bestHits == curHits && bestHead && !curHead)))
+            {
+                curId = bestId;
+                curHead = bestHead;
+            }
+            if (curId != null)
+            {
+                outcome.TargetId = curId;
+                outcome.Result = curHead ? "head" : "body";
+            }
+            else outcome.TargetId = NearestAimed(world, myTeam, new Ray(origin, ShotDir(Vector2.zero)));
 
-            recoil = Mathf.Min(1.5f, recoil + 0.6f);
-            flash.SetActive(true);
-            flash.transform.localRotation = Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
-            flash.transform.localScale = Vector3.one * Random.Range(0.05f, 0.09f);
-            flashLight.enabled = true;
-            flashUntil = Time.time + 0.05f;
-            audioSrc.PlayOneShot(shotClip, 0.7f);
-            world.Tracer(muzzle.position, outcome.End, new Color(1f, 0.92f, 0.7f, 0.9f), 0.07f);
+            recoil = Mathf.Min(1.5f, recoil + (w.Auto ? 0.45f : 0.8f));
+            shake = Mathf.Min(2f, shake + (w.Class == WeaponClass.Sniper || w.Class == WeaponClass.Shotgun ? 1.2f : 0.25f));
+            if (Weapon != null) Weapon.OnShot(w);
             return outcome;
         }
 

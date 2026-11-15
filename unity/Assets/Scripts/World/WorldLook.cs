@@ -45,8 +45,8 @@ namespace Saltworks
                 case WorldPaletteId.Dusk:
                     return new Look
                     {
-                        Sky = new Color(0.55f, 0.50f, 0.72f), Horizon = new Color(0.98f, 0.66f, 0.50f), Fog = new Color(0.90f, 0.66f, 0.56f), FogDensity = 0.013f,
-                        Sun = new Color(1f, 0.66f, 0.40f), SunIntensity = 1.05f, SunEuler = new Vector3(17f, -62f, 0f), ShadowStrength = 0.72f,
+                        Sky = new Color(0.55f, 0.50f, 0.72f), Horizon = new Color(0.98f, 0.66f, 0.50f), Fog = new Color(0.88f, 0.62f, 0.54f), FogDensity = 0.012f,
+                        Sun = new Color(1f, 0.64f, 0.38f), SunIntensity = 1.1f, SunEuler = new Vector3(17f, -62f, 0f), ShadowStrength = 0.8f,
                         AmbSky = new Color(0.60f, 0.52f, 0.68f), AmbEq = new Color(0.72f, 0.56f, 0.50f), AmbGround = new Color(0.34f, 0.27f, 0.29f),
                         Wall = new Color(1f, 0.92f, 0.86f), Floor = new Color(1f, 0.90f, 0.84f), Ground = new Color(0.9f, 0.78f, 0.72f), Exposure = 1.1f,
                     };
@@ -69,9 +69,9 @@ namespace Saltworks
                 default:
                     return new Look
                     {
-                        Sky = new Color(0.62f, 0.76f, 0.92f), Horizon = Palette.Sky, Fog = Palette.Fog, FogDensity = 0.011f,
-                        Sun = new Color(1f, 0.96f, 0.9f), SunIntensity = 1.15f, SunEuler = new Vector3(52f, -35f, 0f), ShadowStrength = 0.55f,
-                        AmbSky = new Color(0.80f, 0.84f, 0.92f), AmbEq = new Color(0.74f, 0.72f, 0.70f), AmbGround = new Color(0.48f, 0.46f, 0.45f),
+                        Sky = new Color(0.52f, 0.70f, 0.93f), Horizon = Palette.Sky, Fog = new Color(0.80f, 0.85f, 0.91f), FogDensity = 0.0095f,
+                        Sun = new Color(1f, 0.94f, 0.84f), SunIntensity = 1.2f, SunEuler = new Vector3(48f, -35f, 0f), ShadowStrength = 0.7f,
+                        AmbSky = new Color(0.74f, 0.82f, 0.95f), AmbEq = new Color(0.76f, 0.73f, 0.69f), AmbGround = new Color(0.44f, 0.41f, 0.38f),
                         Wall = Color.white, Floor = Color.white, Ground = Color.white, Exposure = 1.3f,
                     };
             }
@@ -104,13 +104,72 @@ namespace Saltworks
             Apply();
         }
 
-        /// <summary>Soft shadows out to 70 m with two cascades, unless the quality level turned shadows off.</summary>
+        /// <summary>Shadows, MSAA and the rest of the graphics preset (Gfx), after the quality level is set.</summary>
         public static void ApplyQualityExtras()
         {
-            QualitySettings.shadowDistance = 70f;
-            if (QualitySettings.shadows != ShadowQuality.Disable) QualitySettings.shadows = ShadowQuality.All;
-            if (QualitySettings.shadowCascades > 2) QualitySettings.shadowCascades = 2;
+            Gfx.ApplyQuality();
         }
+
+        // ---- glowing materials and reflections ------------------------------------------------------
+        struct GlowEntry
+        {
+            public Material Mat;
+            public Color Color;
+            public float Intensity;
+        }
+
+        static readonly List<GlowEntry> glows = new List<GlowEntry>();
+        static ReflectionProbe probe;
+
+        /// <summary>Emission scales with the palette (light strips read brighter at dusk and night).</summary>
+        public static void RegisterGlow(Material m, Color c, float intensity)
+        {
+            if (m == null || !m.HasProperty("_EmissionColor")) return;
+            glows.Add(new GlowEntry { Mat = m, Color = c, Intensity = intensity });
+            m.SetColor("_EmissionColor", c * intensity * GlowBoost(Settings.World));
+        }
+
+        static float GlowBoost(WorldPaletteId id)
+        {
+            switch (id)
+            {
+                case WorldPaletteId.Dusk: return 1.5f;
+                case WorldPaletteId.Night: return 2.2f;
+                case WorldPaletteId.HighContrast: return 0.8f;
+                default: return 1f;
+            }
+        }
+
+        /// <summary>
+        /// One realtime reflection probe over the whole map, rendered once after a build or a palette change, so metal
+        /// (guns, trims, pipes) reflects the map and sky instead of black.
+        /// </summary>
+        public static void RefreshReflections(MapDef map)
+        {
+            if (map == null) return;
+            float w = map.bounds != null && map.bounds.width > 0 ? map.bounds.width : 100f;
+            float h = map.bounds != null && map.bounds.height > 0 ? map.bounds.height : 100f;
+            if (probe == null)
+            {
+                var go = new GameObject("Reflection probe");
+                probe = go.AddComponent<ReflectionProbe>();
+                probe.mode = ReflectionProbeMode.Realtime;
+                probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+                probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.NoTimeSlicing;
+                probe.resolution = 128;
+                probe.boxProjection = false;
+                probe.clearFlags = ReflectionProbeClearFlags.Skybox;
+                probe.cullingMask = ~(1 << Viewmodel.Layer);
+                probe.shadowDistance = 0f;
+                probe.importance = 1;
+            }
+            probe.transform.position = new Vector3(w * 0.5f, 3f, h * 0.5f);
+            probe.size = new Vector3(w + 60f, 60f, h + 60f);
+            probeMap = map;
+            if (QualitySettings.realtimeReflectionProbes) probe.RenderProbe();
+        }
+
+        static MapDef probeMap;
 
         public static void Register(Material m, Color baseColor, Surface kind)
         {
@@ -123,6 +182,7 @@ namespace Saltworks
         public static void Prune()
         {
             registry.Clear();
+            glows.Clear();
         }
 
         static void Tint(Entry e, Look l)
@@ -173,6 +233,10 @@ namespace Saltworks
             }
             for (int i = 0; i < registry.Count; i++)
                 if (registry[i].Mat != null) Tint(registry[i], l);
+            float boost = GlowBoost(Settings.World);
+            for (int i = 0; i < glows.Count; i++)
+                if (glows[i].Mat != null) glows[i].Mat.SetColor("_EmissionColor", glows[i].Color * glows[i].Intensity * boost);
+            if (probe != null && probeMap != null && QualitySettings.realtimeReflectionProbes) probe.RenderProbe();
         }
     }
 }

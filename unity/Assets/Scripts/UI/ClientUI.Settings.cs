@@ -8,7 +8,7 @@ namespace Saltworks
 {
     public partial class ClientUI
     {
-        static readonly string[] TabNames = { "General", "Crosshair", "Minimap", "Colours" };
+        static readonly string[] TabNames = { "General", "Video", "Controls", "Crosshair", "Minimap", "Colours" };
         static readonly string[] OnOff = { "Off", "On" };
         static readonly string[] MapModes = { "Rotate with me", "Fixed north" };
         int settingsTab;
@@ -42,9 +42,11 @@ namespace Saltworks
             GUILayout.BeginVertical();
             switch (settingsTab)
             {
-                case 1: CrosshairTab(); break;
-                case 2: MinimapTab(); break;
-                case 3: ColoursTab(); break;
+                case 1: VideoTab(); break;
+                case 2: ControlsTab(); break;
+                case 3: CrosshairTab(); break;
+                case 4: MinimapTab(); break;
+                case 5: ColoursTab(); break;
                 default: GeneralTab(); break;
             }
             GUILayout.EndVertical();
@@ -71,6 +73,17 @@ namespace Saltworks
             Settings.AllyColor = 0;
             Settings.AccentColor = 0;
             Settings.World = WorldPaletteId.Day;
+            Settings.GfxPreset = 2;
+            Settings.DamageNumbers = true;
+            Settings.ViewmodelFov = 60f;
+            Settings.ViewmodelX = 0f;
+            Settings.ViewmodelY = 0f;
+            Settings.ViewmodelZ = 0f;
+            Settings.ViewmodelLeft = false;
+            Settings.InvertY = false;
+            Settings.ToggleCrouch = false;
+            Settings.ToggleWalk = false;
+            Settings.ScopedSens = 1f;
             GUI.changed = true;
         }
 
@@ -151,26 +164,70 @@ namespace Saltworks
             GUILayout.EndHorizontal();
             GUILayout.Label("Same scale as VALORANT (0.07\u00b0 per mouse count \u00d7 sensitivity), so your number carries over.   " +
                             "800 DPI: " + Settings.CmPer360(800f).ToString("0.0") + " cm/360   1600 DPI: " + Settings.CmPer360(1600f).ToString("0.0") + " cm/360", small);
+            Settings.ScopedSens = Mathf.Round(SliderRow("Scoped sensitivity", Settings.ScopedSens, 0.2f, 2f, Settings.ScopedSens.ToString("0.00") + "\u00d7") * 100f) / 100f;
+            GUILayout.Label("Relative to the zoom: 1.00 turns the same distance across the scope as across the unscoped view.", small);
+            Settings.InvertY = ToggleRow("Invert vertical look", Settings.InvertY);
 
             SectionHeader("View");
             Settings.FovH = Mathf.Round(SliderRow("Field of view", Settings.FovH, 80f, 110f, Settings.FovH.ToString("0") + "\u00b0"));
             GUILayout.Label("Horizontal. The sim's own vision cone stays 103\u00b0.", small);
+            Settings.ViewmodelFov = Mathf.Round(SliderRow("Weapon field of view", Settings.ViewmodelFov, 45f, 80f, Settings.ViewmodelFov.ToString("0") + "\u00b0"));
+            Settings.ViewmodelLeft = ChoiceRow("Weapon hand", Settings.ViewmodelLeft ? 1 : 0, Settings.HandNames, 220f) == 1;
+            Settings.ViewmodelX = Mathf.Round(SliderRow("Weapon position: side", Settings.ViewmodelX, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelX * 4f) + " cm") * 20f) / 20f;
+            Settings.ViewmodelY = Mathf.Round(SliderRow("Weapon position: height", Settings.ViewmodelY, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelY * 4f) + " cm") * 20f) / 20f;
+            Settings.ViewmodelZ = Mathf.Round(SliderRow("Weapon position: reach", Settings.ViewmodelZ, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelZ * 4f) + " cm") * 20f) / 20f;
+
+            SectionHeader("Gameplay");
+            Settings.ToggleCrouch = ToggleRow("Toggle crouch", Settings.ToggleCrouch, "On: Ctrl switches crouch on and off. Off: hold.");
+            Settings.ToggleWalk = ToggleRow("Toggle walk", Settings.ToggleWalk, "On: Shift switches walk on and off. Off: hold.");
+            Settings.DamageNumbers = ToggleRow("Damage numbers", Settings.DamageNumbers, "Floating numbers over the bots you hit.");
 
             SectionHeader("Audio");
             Settings.Volume = SliderRow("Master volume", Settings.Volume, 0f, 1f, Mathf.RoundToInt(Settings.Volume * 100f) + "%");
+            GUILayout.EndScrollView();
+        }
 
-            SectionHeader("Video");
-            string[] q = QualitySettings.names;
-            if (q.Length > 0)
-            {
-                int qi = ChoiceRow("Graphics quality", Mathf.Clamp(Settings.Quality, 0, q.Length - 1), q);
-                Settings.Quality = qi;
-            }
+        static readonly string[] GfxNotes =
+        {
+            "Low: no shadows, no bloom, fewer props, 75% render scale, no anti-aliasing.",
+            "Medium: hard shadows to 45 m, no bloom, most props, 90% render scale, 2x MSAA.",
+            "High: soft shadows to 70 m (2 cascades), bloom, all props, full resolution, 4x MSAA, HDR.",
+            "Ultra: soft shadows to 95 m (4 cascades, very high resolution), stronger bloom, extra props, 4x MSAA, HDR.",
+        };
+
+        void VideoTab()
+        {
+            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
+            SectionHeader("Graphics");
+            Settings.GfxPreset = ChoiceRow("Preset", Settings.GfxPreset, Settings.GfxNames);
+            GUILayout.Label(GfxNotes[Mathf.Clamp(Settings.GfxPreset, 0, GfxNotes.Length - 1)], small);
+            GUILayout.Label("Changing the preset rebuilds the map's decoration (pipes, vents, light strips, markings); walls and play are unchanged.", small);
+            SectionHeader("Display");
             Settings.VSync = ToggleRow("Vertical sync", Settings.VSync, "Off gives the lowest input lag.");
             GUI.enabled = !Settings.VSync;
             Settings.FrameCap = ChoiceRow("Frame rate cap", Settings.FrameCap, Settings.FrameCapNames);
             GUI.enabled = true;
             Settings.ShowFps = ToggleRow("Frame rate counter", Settings.ShowFps, "F3 in game.");
+            GUILayout.EndScrollView();
+        }
+
+        void ControlsTab()
+        {
+            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
+            SectionHeader("Keys");
+            GUILayout.Label("The key map is fixed in this build. Toggle crouch and walk are in General.", small);
+            GUILayout.Space(Theme.S2);
+            foreach (string[] b in GameInput.Bindings)
+            {
+                GUILayout.BeginHorizontal(GUILayout.Height(28f));
+                GUILayout.Label(b[0], body, GUILayout.Width(260f));
+                Vector2 sz = badge.CalcSize(new GUIContent(b[1]));
+                Rect r = GUILayoutUtility.GetRect(sz.x + 16f, 24f, GUILayout.Width(sz.x + 16f), GUILayout.Height(24f));
+                Round(r, new Color(1f, 1f, 1f, 0.1f));
+                GUI.Label(r, b[1], badge);
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
             GUILayout.EndScrollView();
         }
 

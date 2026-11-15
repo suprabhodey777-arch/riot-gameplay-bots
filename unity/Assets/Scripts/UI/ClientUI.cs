@@ -49,7 +49,11 @@ namespace Saltworks
             new[] { "W A S D", "Move (running is heard through walls within 15 m)" },
             new[] { "Shift", "Walk (quiet: heard only within 3 m)" },
             new[] { "Ctrl", "Crouch (quiet, slowest)" },
-            new[] { "Left click", "Fire" },
+            new[] { "Left click", "Fire (pistols, the Brick and the Longshot: one shot per click)" },
+            new[] { "Right click", "Scope (Longshot): zoom, slower turn, accurate only when still" },
+            new[] { "1 / 2 / wheel", "Primary / secondary weapon / switch" },
+            new[] { "R", "Reload" },
+            new[] { "B", "Buy menu during a match's buy phase" },
             new[] { "Hold C", "Smoke: aim at the floor, release to throw" },
             new[] { "Hold Q", "Flash: aim, release to throw; it pops 0.6 s later. Look away!" },
             new[] { "E", "Dash in the direction you are moving" },
@@ -115,8 +119,8 @@ namespace Saltworks
             stylesAccent = Settings.AccentColor;
             Color accent = Settings.Accent;
 
-            Texture2D texPanel = Own(Theme.Rounded(Theme.PanelC, 14, new Color(1f, 1f, 1f, 0.07f)));
-            Texture2D texCard = Own(Theme.Rounded(Theme.CardC, 10, new Color(1f, 1f, 1f, 0.05f)));
+            Texture2D texPanel = Own(Theme.Rounded(Theme.PanelC, Theme.Radius, new Color(1f, 1f, 1f, 0.07f)));
+            Texture2D texCard = Own(Theme.Rounded(Theme.CardC, Theme.Radius, new Color(1f, 1f, 1f, 0.05f)));
             Texture2D texButton = Own(Theme.Rounded(Theme.ButtonC, 8));
             Texture2D texButtonHover = Own(Theme.Rounded(Theme.ButtonHoverC, 8, new Color(accent.r, accent.g, accent.b, 0.55f)));
             Texture2D texButtonDown = Own(Theme.Rounded(Theme.ButtonDownC, 8));
@@ -125,7 +129,7 @@ namespace Saltworks
             Texture2D texPrimaryHover = Own(Theme.Rounded(Theme.Lighten(accent, 0.18f), 8));
             Texture2D texPrimaryDown = Own(Theme.Rounded(Theme.Darken(accent, 0.2f), 8));
             Texture2D texGhostHover = Own(Theme.Rounded(new Color(1f, 1f, 1f, 0.07f), 8));
-            Texture2D texWhite = Own(Theme.Rounded(Color.white, 6));
+            Texture2D texWhite = Own(Theme.Rounded(Color.white, Theme.Radius));
             Texture2D texTrack = Own(Theme.Rounded(new Color(1f, 1f, 1f, 0.14f), 3));
             Texture2D texThumb = Own(Theme.Rounded(Color.white, 8, new Color(accent.r, accent.g, accent.b, 1f), 2.5f));
             Texture2D texThumbHover = Own(Theme.Rounded(Theme.Lighten(accent, 0.6f), 8, accent, 2.5f));
@@ -161,11 +165,11 @@ namespace Saltworks
             tabOn.padding = tab.padding;
             tabOn.fontStyle = FontStyle.Bold;
 
-            panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(28, 28, 24, 24), border = Theme.Border(14) };
+            panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(28, 28, 24, 24), border = Theme.Border(Theme.Radius) };
             panel.normal.background = texPanel;
-            card = new GUIStyle(GUI.skin.box) { padding = new RectOffset(16, 16, 14, 14), margin = new RectOffset(0, 0, 6, 6), border = Theme.Border(10) };
+            card = new GUIStyle(GUI.skin.box) { padding = new RectOffset(16, 16, 14, 14), margin = new RectOffset(0, 0, 6, 6), border = Theme.Border(Theme.Radius) };
             card.normal.background = texCard;
-            roundWhite = new GUIStyle { border = Theme.Border(6) };
+            roundWhite = new GUIStyle { border = Theme.Border(Theme.Radius) };
             roundWhite.normal.background = texWhite;
             roundSmall = new GUIStyle { border = Theme.Border(2) };
             roundSmall.normal.background = Own(Theme.Rounded(Color.white, 2));
@@ -212,6 +216,7 @@ namespace Saltworks
             slotCount = Text(lbl, 14, FontStyle.Bold, Color.white, TextAnchor.LowerRight, false);
             slotName = Text(lbl, 11, FontStyle.Bold, grey, TextAnchor.UpperCenter, false);
             modeStyle = Text(lbl, 13, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
+            EnsureMatchStyles();
         }
 
         void OnDestroy()
@@ -238,7 +243,7 @@ namespace Saltworks
             GUI.color = new Color(c.r, c.g, c.b, c.a * old.a);
             float m = Mathf.Min(r.width, r.height);
             // Thin shapes use a smaller corner so the 9-slice borders never overlap.
-            if (m >= 16f) roundWhite.Draw(r, false, false, false, false);
+            if (m >= 20f) roundWhite.Draw(r, false, false, false, false);
             else if (m >= 8f) roundSmall.Draw(r, false, false, false, false);
             else GUI.DrawTexture(r, Texture2D.whiteTexture);
             GUI.color = old;
@@ -339,6 +344,13 @@ namespace Saltworks
             switch (Game.Screen)
             {
                 case AppScreen.Connect: DrawConnect(); break;
+                case AppScreen.Menu: DrawMenu(); break;
+                case AppScreen.MatchSetup: DrawMatchSetup(); break;
+                case AppScreen.Buy:
+                    DrawBuy(false);
+                    DrawRoundBanners(Time.unscaledTime);
+                    break;
+                case AppScreen.MatchEnd: DrawMatchEnd(); break;
                 case AppScreen.Choose: DrawChoose(); break;
                 case AppScreen.MapSelect: DrawMapSelect(); break;
                 case AppScreen.AgentSelect: DrawAgentSelect(); break;
@@ -348,7 +360,7 @@ namespace Saltworks
                 case AppScreen.Result: DrawResult(); break;
             }
             GUI.color = Color.white;
-            if (menu && !Game.SettingsOpen) DrawSettingsButton();
+            if (menu && !Game.SettingsOpen && Game.Screen != AppScreen.Menu && Game.Screen != AppScreen.Buy && Game.Screen != AppScreen.MatchEnd) DrawSettingsButton();
             if (Game.SettingsOpen && layout) DrawSettings();
             DrawFps();
             DrawToast();
@@ -443,6 +455,7 @@ namespace Saltworks
             GUILayout.FlexibleSpace();
             Waiting();
             if (Game.Report != null && Btn("Back to the current report", button)) Game.Do(Game.BackToReport);
+            if (Btn("Back to the menu", ghost)) Game.Do(Game.OpenMenu);
             GUILayout.EndArea();
         }
 
@@ -592,6 +605,7 @@ namespace Saltworks
             GUILayout.Label("Weakness report", title);
             GUILayout.FlexibleSpace();
             GUI.enabled = Idle;
+            if (Btn("Menu", button, GUILayout.Width(100f))) Game.Do(Game.OpenMenu);
             if (Btn("Choose another player", button, GUILayout.Width(220f))) Game.Do(Game.BackToChoose);
             GUI.enabled = true;
             GUILayout.Space(140f);
@@ -607,6 +621,13 @@ namespace Saltworks
             }
 
             reportScroll = GUILayout.BeginScrollView(reportScroll, false, false);
+            bool rehearseFirst = Game.RehearseFocus && rm.rehearsals != null && rm.rehearsals.Count > 0;
+            if (rehearseFirst)
+            {
+                GUI.enabled = Idle;
+                DrawRehearsals(rm);
+                GUI.enabled = true;
+            }
             if (rm.agentAdvice != null) DrawAdvice(rm.agentAdvice);
             SectionHeader("Findings");
             if (r.findings == null || r.findings.Count == 0)
@@ -617,18 +638,7 @@ namespace Saltworks
             GUILayout.Space(Theme.S3);
             DrawSetupRow();
             GUI.enabled = Idle;
-            if (rm.rehearsals != null && rm.rehearsals.Count > 0)
-            {
-                SectionHeader("Rehearse my mistakes");
-                GUILayout.Label("Each one rebuilds a moment from the history: same positions, same clock.", muted);
-                foreach (RehearsalInfo ri in rm.rehearsals)
-                {
-                    int idx = ri.index;
-                    string label = (ri.title ?? "Rehearsal " + idx) + "  (" + GameController.SkillName(ri.skill) + ")" + (string.IsNullOrEmpty(ri.brief) ? "" : "\n" + ri.brief);
-                    if (Btn(label, bigButton, GUILayout.MinHeight(56f))) Game.Do(() => Game.RequestRehearsal(idx));
-                }
-                GUILayout.Space(Theme.S2);
-            }
+            if (!rehearseFirst) DrawRehearsals(rm);
 
             SectionHeader("Next practice drill");
             GUILayout.Label("A rehearsal of a failed moment first, then generated drills at your current difficulty.", muted);
@@ -653,6 +663,21 @@ namespace Saltworks
             GUILayout.EndScrollView();
             Waiting();
             GUILayout.EndArea();
+        }
+
+        /// <summary>The report's rehearsals: one button per rebuilt moment.</summary>
+        void DrawRehearsals(ReportMsg rm)
+        {
+            if (rm.rehearsals == null || rm.rehearsals.Count == 0) return;
+            SectionHeader("Rehearse my mistakes");
+            GUILayout.Label("Each one rebuilds a moment from the history: same positions, same clock.", muted);
+            foreach (RehearsalInfo ri in rm.rehearsals)
+            {
+                int idx = ri.index;
+                string label = (ri.title ?? "Rehearsal " + idx) + "  (" + GameController.SkillName(ri.skill) + ")" + (string.IsNullOrEmpty(ri.brief) ? "" : "\n" + ri.brief);
+                if (Btn(label, bigButton, GUILayout.MinHeight(56f))) Game.Do(() => Game.RequestRehearsal(idx));
+            }
+            GUILayout.Space(Theme.S2);
         }
 
         /// <summary>Map and agent for the next drills, with buttons to change either (bots-wire.2 only).</summary>
@@ -815,9 +840,20 @@ namespace Saltworks
             DrawDashStreaks();
 
             if (repaint) DrawBotLabels(cam);
+            if (repaint) DrawDamageNumbers(cam, now);
 
             bool alive = me != null && me.alive;
-            if (alive && !Game.Paused && repaint) DrawCrosshair(now);
+            DrawScope();
+            bool scoped = Game.Gun.Weapon.Scopes && Game.Gun.Scope01 >= 0.9f;
+            if (alive && !Game.Paused && repaint && !scoped && !Game.BuyOpen) DrawCrosshair(now);
+            else if (alive && !Game.Paused && repaint && scoped)
+            {
+                // Hit markers still show through the scope.
+                int hk2 = Crosshair.PixelScale(Screen.height);
+                Draw2D.Begin(Screen.width, Screen.height);
+                Crosshair.HitMarker(Screen.width / 2f, Screen.height / 2f, hk2, now - Game.HitMarkerAt, Game.HitMarkerHead, Game.HitMarkerKill);
+                Draw2D.End();
+            }
 
             // Blinded: a white-out over the world and the crosshair that eases out over the blind's remaining time.
             float blind = Game.BlindAmount();
@@ -837,29 +873,12 @@ namespace Saltworks
                 infoX = mr.xMax + 18f;
             }
 
-            // Top centre: clock.
-            bool post = s.phase == "post_plant";
-            float t = Mathf.Max(0f, s.roundTimeLeftS);
-            var clockR = new Rect(W / 2f - 90f, 12f, 180f, 62f);
-            Round(clockR, new Color(0.06f, 0.07f, 0.10f, 0.78f));
-            Fill(new Rect(clockR.x + 10f, clockR.yMax - 3f, clockR.width - 20f, 3f), post ? Palette.Spike : Palette.Team(Game.PlayerTeam));
-            int ck = t < 10f ? (int)(t * 10f) : (int)t * 10;
-            if (ck != clockKey)
-            {
-                clockKey = ck;
-                clockStr = string.Format("{0}:{1:00}", (int)(t / 60f), (int)t % 60) + (t < 10f ? "." + ((int)(t * 10f) % 10) : "");
-            }
-            if (!ReferenceEquals(phaseSrc, s.phase))
-            {
-                phaseSrc = s.phase;
-                phaseStr = (s.phase ?? "").Replace('_', ' ').ToUpperInvariant();
-            }
-            Shadowed(new Rect(clockR.x, clockR.y + 2f, clockR.width, 42f), clockStr, hudClock, post ? new Color(1f, 0.55f, 0.55f) : Color.white);
-            GUI.Label(new Rect(clockR.x, clockR.y + 40f, clockR.width, 18f), post ? "SPIKE PLANTED" : phaseStr, hudSmall);
+            // Top centre: score bar and round clock.
+            DrawScoreBar(s, now);
             if (alive && Game.World.IsRevealed(Game.PlayerId))
             {
                 float pulse = 0.7f + 0.3f * Mathf.Sin(now * 10f);
-                var rr = new Rect(W / 2f - 110f, clockR.yMax + 6f, 220f, 24f);
+                var rr = new Rect(W / 2f - 110f, 112f, 220f, 24f);
                 Color rc = Agents.AbilityColor(Ability.Recon);
                 Round(rr, new Color(rc.r * 0.35f, rc.g * 0.2f, rc.b * 0.25f, 0.85f));
                 Shadowed(rr, "YOU ARE REVEALED", hudCenter, new Color(rc.r, rc.g, rc.b, pulse));
@@ -868,34 +887,21 @@ namespace Saltworks
             // Drill, map and agent.
             if (hudDrill?.spec != null)
             {
-                float iw = Mathf.Min(420f, W / 2f - 110f - infoX);
+                float iw = Mathf.Min(420f, W / 2f - 150f - infoX);
                 var r = new Rect(infoX, 14f, Mathf.Max(160f, iw), 140f);
-                Shadowed(new Rect(r.x, r.y, r.width, 24f), hudTitleStr, hudTitle, Color.white);
-                Shadowed(new Rect(r.x, r.y + 24f, r.width, 20f), hudSkillStr, hudSkill, Palette.Team(Game.PlayerTeam));
-                float gy = r.y + 44f;
+                Shadowed(new Rect(r.x, r.y, r.width, 24f), Game.InMatch ? "Match" : hudTitleStr, hudTitle, Color.white);
+                if (!Game.InMatch) Shadowed(new Rect(r.x, r.y + 24f, r.width, 20f), hudSkillStr, hudSkill, Palette.Team(Game.PlayerTeam));
+                float gy = r.y + (Game.InMatch ? 24f : 44f);
                 if (hudSetupStr.Length > 0)
                 {
                     Shadowed(new Rect(r.x, gy, r.width, 20f), hudSetupStr, hudSkill, hudSetupColor);
                     gy += 20f;
                 }
-                if (hudGoalStr.Length > 0) Shadowed(new Rect(r.x, gy, r.width, 70f), hudGoalStr, hudGoal, new Color(0.9f, 0.9f, 0.92f));
+                if (hudGoalStr.Length > 0 && !Game.InMatch) Shadowed(new Rect(r.x, gy, r.width, 70f), hudGoalStr, hudGoal, new Color(0.9f, 0.9f, 0.92f));
             }
 
             // Top right: kill feed.
-            float fy = 14f;
-            for (int i = Game.Feed.Count - 1; i >= 0; i--)
-            {
-                FeedItem item = Game.Feed[i];
-                float age = now - item.At;
-                if (age > 7f) continue;
-                float a = Mathf.Clamp01((7f - age) / 1f);
-                var r = new Rect(W - 516f, fy, 500f, 26f);
-                if (item.Width < 0f) item.Width = feed.CalcSize(new GUIContent(item.Text)).x;
-                Round(new Rect(r.xMax - item.Width - 16f, r.y, item.Width + 16f, r.height), new Color(0.05f, 0.06f, 0.08f, 0.62f * a));
-                Fill(new Rect(r.xMax - 3f, r.y + 4f, 3f, r.height - 8f), new Color(item.Color.r, item.Color.g, item.Color.b, a));
-                Shadowed(new Rect(r.x, r.y, r.width - 9f, r.height), item.Text, feed, new Color(1f, 1f, 1f, a));
-                fy += 30f;
-            }
+            DrawKillFeed(now);
 
             // Bottom left: health and movement mode.
             float hp = me != null ? Mathf.Max(0f, me.hp) : 0f;
@@ -911,13 +917,15 @@ namespace Saltworks
             Round(new Rect(20f, H - 24f, 220f, 8f), new Color(1f, 1f, 1f, 0.15f));
             if (hp > 0f) Round(new Rect(20f, H - 24f, Mathf.Max(8f, 220f * Mathf.Clamp01(hp / 100f)), 8f), hpc);
             DrawMoveMode(new Rect(20f, H - 122f, 240f, 24f), alive);
+            DrawCreditsArmor(me);
 
             // Bottom centre: abilities.
             DrawAbilityBar(me, now);
 
-            // Bottom right: spike.
+            // Bottom right: weapon and ammo, the spike above it.
+            DrawAmmo(me, now);
             UpdateSpikeText(s);
-            var sr = new Rect(W - 420f, H - 50f, 400f, 30f);
+            var sr = new Rect(W - 420f, H - 154f, 400f, 30f);
             Shadowed(sr, spikeStr, spikeStyle, s.spike != null && s.spike.status == "planted" ? new Color(1f, 0.6f, 0.6f) : Color.white);
             GUI.Label(new Rect(sr.x, sr.y - 18f, sr.width, 18f), "SPIKE", capRight);
 
@@ -956,7 +964,8 @@ namespace Saltworks
                 if (hint != null) Shadowed(new Rect(cx - 150f, cy + 56f, 300f, 24f), hint, hudCenter, new Color(1f, 0.95f, 0.8f));
             }
             if (!alive) Shadowed(new Rect(cx - 250f, cy + 40f, 500f, 30f), "You are down. The round plays out.", hudCenter, new Color(1f, 0.7f, 0.7f));
-            if (Game.DrillDone && Game.Result == null) Shadowed(new Rect(cx - 250f, cy + 100f, 500f, 30f), "Round over. Waiting for the verdict...", hudCenter, Color.white);
+            if (Game.DrillDone && Game.Result == null && !Game.InMatch) Shadowed(new Rect(cx - 250f, cy + 100f, 500f, 30f), "Round over. Waiting for the verdict...", hudCenter, Color.white);
+            if (Game.DrillDone && Game.InMatch && Game.RoundResult == null) Shadowed(new Rect(cx - 250f, cy + 100f, 500f, 30f), "Round over.", hudCenter, Color.white);
 
             // Full map while Tab is held.
             if (Game.FullMap)
@@ -982,6 +991,8 @@ namespace Saltworks
                 Shadowed(new Rect(0f, br.y + 10f, W, 60f), ok ? "DRILL COMPLETE" : "NOT THIS TIME", banner, vc);
                 Shadowed(new Rect(40f, br.y + 70f, W - 80f, 40f), Game.Result.headline ?? "", bannerSub, new Color(1f, 1f, 1f, k));
             }
+            if (Game.InMatch) DrawRoundBanners(now);
+            if (Game.BuyOpen && Game.InMatch) DrawBuy(true);
 
             if (Game.Paused && !Game.DrillDone && layout && !Game.SettingsOpen) DrawPause();
         }
@@ -1147,10 +1158,15 @@ namespace Saltworks
             float target = 0f;
             if (cs.Dynamic)
             {
-                if (Game.Moving) target += Game.MoveMode == "run" ? 6f : 2f;
-                target += Mathf.Clamp01(Game.Rig.Recoil / 1.5f) * 6f;
+                // The weapon's current spread (movement x base spread), as pixels at this field of view, plus firing.
+                Camera cam = Game.Rig.Cam;
+                float halfV = cam.fieldOfView * 0.5f * Mathf.Deg2Rad;
+                float px = Mathf.Tan(Game.Gun.SpreadDeg * Mathf.Deg2Rad) / Mathf.Max(1e-4f, Mathf.Tan(halfV)) * (Screen.height * 0.5f);
+                target += px / Crosshair.PixelScale(Screen.height);
+                target += Mathf.Clamp01(Game.Rig.Recoil / 1.5f) * 5f;
+                target = Mathf.Min(target, 80f);
             }
-            spread = Mathf.MoveTowards(spread, target, Time.unscaledDeltaTime * 60f);
+            spread = Mathf.MoveTowards(spread, target, Time.unscaledDeltaTime * 120f);
             int k = Crosshair.PixelScale(Screen.height);
             float cx = Screen.width / 2f, cy = Screen.height / 2f;
             Draw2D.Begin(Screen.width, Screen.height);
@@ -1205,7 +1221,11 @@ namespace Saltworks
             if (Btn("Resume", primary, GUILayout.Height(48f))) Game.Do(Game.Resume);
             GUILayout.BeginHorizontal();
             if (Btn("Settings", button, GUILayout.Height(42f))) Game.Do(Game.OpenSettings);
-            if (Btn("Abandon drill (counts as a fail)", button, GUILayout.Height(42f))) Game.Do(Game.AbandonDrill);
+            if (Game.InMatch)
+            {
+                if (Btn("Leave match", button, GUILayout.Height(42f))) Game.Do(Game.LeaveMatch);
+            }
+            else if (Btn("Abandon drill (counts as a fail)", button, GUILayout.Height(42f))) Game.Do(Game.AbandonDrill);
             GUILayout.EndHorizontal();
             SectionHeader("Controls");
             DrawControls();

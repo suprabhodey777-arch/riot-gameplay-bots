@@ -23,6 +23,9 @@ namespace Saltworks
         public const float S4 = 16f;
         public const float S5 = 24f;
 
+        /// <summary>Corner radius of every panel, card and button (design system: 8 px).</summary>
+        public const int Radius = 8;
+
         public static readonly Color Ink = new Color(0.96f, 0.96f, 0.97f);
         public static readonly Color Muted = new Color(0.66f, 0.69f, 0.75f);
         public static readonly Color Faint = new Color(0.45f, 0.48f, 0.55f);

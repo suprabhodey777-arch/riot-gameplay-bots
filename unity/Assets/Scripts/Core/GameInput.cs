@@ -27,12 +27,41 @@ namespace Saltworks
         Fps,
         Minimap,
         FullMap,
+        // round 4
+        Reload,
+        Primary,
+        Secondary,
+        Buy,
     }
 
     public static class GameInput
     {
         /// <summary>Degrees of camera turn per mouse pixel at sensitivity 1.</summary>
         public const float DegreesPerPixel = 0.08f;
+
+        /// <summary>The fixed key map, for the settings' keybind list (action, keys).</summary>
+        public static readonly string[][] Bindings =
+        {
+            new[] { "Move", "W A S D" },
+            new[] { "Walk (quiet)", "Shift" },
+            new[] { "Crouch", "Ctrl" },
+            new[] { "Fire", "Left mouse" },
+            new[] { "Scope (Longshot)", "Right mouse" },
+            new[] { "Reload", "R" },
+            new[] { "Primary weapon", "1" },
+            new[] { "Secondary weapon", "2" },
+            new[] { "Cycle weapons", "Mouse wheel" },
+            new[] { "Buy menu (buy phase)", "B" },
+            new[] { "Smoke", "Hold C, release" },
+            new[] { "Flash", "Hold Q, release" },
+            new[] { "Dash", "E" },
+            new[] { "Recon dart", "Hold X, release" },
+            new[] { "Plant / defuse", "Hold F" },
+            new[] { "Minimap / full map", "M / hold Tab" },
+            new[] { "Frame rate readout", "F3" },
+            new[] { "Pause, close menus", "Esc" },
+            new[] { "Confirm", "Enter / Space" },
+        };
 
 #if ENABLE_INPUT_SYSTEM
         static readonly Key[][] Keys =
@@ -53,6 +82,10 @@ namespace Saltworks
             new[] { Key.F3 },
             new[] { Key.M },
             new[] { Key.Tab },
+            new[] { Key.R },
+            new[] { Key.Digit1 },
+            new[] { Key.Digit2 },
+            new[] { Key.B },
         };
 
         static KeyControl Control(Key k)
@@ -82,6 +115,20 @@ namespace Saltworks
         }
 
         public static bool FireHeld => Mouse.current != null && Mouse.current.leftButton.isPressed;
+        public static bool AimHeld => Mouse.current != null && Mouse.current.rightButton.isPressed;
+        public static bool AimPressed => Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame;
+
+        /// <summary>Mouse wheel this frame: positive = up, in notches (roughly).</summary>
+        public static float Scroll
+        {
+            get
+            {
+                if (Mouse.current == null) return 0f;
+                float y = Mouse.current.scroll.ReadValue().y;
+                // The Input System reports 120 per notch on some platforms and 1 on others.
+                return Mathf.Abs(y) >= 20f ? y / 120f : y;
+            }
+        }
 
         /// <summary>Mouse movement this frame, in degrees at sensitivity 1 (x right, y up).</summary>
         public static Vector2 LookDelta()
@@ -108,6 +155,10 @@ namespace Saltworks
             new[] { KeyCode.F3 },
             new[] { KeyCode.M },
             new[] { KeyCode.Tab },
+            new[] { KeyCode.R },
+            new[] { KeyCode.Alpha1 },
+            new[] { KeyCode.Alpha2 },
+            new[] { KeyCode.B },
         };
 
         public static bool Held(GameKey k)
@@ -125,6 +176,9 @@ namespace Saltworks
         }
 
         public static bool FireHeld => Input.GetMouseButton(0);
+        public static bool AimHeld => Input.GetMouseButton(1);
+        public static bool AimPressed => Input.GetMouseButtonDown(1);
+        public static float Scroll => Input.mouseScrollDelta.y;
 
         /// <summary>Mouse movement this frame, in degrees at sensitivity 1 (x right, y up).</summary>
         public static Vector2 LookDelta()

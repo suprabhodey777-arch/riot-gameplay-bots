@@ -122,6 +122,90 @@ namespace Saltworks
             return Make(Find("Unlit/Color", "Standard"), c);
         }
 
+        static Shader worldShader;
+        static bool worldShaderLooked;
+
+        /// <summary>Saltworks/WorldLit if it is in the build, else null (callers fall back to Standard).</summary>
+        public static Shader WorldShader
+        {
+            get
+            {
+                if (!worldShaderLooked)
+                {
+                    worldShaderLooked = true;
+                    worldShader = Shader.Find("Saltworks/WorldLit");
+                    if (worldShader == null) Debug.LogWarning("Saltworks: Saltworks/WorldLit not found, using Standard.");
+                }
+                return worldShader;
+            }
+        }
+
+        /// <summary>
+        /// A world surface (Saltworks/WorldLit, Standard as a fallback): albedo and normal textures, smoothness for paint
+        /// or polymer (`gloss`) and for metal (`metalGloss`, `metallic`), and how much the vertex colours count.
+        /// </summary>
+        public static Material World(Color c, Texture albedo, Texture normal, float bump, float gloss, float metallic, float metalGloss, float vertexWeight)
+        {
+            Shader s = WorldShader;
+            Material m;
+            if (s != null)
+            {
+                m = new Material(s) { color = c };
+                if (albedo != null) m.SetTexture("_MainTex", albedo);
+                if (normal != null) m.SetTexture("_BumpMap", normal);
+                m.SetFloat("_BumpScale", bump);
+                m.SetFloat("_PolyGloss", gloss);
+                m.SetFloat("_Metallic", metallic);
+                m.SetFloat("_Glossiness", metalGloss);
+                m.SetFloat("_VertexAO", vertexWeight);
+                m.SetColor("_EmissionColor", Color.black);
+            }
+            else
+            {
+                m = Make(Find("Standard", "Unlit/Color"), c);
+                if (albedo != null && m.HasProperty("_MainTex")) m.mainTexture = albedo;
+                if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", Mathf.Lerp(gloss, metalGloss, metallic > 0.01f && vertexWeight < 0.5f ? 1f : 0f));
+                if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", vertexWeight < 0.5f ? metallic : 0f);
+            }
+            return m;
+        }
+
+        /// <summary>A glowing surface for light strips and accents: WorldLit with emission (Standard emission as a fallback).</summary>
+        public static Material Glow(Color c, float intensity)
+        {
+            Shader s = WorldShader;
+            if (s == null) return Emissive(c, intensity);
+            var m = new Material(s) { color = Color.Lerp(c, Color.white, 0.3f) };
+            m.SetFloat("_VertexAO", 0f);
+            m.SetFloat("_PolyGloss", 0.6f);
+            m.SetFloat("_Glossiness", 0.6f);
+            m.SetFloat("_Metallic", 0f);
+            m.SetColor("_EmissionColor", c * intensity);
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            return m;
+        }
+
+        /// <summary>Additive glow (Saltworks/Additive; Sprites/Default as a fallback).</summary>
+        public static Material Additive(Texture tex, Color c, float intensity, int queue = 3100)
+        {
+            Shader s = Find("Saltworks/Additive", "Sprites/Default");
+            Material m = Make(s, c);
+            if (tex != null && m.HasProperty("_MainTex")) m.mainTexture = tex;
+            if (m.HasProperty("_Intensity")) m.SetFloat("_Intensity", intensity);
+            m.renderQueue = queue;
+            return m;
+        }
+
+        /// <summary>Alpha-blended decal (Saltworks/Decal; Sprites/Default as a fallback), depth-offset onto the surface.</summary>
+        public static Material Decal(Texture tex, Color c, int queue = 2460)
+        {
+            Shader s = Find("Saltworks/Decal", "Sprites/Default");
+            Material m = Make(s, c);
+            if (tex != null && m.HasProperty("_MainTex")) m.mainTexture = tex;
+            m.renderQueue = queue;
+            return m;
+        }
+
         /// <summary>
         /// Coloured unlit silhouette drawn on top of everything (ZTest Always, Assets/Resources/SaltworksReveal.shader),
         /// for enemies revealed by recon. Falls back to an ordinary transparent material if the shader is missing.
@@ -276,6 +360,54 @@ namespace Saltworks
         public static AudioClip Beep()
         {
             return Make("beep", 0.09f, t => Mathf.Sin(2f * Mathf.PI * 1760f * t) * 0.35f * Mathf.Clamp01((0.09f - t) * 40f));
+        }
+
+        /// <summary>
+        /// A gunshot per weapon class: a noise crack (decay `crack`), a body tone at `pitch` Hz (decay `thump`) and a
+        /// low-passed tail of `seconds`.
+        /// </summary>
+        public static AudioClip Gun(string name, int seed, float pitch, float crack, float thump, float seconds, float tail)
+        {
+            var rng = new System.Random(300 + seed);
+            float lp = 0f;
+            return Make(name, seconds, t =>
+            {
+                float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+                lp += (noise - lp) * 0.12f;
+                float body = Mathf.Sin(2f * Mathf.PI * pitch * t * (1f - t * 1.5f)) * Mathf.Exp(-t * thump);
+                float attack = t < 0.002f ? t / 0.002f : 1f;
+                return (noise * Mathf.Exp(-t * crack) * 0.6f + body * 0.55f + lp * tail * Mathf.Exp(-t * 7f)) * attack;
+            });
+        }
+
+        public static AudioClip GunFor(WeaponClass c)
+        {
+            switch (c)
+            {
+                case WeaponClass.Sidearm: return Gun("shot_pin", 1, 180f, 48f, 40f, 0.14f, 0.6f);
+                case WeaponClass.HeavyPistol: return Gun("shot_hammer", 2, 90f, 30f, 18f, 0.32f, 1.4f);
+                case WeaponClass.Smg: return Gun("shot_wasp", 3, 210f, 60f, 50f, 0.1f, 0.5f);
+                case WeaponClass.Shotgun: return Gun("shot_brick", 4, 70f, 22f, 14f, 0.42f, 2.0f);
+                case WeaponClass.Sniper: return Gun("shot_longshot", 5, 60f, 18f, 10f, 0.6f, 2.4f);
+                default: return Gun("shot_rifle", 6, 120f, 38f, 30f, 0.2f, 1.0f);
+            }
+        }
+
+        /// <summary>A metallic click (magazine out/in, slot switch). `pitch` shifts it.</summary>
+        public static AudioClip Click(int seed, float pitch)
+        {
+            var rng = new System.Random(400 + seed);
+            return Make("click" + seed, 0.06f, t =>
+            {
+                float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+                return (noise * 0.5f + Mathf.Sin(2f * Mathf.PI * pitch * t) * 0.5f) * Mathf.Exp(-t * 90f) * 0.6f;
+            });
+        }
+
+        /// <summary>A brass shell landing.</summary>
+        public static AudioClip Tink()
+        {
+            return Make("tink", 0.12f, t => (Mathf.Sin(2f * Mathf.PI * 5200f * t) * 0.5f + Mathf.Sin(2f * Mathf.PI * 7300f * t) * 0.3f) * Mathf.Exp(-t * 40f) * 0.25f);
         }
 
         public static AudioClip Tick()
