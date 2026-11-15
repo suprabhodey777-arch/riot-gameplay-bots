@@ -496,7 +496,7 @@ namespace Saltworks
             }
             TickMatch();
             FullMap = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
-            if (Screen == AppScreen.Playing || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
+            if ((Screen == AppScreen.Playing && !Paused) || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
             if (Screen != AppScreen.Playing && Aiming.HasValue) CancelAim();
             bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null && !SettingsOpen && !BuyOpen && !(InMatch && DrillDone && MatchEnd != null);
             Cursor.lockState = lockIt ? CursorLockMode.Locked : CursorLockMode.None;
@@ -702,6 +702,20 @@ namespace Saltworks
             float k = x / hold;
             return 1f - (1f - k) * (1f - k);
         }
+
+        /// <summary>Seconds of blindness left, 0 when sighted. Drives the flash overlay.</summary>
+        public float BlindSecondsLeft
+        {
+            get
+            {
+                AgentState me = Me;
+                if (me == null || State == null || me.blindUntilTick <= State.tick) return 0f;
+                return Mathf.Max(0f, (me.blindUntilTick - World.TickNow) / Mathf.Max(1f, Rules.tickRate));
+            }
+        }
+
+        /// <summary>Total length of the current (or last) blindness in seconds, for the flash overlay's curve.</summary>
+        public float BlindTotalSeconds => blindTotalTicks / Mathf.Max(1f, Rules.tickRate);
 
         void QueueFire()
         {
@@ -1051,7 +1065,24 @@ namespace Saltworks
 
         void OnStep(StepMsg st)
         {
-            if (Drill == null || st.state == null) return;
+            if (st.state == null) return;
+            if (st.matchStart && InMatch)
+            {
+                // The first step of a match round carries the round-start fields a drill message
+                // has, so the world and bots are rebuilt exactly as for a drill. Without this the
+                // client would ignore every match step (Drill == null).
+                OnDrill(new DrillMsg
+                {
+                    spec = st.spec ?? new DrillSpec(),
+                    intro = st.intro ?? "",
+                    playerId = st.playerId ?? PlayerId,
+                    playerTeam = st.playerTeam ?? PlayerTeam,
+                    playerAgent = st.playerAgent,
+                    bots = st.bots ?? new List<DrillBotInfo>(),
+                    state = st.state,
+                });
+            }
+            if (Drill == null) return;
             World.ApplyStep(st.state, st.thoughts);
             AgentState me = st.state.Agent(PlayerId);
             if (me != null) Predictor.Reconcile(st.state.tick, Geo.ToV2(me.pos), me.alive);

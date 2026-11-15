@@ -31,23 +31,37 @@ namespace Saltworks
             public Vector2 Sim;
         }
 
+        /// <summary>Panel transform of one view: sim (x, y) to panel pixels, plus its scale.</summary>
+        struct View
+        {
+            public Matrix4x4 Map;
+            public float PxPerM;
+        }
+
         static readonly Color32 FloorC = new Color32(46, 50, 60, 255);
         static readonly Color32 WallC = new Color32(165, 172, 188, 255);
         static readonly Color32 LowC = new Color32(112, 118, 132, 255);
         static readonly Color32 OuterC = new Color32(90, 96, 110, 255);
-        static readonly Color BackC = new Color(0.05f, 0.06f, 0.08f, 0.88f);
+        // Alpha 1: the material tint already carries the minimap opacity, so the
+        // panel ends up exactly `opacity` opaque (0.3 = 30%).
+        static readonly Color BackC = new Color(0.05f, 0.06f, 0.08f, 1f);
 
         Mesh mesh;
         MapDef builtFor;
         float mapW = 100f, mapH = 100f;
         readonly List<SiteLabel> sites = new List<SiteLabel>();
         readonly Dictionary<string, Track> tracks = new Dictionary<string, Track>();
+        readonly List<string> stale = new List<string>();
 
         public IReadOnlyList<SiteLabel> Sites => sites;
 
-        /// <summary>The panel transform of the last Draw, for labels drawn over it.</summary>
-        Vector2 focus, centre;
-        float pxPerM = 1f, angle;
+        // One stored transform per view, so labels drawn after a Draw always use the
+        // parameters of the view they belong to.
+        View fullView, cornerView;
+        bool lastFull;
+        GUIStyle noMapStyle;
+        // The viewport to restore: full screen, or whatever it was before this panel.
+        Rect prevViewport = new Rect(0f, 0f, Screen.width, Screen.height);
 
         public void Clear()
         {
@@ -147,6 +161,15 @@ namespace Saltworks
             return t;
         }
 
+        /// <summary>Half the horizontal field of view of the camera that is drawing, radians.</summary>
+        static float HalfFovRad(GameController g)
+        {
+            Camera cam = g != null ? g.Rig.Cam : null;
+            if (cam == null || !cam.isActiveAndEnabled) return Settings.FovH * 0.5f * Mathf.Deg2Rad;
+            float v = Mathf.Clamp(cam.fieldOfView, 1f, 179f) * Mathf.Deg2Rad;
+            return Mathf.Atan(Mathf.Tan(v * 0.5f) * Mathf.Max(0.1f, cam.aspect));
+        }
+
         /// <summary>Updates enemy visibility from the eye. Call once per frame while a drill is shown.</summary>
         public void Tick(GameController g, Vector2 eye, float headingDeg)
         {
@@ -155,7 +178,7 @@ namespace Saltworks
             float now = Time.unscaledTime;
             AgentState me = g.Me;
             bool canSee = me != null && me.alive && !world.IsBlind(g.PlayerId);
-            float halfFov = Settings.FovH * 0.5f + 4f;
+            float halfFov = HalfFovRad(g) * Mathf.Rad2Deg;
             List<SmokeState> smokes = world.Curr.smokes;
             var fwd = new Vector2(Mathf.Sin(headingDeg * Mathf.Deg2Rad), Mathf.Cos(headingDeg * Mathf.Deg2Rad));
             foreach (BotView b in world.Bots.Values)
@@ -182,6 +205,12 @@ namespace Saltworks
                 }
                 if (!b.Alive) t.SeenAt = Mathf.Min(t.SeenAt, now - 10f);
             }
+
+            // Drop tracks for agents that have left the world (round reset, despawn).
+            stale.Clear();
+            foreach (KeyValuePair<string, Track> kv in tracks)
+                if (!world.Bots.ContainsKey(kv.Key) || world.Agent(kv.Key) == null) stale.Add(kv.Key);
+            for (int i = 0; i < stale.Count; i++) tracks.Remove(stale[i]);
         }
 
         /// <summary>A loud enemy footstep the player can hear: a fading ping at `pos` (sim coordinates).</summary>
@@ -198,26 +227,28 @@ namespace Saltworks
         // ---- drawing ---------------------------------------------------------------------------
         Vector2 ToPanel(Vector2 sim)
         {
-            Vector2 d = sim - focus;
-            float c = Mathf.Cos(angle), s = Mathf.Sin(angle);
-            return centre + new Vector2(d.x * c + d.y * s, d.x * s - d.y * c) * pxPerM;
+            return PanelPoint(sim, lastFull);
         }
 
         /// <summary>Where a sim point is drawn, relative to the panel's top-left, in screen pixels (last Draw).</summary>
         public Vector2 PanelPoint(Vector2 sim)
         {
-            return ToPanel(sim);
+            return PanelPoint(sim, lastFull);
         }
 
-        /// <summary>
-        /// Draws the map into `screenRect` (screen pixels, top-left origin). `full` = whole map, north up;
-        /// otherwise the corner view around the player. Call during a Repaint event.
-        /// </summary>
-        public void Draw(GameController g, Rect screenRect, bool full, Vector2 eye, float headingDeg, float opacity)
+        /// <summary>Where a sim point is drawn in a given view (full map or corner), in screen pixels.</summary>
+        public Vector2 PanelPoint(Vector2 sim, bool full)
         {
-            if (mesh == null || Event.current == null || Event.current.type != EventType.Repaint) return;
-            float w = Mathf.Round(screenRect.width), h = Mathf.Round(screenRect.height);
-            centre = new Vector2(w / 2f, h / 2f);
+            Vector3 p = (full ? fullView : cornerView).Map.MultiplyPoint3x4(new Vector3(sim.x, sim.y, 0f));
+            return new Vector2(p.x, p.y);
+        }
+
+        /// <summary>Builds a view's sim-to-panel matrix; the mesh and every icon go through this one transform.</summary>
+        View BuildView(float w, float h, bool full, Vector2 eye, float headingDeg)
+        {
+            var centre = new Vector2(w / 2f, h / 2f);
+            Vector2 focus;
+            float angle, pxPerM;
             if (full)
             {
                 focus = new Vector2(mapW / 2f, mapH / 2f);
@@ -229,48 +260,114 @@ namespace Saltworks
                 focus = eye;
                 float yaw = (90f - headingDeg) * Mathf.Deg2Rad;
                 angle = Settings.MinimapRotate ? yaw - Mathf.PI / 2f : 0f;
-                pxPerM = (w * 0.5f) / (32f / Mathf.Max(0.1f, Settings.MinimapZoom));
+                // The window covers a share of the map's larger side, so a big map does not
+                // look zoomed in and a small one is not lost in empty space.
+                float halfWidthM = Mathf.Clamp(Mathf.Max(mapW, mapH) * 0.3f, 24f, 40f) / Mathf.Max(0.1f, Settings.MinimapZoom);
+                pxPerM = (w * 0.5f) / halfWidthM;
             }
-
-            Material m = Draw2D.Mat;
-            Color oldTint = m.HasProperty("_Color") ? m.color : Color.white;
-            if (m.HasProperty("_Color")) m.color = new Color(1f, 1f, 1f, Mathf.Clamp01(opacity));
-            float px = Mathf.Round(screenRect.x), py = Screen.height - Mathf.Round(screenRect.y) - h;
-            GL.Viewport(new Rect(px, py, w, h));
-
-            Draw2D.Begin(w, h);
-            Draw2D.Rect(0f, 0f, w, h, BackC);
-            Draw2D.End();
-
-            // Static map: one draw call with the panel transform as the model matrix.
-            GL.PushMatrix();
-            GL.LoadPixelMatrix(0f, w, h, 0f);
-            if (m.HasProperty("_MainTex")) m.mainTexture = Texture2D.whiteTexture;
-            m.SetPass(0);
             float c = Mathf.Cos(angle), s = Mathf.Sin(angle);
             var mat = Matrix4x4.identity;
             mat.m00 = pxPerM * c; mat.m01 = pxPerM * s;
             mat.m10 = pxPerM * s; mat.m11 = -pxPerM * c;
             mat.m03 = centre.x - (mat.m00 * focus.x + mat.m01 * focus.y);
             mat.m13 = centre.y - (mat.m10 * focus.x + mat.m11 * focus.y);
-            Graphics.DrawMeshNow(mesh, mat);
-            GL.PopMatrix();
-
-            Draw2D.Begin(w, h);
-            DrawDynamic(g, eye, headingDeg, full);
-            // A thin frame.
-            Color frame = new Color(1f, 1f, 1f, 0.16f);
-            Draw2D.Rect(0f, 0f, w, 1f, frame);
-            Draw2D.Rect(0f, h - 1f, w, 1f, frame);
-            Draw2D.Rect(0f, 0f, 1f, h, frame);
-            Draw2D.Rect(w - 1f, 0f, 1f, h, frame);
-            Draw2D.End();
-
-            GL.Viewport(new Rect(0f, 0f, Screen.width, Screen.height));
-            if (m.HasProperty("_Color")) m.color = oldTint;
+            return new View { Map = mat, PxPerM = pxPerM };
         }
 
-        void DrawDynamic(GameController g, Vector2 eye, float headingDeg, bool full)
+        /// <summary>
+        /// Draws the map into `screenRect` (screen pixels, top-left origin). `full` = whole map, north up;
+        /// otherwise the corner view around the player. Call during a Repaint event.
+        /// </summary>
+        public void Draw(GameController g, Rect screenRect, bool full, Vector2 eye, float headingDeg, float opacity)
+        {
+            if (Event.current == null || Event.current.type != EventType.Repaint) return;
+            float w = Mathf.Round(screenRect.width), h = Mathf.Round(screenRect.height);
+            if (w < 1f || h < 1f) return;
+            float a = Mathf.Clamp01(opacity);
+
+            View view = BuildView(w, h, full, eye, headingDeg);
+            if (full) fullView = view; else cornerView = view;
+            lastFull = full;
+
+            Material m = Draw2D.Mat;
+            Color oldTint = m.HasProperty("_Color") ? m.color : Color.white;
+            Texture oldTex = m.HasProperty("_MainTex") ? m.mainTexture : null;
+            if (m.HasProperty("_Color")) m.color = new Color(1f, 1f, 1f, a);
+            float px = Mathf.Round(screenRect.x), py = Screen.height - Mathf.Round(screenRect.y) - h;
+            // Whatever was set before this panel is the full screen: remember it exactly and put it back.
+            if (prevViewport.width != Screen.width || prevViewport.height != Screen.height)
+                prevViewport = new Rect(0f, 0f, Screen.width, Screen.height);
+            Rect prev = prevViewport;
+            bool hasMesh = mesh != null;
+            try
+            {
+                GL.Viewport(new Rect(px, py, w, h));
+
+                // Backdrop (also the whole panel while the map mesh has not been built yet).
+                Draw2D.Begin(w, h);
+                Draw2D.Rect(0f, 0f, w, h, BackC);
+                Draw2D.End();
+
+                if (hasMesh)
+                {
+                    // Static map: one draw call with the same transform the icons use.
+                    GL.PushMatrix();
+                    try
+                    {
+                        GL.LoadPixelMatrix(0f, w, h, 0f);
+                        if (m.HasProperty("_MainTex")) m.mainTexture = Texture2D.whiteTexture;
+                        m.SetPass(0);
+                        Graphics.DrawMeshNow(mesh, view.Map);
+                    }
+                    finally
+                    {
+                        GL.PopMatrix();
+                    }
+
+                    Draw2D.Begin(w, h);
+                    DrawDynamic(g, eye, headingDeg, full, view.PxPerM);
+                    // A thin frame; its alpha scales with the panel opacity through the material tint.
+                    Color frame = new Color(1f, 1f, 1f, 0.16f);
+                    Draw2D.Rect(0f, 0f, w, 1f, frame);
+                    Draw2D.Rect(0f, h - 1f, w, 1f, frame);
+                    Draw2D.Rect(0f, 0f, 1f, h, frame);
+                    Draw2D.Rect(w - 1f, 0f, 1f, h, frame);
+                    Draw2D.End();
+                }
+            }
+            finally
+            {
+                if (Draw2D.IsOpen) Draw2D.End();
+                GL.Viewport(prev);
+                if (m.HasProperty("_MainTex")) m.mainTexture = oldTex;
+                if (m.HasProperty("_Color")) m.color = oldTint;
+            }
+
+            if (!hasMesh) DrawNoMap(screenRect, a);
+        }
+
+        void DrawNoMap(Rect screenRect, float opacity)
+        {
+            if (noMapStyle == null)
+            {
+                noMapStyle = new GUIStyle(GUI.skin.label)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    fontSize = 11,
+                    fontStyle = FontStyle.Bold,
+                };
+                noMapStyle.normal.textColor = Color.white;
+            }
+            Matrix4x4 oldMatrix = GUI.matrix;
+            Color oldColor = GUI.color;
+            GUI.matrix = Matrix4x4.identity;
+            GUI.color = new Color(1f, 1f, 1f, 0.55f * opacity);
+            GUI.Label(new Rect(screenRect.x, screenRect.y + screenRect.height * 0.5f - 9f, screenRect.width, 18f), "NO MAP", noMapStyle);
+            GUI.color = oldColor;
+            GUI.matrix = oldMatrix;
+        }
+
+        void DrawDynamic(GameController g, Vector2 eye, float headingDeg, bool full, float pxPerM)
         {
             WorldView world = g.World;
             float now = Time.unscaledTime;
@@ -316,6 +413,7 @@ namespace Saltworks
             Color enemy = Settings.Enemy;
             foreach (KeyValuePair<string, Track> kv in tracks)
             {
+                if (world.Agent(kv.Key) == null) continue;
                 Track t = kv.Value;
                 float pingAge = now - t.PingAt;
                 if (pingAge < 1.6f)
@@ -350,9 +448,8 @@ namespace Saltworks
             bool alive = mine == null || mine.alive;
             if (alive)
             {
-                float cone = Settings.FovH * 0.5f * Mathf.Deg2Rad;
-                float reach = (full ? 14f : 20f) * pxPerM * (full ? 1f : 0.6f);
-                reach = Mathf.Clamp(reach, 30f, 160f);
+                float cone = HalfFovRad(g);
+                float reach = 18f * pxPerM;
                 const int segs = 10;
                 float baseAng = Mathf.Atan2(up.y, up.x);
                 Color cc = new Color(accent.r, accent.g, accent.b, 0.22f);

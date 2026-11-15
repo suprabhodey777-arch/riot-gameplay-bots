@@ -51,7 +51,13 @@ export type ServerMessage =
       staircases: Record<Skill, { difficulty: number }>; played: number; agentAdvice?: AgentAdvice }
   | { type: 'drill'; spec: DrillSpec; intro: string; playerId: string; playerTeam: Team; playerAgent?: AgentId;
       bots: { id: string; team: Team; archetype: string; agent?: AgentId }[]; state: SimState }
-  | { type: 'step'; state: SimState; events: SimEvent[]; thoughts: Record<string, string>; done: boolean }
+  | { type: 'step'; state: SimState; events: SimEvent[]; thoughts: Record<string, string>; done: boolean;
+      /**
+       * Set on the first step of a match round. The round then plays like a drill, so the client
+       * builds its world from the same fields a `drill` message carries; every later step omits them.
+       */
+      matchStart?: true; spec?: DrillSpec; intro?: string; playerId?: string; playerTeam?: Team; playerAgent?: AgentId;
+      bots?: { id: string; team: Team; archetype: string; agent?: AgentId }[] }
   | { type: 'result'; result: DrillResult; success: boolean; headline: string; staircaseBefore: number; staircaseAfter: number }
   | ({ type: 'debrief' } & Debrief)
   | { type: 'error'; message: string };

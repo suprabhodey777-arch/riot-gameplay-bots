@@ -2,7 +2,7 @@ import type { Archetype, BotTraits } from '../shared/coaching.ts';
 
 /** The plain generic bot: average everything. */
 export const DEFAULT_TRAITS: BotTraits = {
-  reactionMs: 250,
+  reactionMs: 280,
   headAccuracy: 0.2,
   bodyAccuracy: 0.6,
   aggression: 0.5,
@@ -23,7 +23,7 @@ export const ARCHETYPES: Archetype[] = [
     name: 'Entry Duelist',
     description: 'Swings first and fast: runs straight at the site, little patience, quick reactions.',
     traits: {
-      reactionMs: 210,
+      reactionMs: 240,
       headAccuracy: 0.25,
       bodyAccuracy: 0.65,
       aggression: 0.95,
@@ -37,7 +37,7 @@ export const ARCHETYPES: Archetype[] = [
     name: 'Patient Lurker',
     description: 'Waits away from the pack and commits late, walking the last stretch.',
     traits: {
-      reactionMs: 260,
+      reactionMs: 300,
       headAccuracy: 0.2,
       bodyAccuracy: 0.6,
       aggression: 0.3,
@@ -51,7 +51,7 @@ export const ARCHETYPES: Archetype[] = [
     name: 'Off-Angle Anchor',
     description: 'Holds a site from an unusual angle instead of the common spot, and stays put.',
     traits: {
-      reactionMs: 240,
+      reactionMs: 265,
       headAccuracy: 0.3,
       bodyAccuracy: 0.6,
       aggression: 0.25,
@@ -65,7 +65,7 @@ export const ARCHETYPES: Archetype[] = [
     name: 'Utility Controller',
     description: 'Smokes the choke before it commits, and smokes off enemies it has lost.',
     traits: {
-      reactionMs: 260,
+      reactionMs: 320,
       headAccuracy: 0.15,
       bodyAccuracy: 0.6,
       aggression: 0.45,

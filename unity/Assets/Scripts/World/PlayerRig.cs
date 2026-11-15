@@ -48,7 +48,9 @@ namespace Saltworks
         Vector3 lastGround;
         Vector2 lastLook;
         AudioSource audioSrc;
-        AudioClip tickClip;
+        AudioClip tickClip, headClip;
+        bool predictedHead;
+        float predictedHeadAt = -10f;
 
         void Awake()
         {
@@ -60,7 +62,8 @@ namespace Saltworks
             audioSrc = gameObject.AddComponent<AudioSource>();
             audioSrc.playOnAwake = false;
             audioSrc.spatialBlend = 0f;
-            tickClip = Synth.Tick();
+            tickClip = SoundBank.Get("impact.body");
+            headClip = SoundBank.Get("impact.headshot");
             Weapon = gameObject.AddComponent<Viewmodel>();
             Weapon.Init(Cam);
             Bloom = gameObject.AddComponent<Glow>();
@@ -264,13 +267,19 @@ namespace Saltworks
 
             recoil = Mathf.Min(1.5f, recoil + (w.Auto ? 0.45f : 0.8f));
             shake = Mathf.Min(2f, shake + (w.Class == WeaponClass.Sniper || w.Class == WeaponClass.Shotgun ? 1.2f : 0.25f));
+            // The hit marker's tick is server-confirmed; remember whether this shot found a head so it can confirm.
+            predictedHead = outcome.Result == "head";
+            predictedHeadAt = Time.unscaledTime;
             if (Weapon != null) Weapon.OnShot(w);
             return outcome;
         }
 
         public void PlayHitTick()
         {
-            audioSrc.PlayOneShot(tickClip, 0.8f);
+            bool head = predictedHead && Time.unscaledTime - predictedHeadAt < 1f;
+            predictedHead = false;
+            audioSrc.pitch = head ? 1f : Random.Range(0.94f, 1.06f);
+            audioSrc.PlayOneShot(head ? headClip : tickClip, head ? 0.45f : 0.55f);
         }
 
         static string NearestAimed(WorldView world, string myTeam, Ray ray)

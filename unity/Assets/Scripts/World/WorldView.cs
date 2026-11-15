@@ -282,6 +282,7 @@ namespace Saltworks
         Light spikeLight;
         AudioSource spikeAudio;
         AudioClip beep;
+        AudioSource fxAudio;
         Material spikeGlow;
         float nextBeep;
         float pulse;
@@ -298,6 +299,17 @@ namespace Saltworks
             revealMat = Mats.Reveal(RevealColor);
             Impacts = gameObject.AddComponent<ImpactFx>();
             BuildSpike();
+
+            // One positional source for world sounds that are not the spike's pulse.
+            var ago = new GameObject("World audio");
+            ago.transform.SetParent(fxRoot, false);
+            fxAudio = ago.AddComponent<AudioSource>();
+            fxAudio.playOnAwake = false;
+            fxAudio.spatialBlend = 1f;
+            fxAudio.rolloffMode = AudioRolloffMode.Linear;
+            fxAudio.minDistance = 3f;
+            fxAudio.maxDistance = 50f;
+            fxAudio.dopplerLevel = 0f;
         }
 
         void BuildSpike()
@@ -324,7 +336,7 @@ namespace Saltworks
             spikeAudio.rolloffMode = AudioRolloffMode.Linear;
             spikeAudio.minDistance = 4f;
             spikeAudio.maxDistance = 70f;
-            beep = Synth.Beep();
+            beep = SoundBank.Get("foley.spike");
             spike.SetActive(false);
         }
 
@@ -616,6 +628,10 @@ namespace Saltworks
                         mr.shadowCastingMode = ShadowCastingMode.Off;
                         v = new SmokeView { Go = go, Mat = m, Born = Time.time };
                         smokes[s.id] = v;
+                        // The grenade's pop, from where the cloud is born.
+                        fxAudio.transform.position = Geo.ToWorld(s.pos, 0.9f);
+                        fxAudio.pitch = 1f;
+                        fxAudio.PlayOneShot(SoundBank.Get("ability.smoke"), 0.7f);
                     }
                     v.State = s;
                     float grow = Mathf.Clamp01((Time.time - v.Born) / 0.5f);
@@ -663,7 +679,7 @@ namespace Saltworks
                 float left = Mathf.Max(0f, Curr.roundTimeLeftS);
                 if (Time.time >= nextBeep && Curr.phase != "ended")
                 {
-                    spikeAudio.PlayOneShot(beep);
+                    spikeAudio.PlayOneShot(beep, 0.5f);
                     pulse = 1f;
                     nextBeep = Time.time + Mathf.Lerp(0.12f, 1.0f, Mathf.Clamp01(left / 45f));
                 }

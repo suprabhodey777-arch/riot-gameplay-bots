@@ -28,7 +28,6 @@ namespace Saltworks
         Material dartMat;
         Material popShell;
         AudioClip popClip, throwClip, dashClip, thunkClip, pingClip, ringClip;
-        AudioClip[] stepClips;
         AudioSource[] pool;
         int poolNext;
         AudioSource ownSource;
@@ -46,14 +45,12 @@ namespace Saltworks
             flashCore = Mats.Emissive(new Color(1f, 0.97f, 0.8f), 3f);
             dartMat = Mats.Emissive(Agents.AbilityColor(Ability.Recon), 2f);
             popShell = Mats.Transparent(new Color(1f, 1f, 0.95f, 0f), 3250);
-            popClip = Synth.FlashPop();
-            throwClip = Synth.Whoosh(0.22f, 1);
-            dashClip = Synth.Whoosh(0.32f, 2);
-            thunkClip = Synth.DartThunk();
-            pingClip = Synth.ReconPing();
-            ringClip = Synth.BlindRing();
-            stepClips = new AudioClip[4];
-            for (int i = 0; i < stepClips.Length; i++) stepClips[i] = Synth.Footstep(i);
+            popClip = SoundBank.Get("ability.flash");
+            throwClip = SoundBank.Get("ability.throw");
+            dashClip = SoundBank.Get("ability.dash");
+            thunkClip = SoundBank.Get("ability.dart");
+            pingClip = SoundBank.Get("ability.ping");
+            ringClip = Synth.BlindRing(); // a pure tone is what ear ringing is: still synthesised
 
             pool = new AudioSource[14];
             for (int i = 0; i < pool.Length; i++)
@@ -131,16 +128,16 @@ namespace Saltworks
             float interval = loud ? 0.31f : 0.5f;
             if (lastStep.TryGetValue(agentId ?? "", out float last) && now - last < interval) return;
             lastStep[agentId ?? ""] = now;
-            AudioClip clip = stepClips[Random.Range(0, stepClips.Length)];
-            float pitch = Random.Range(0.92f, 1.08f);
+            AudioClip clip = SoundBank.Pick("footstep.concrete");
+            float pitch = Random.Range(0.95f, 1.05f);
             if (own)
             {
                 ownSource.pitch = pitch;
-                ownSource.PlayOneShot(clip, loud ? 0.32f : 0.09f);
+                ownSource.PlayOneShot(clip, loud ? 0.3f : 0.08f);
                 return;
             }
-            if (loud) Play3D(clip, pos + Vector3.up * 0.05f, 1f, 2f, Mathf.Max(8f, runHearingM * 1.8f), pitch);
-            else Play3D(clip, pos + Vector3.up * 0.05f, 0.35f, 1f, 7f, pitch);
+            if (loud) Play3D(clip, pos + Vector3.up * 0.05f, 0.9f, 2f, Mathf.Max(8f, runHearingM * 1.8f), pitch);
+            else Play3D(clip, pos + Vector3.up * 0.05f, 0.3f, 1f, 7f, pitch);
         }
 
         // ---- flash -----------------------------------------------------------------------------
@@ -217,18 +214,22 @@ namespace Saltworks
                     Light.enabled = true;
                     fx.Play3D(fx.popClip, To, 1f, 4f, 60f);
                 }
-                float k = (now - PopAt) / 0.45f;
+                float k = (now - PopAt) / 0.35f;
                 if (k >= 1f)
                 {
                     Kill();
                     return false;
                 }
-                float e = 1f - (1f - k) * (1f - k);
-                Shell.transform.localScale = Vector3.one * Mathf.Lerp(0.4f, 3.2f, e);
+                // A 0.06 s flare to a large white disc, then an exponential fall-off; the light
+                // spikes with the same curve so the room is briefly blown out.
+                float flare = Mathf.Clamp01((now - PopAt) / 0.06f);
+                float grow = flare * flare * (3f - 2f * flare);
+                float decay = Mathf.Exp(-4.5f * k);
+                Shell.transform.localScale = Vector3.one * Mathf.Lerp(0.5f, 6f, grow) * (1f + 0.5f * k);
                 Color c = ShellMat.color;
-                c.a = 0.9f * (1f - k) * (1f - k);
+                c.a = decay * (0.35f + 0.65f * grow);
                 ShellMat.color = c;
-                Light.intensity = 9f * (1f - k) * (1f - k);
+                Light.intensity = 55f * decay * (0.35f + 0.65f * grow);
                 return true;
             }
 
@@ -301,8 +302,8 @@ namespace Saltworks
                     if (fwd.sqrMagnitude > 1e-6f) Dart.transform.rotation = Quaternion.LookRotation(fwd.normalized);
                     Dart.transform.position = To + Vector3.up * 0.08f;
                     Blink.enabled = true;
-                    fx.Play3D(fx.thunkClip, To, 0.9f, 2f, 30f);
-                    fx.Play3D(fx.pingClip, To, 0.8f, 4f, 45f);
+                    fx.Play3D(fx.thunkClip, To, 0.7f, 2f, 30f);
+                    fx.Play3D(fx.pingClip, To, 0.55f, 4f, 45f);
                 }
                 float since = now - LandAt;
                 Blink.intensity = Mathf.PingPong(since * 6f, 1f) > 0.5f ? 1.6f : 0.2f;

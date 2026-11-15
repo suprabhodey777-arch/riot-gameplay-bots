@@ -645,6 +645,18 @@ namespace Saltworks
         public List<SimEvent> events = new List<SimEvent>();
         public Dictionary<string, string> thoughts = new Dictionary<string, string>();
         public bool done;
+        /// <summary>
+        /// bots-wire.3 match rounds: the first step of a round also carries the round-start fields
+        /// (the same ones a drill message has), so the client builds its world before stepping.
+        /// Absent on every later step and on drills.
+        /// </summary>
+        public bool matchStart;
+        public DrillSpec spec;
+        public string intro;
+        public string playerId;
+        public string playerTeam;
+        public string playerAgent;
+        public List<DrillBotInfo> bots;
     }
 
     public class ResultMsg

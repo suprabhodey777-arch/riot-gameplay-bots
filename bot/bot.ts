@@ -1,6 +1,6 @@
 import { WEAPONS, equipped } from '../shared/weapons.ts';
 import type { BotTraits } from '../shared/coaching.ts';
-import type { FireIntent, MapDef, PlayerInput, SimState, SimEvent, SiteId, TraceEntry, Vec2 } from '../shared/contract.ts';
+import type { MapDef, PlayerInput, SimState, SimEvent, SiteId, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { lineOfSight, pointInPolygon, siteAt, siteIds, sitePoly } from '../sim/geometry.ts';
 import type { Rng } from '../sim/rng.ts';
 import { RUN_HEARING_M, SMOKE_RADIUS, TICK_RATE } from '../sim/sim.ts';
@@ -10,6 +10,23 @@ import { type BotView, botView, createMemory } from './view.ts';
 /** Lancer fire interval at 20 Hz; other weapons use their own interval. */
 export const FIRE_INTERVAL_TICKS = 3;
 const MS_PER_TICK = 1000 / TICK_RATE;
+
+/** Human limits: nobody flicks faster than this or reacts without a delay. */
+const MIN_REACTION_MS = 200;
+export const REACTION_JITTER_MS = 40;
+export const TURN_RATE_DEG_S = 540;
+const TURN_MAX_STEP_RAD = (TURN_RATE_DEG_S * Math.PI / 180) / TICK_RATE;
+/** Easing time constant for the aim; with the rate cap a 90 degree flick is finished in about 250 ms. */
+const TURN_TAU_S = 0.024;
+/** Within this angle the crosshair counts as on the target. */
+const AIM_ON_TARGET_RAD = 0.025;
+/** Accuracy is halved until the aim has been settled this long. */
+export const AIM_SETTLE_MS = 120;
+const AIM_SETTLE_SCALE = 0.5;
+/** Running while shooting is less accurate than walking or standing. */
+export const RUN_AND_GUN_SCALE = 0.6;
+
+const angleDelta = (a: number, b: number): number => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
 export interface BotOptions {
   id: string;
@@ -57,7 +74,10 @@ interface Action {
   yaw?: number;
   walk?: boolean;
   crouch?: boolean;
-  fire?: FireIntent | null;
+  /** Enemy to shoot this tick; the shot is resolved after the final aim and movement are known. */
+  fireTarget?: string | null;
+  /** Weapon/range/aim-settle multiplier applied when the shot is resolved. */
+  fireScale?: number;
   plant?: boolean;
   defuse?: boolean;
   holding?: boolean;
@@ -107,7 +127,39 @@ export function createBot(opts: BotOptions): Bot {
   let lurkSpot: Vec2 | null = null;
   let spotCache: { key: string; spot: Spot } | null = null;
 
+  // Per-encounter reaction: one roll per unbroken sighting, so the delay is stable while
+  // the enemy stays in view and refreshes only when the bot loses and finds it again.
+  let encounterKey = '';
+  let encounterReactionMs = 0;
+  // Aim settle: the tick the crosshair first reached the current target, and whether the
+  // shot needed a turn to get there (an aim that was already on the spot has nothing to settle).
+  let aimTarget: string | null = null;
+  let aimOnTargetSince: number | null = null;
+  let aimTurned = false;
+
   const smokeBudget = () => (traits.utility >= 0.75 ? (team ? 3 : 2) : traits.utility >= 0.35 ? 1 : 0);
+
+  /**
+   * Delay from first sight to the first allowed shot: the trait plus this sighting's jitter,
+   * floored at MIN_REACTION_MS. A trait of 0 keeps its old "no delay" meaning for tools and tests.
+   */
+  function reactionMsFor(foeId: string, since: number): number {
+    const key = `${foeId}@${since}`;
+    if (key !== encounterKey) {
+      encounterKey = key;
+      encounterReactionMs = traits.reactionMs;
+      if (traits.reactionMs > 0) encounterReactionMs = Math.max(MIN_REACTION_MS, traits.reactionMs + (rng.next() * 2 - 1) * REACTION_JITTER_MS);
+    }
+    return encounterReactionMs;
+  }
+
+  /** Eases `current` toward `desired`, never faster than the human turn rate. */
+  function turnTo(current: number, desired: number): number {
+    const diff = angleDelta(desired, current);
+    const eased = diff * (1 - Math.exp(-(1 / TICK_RATE) / TURN_TAU_S));
+    const step = Math.max(-TURN_MAX_STEP_RAD, Math.min(TURN_MAX_STEP_RAD, eased));
+    return Math.atan2(Math.sin(current + step), Math.cos(current + step));
+  }
 
   /** Steps toward `goal` along the waypoint graph; also reports distance left and the path ahead. */
   function moveTo(me: Vec2, goal: Vec2, tick: number): { dir: Vec2; left: number; ahead: Vec2[] } {
@@ -162,42 +214,58 @@ export function createBot(opts: BotOptions): Bot {
       const foe = cur ?? seen.reduce((a, b) => (dist(me.pos, b.pos) < dist(me.pos, a.pos) ? b : a));
       target = foe.id;
       const ageMs = (tick - foe.since) * MS_PER_TICK;
-      const yaw = bearing(me.pos, foe.pos);
+      const desiredYaw = bearing(me.pos, foe.pos);
+      const yaw = turnTo(me.yaw, desiredYaw);
+      // Aim settle: the shot suffers until the crosshair has rested on the target for 120 ms.
+      // An enemy that was already under the crosshair needs no settling, only the reaction.
+      if (aimTarget !== foe.id) { aimTarget = foe.id; aimOnTargetSince = null; aimTurned = false; }
+      if (Math.abs(angleDelta(desiredYaw, yaw)) <= AIM_ON_TARGET_RAD) {
+        if (aimTurned && aimOnTargetSince === null) aimOnTargetSince = tick;
+      } else {
+        aimTurned = true;
+        aimOnTargetSince = null;
+      }
+      const settling = aimOnTargetSince !== null && (tick - aimOnTargetSince) * MS_PER_TICK < AIM_SETTLE_MS;
+      const reactionMs = reactionMsFor(foe.id, foe.since);
       const where = calloutAt(map, foe.pos);
       const ageS = (ageMs / 1000).toFixed(2);
-      if (ageMs < traits.reactionMs) {
+      if (ageMs < reactionMs) {
         return {
           node: 'engage',
           target: `${foe.id}:react`,
-          reason: `saw ${foe.id} at ${where} ${ageS} s ago, reaction ${traits.reactionMs} ms not elapsed, turning to it`,
+          reason: `saw ${foe.id} at ${where} ${ageS} s ago, reaction ${traits.reactionMs} ms not elapsed (this sighting ${Math.round(reactionMs)} ms), turning to it`,
           yaw,
           holding: true,
         };
       }
       const d = dist(me.pos, foe.pos);
       const advance = traits.aggression > 0.7 && d > 6 && (!team || view.spike?.status !== 'planted');
-      let fire: FireIntent | null = null;
+      let fireTarget: string | null = null;
+      let fireScale = 1;
       if (tick - lastFireTick >= Math.ceil(WEAPONS[equipped(me)].fireIntervalS * TICK_RATE - 1e-9)) {
         lastFireTick = tick;
         const id = equipped(me);
         const scale = id === 'lancer' ? 1 : id === 'longshot' ? (advance ? 0.25 : d > 15 ? 1.5 : 0.8) : id === 'wasp' ? (d <= 15 ? 1.15 : 0.7) : id === 'brick' ? (d <= 8 ? 1.2 : 0.45) : id === 'hammer' ? (d <= 15 ? 1 : 0.8) : id === 'pin' ? 0.85 : 1.05;
-        const r = rng.next();
-        const result: FireIntent['result'] = r < traits.headAccuracy * scale ? 'head' : rng.next() < traits.bodyAccuracy * scale ? 'body' : 'miss';
-        fire = { targetId: foe.id, result };
+        fireTarget = foe.id;
+        fireScale = scale * (settling ? AIM_SETTLE_SCALE : 1);
       }
       return {
         node: 'engage',
         target: `${foe.id}:fire`,
-        reason: `saw ${foe.id} at ${where} ${ageS} s ago, reaction ${traits.reactionMs} ms elapsed, firing${fire ? ` (${fire.result})` : ''}`,
+        reason: `saw ${foe.id} at ${where} ${ageS} s ago, reaction ${traits.reactionMs} ms elapsed${settling ? ', aim still settling' : ''}, firing`,
         move: advance ? { x: Math.cos(yaw), y: Math.sin(yaw) } : { x: 0, y: 0 },
         walk: advance,
         yaw,
-        fire,
+        fireTarget,
+        fireScale,
         holding: !advance,
-        forceTrace: fire !== null,
+        forceTrace: fireTarget !== null,
       };
     }
     target = null;
+    aimTarget = null;
+    aimOnTargetSince = null;
+    aimTurned = false;
 
     if (opts.hold) {
       const h = opts.hold;
@@ -419,6 +487,8 @@ export function createBot(opts: BotOptions): Bot {
     if (me.blindUntilTick > view.tick) return { input: idle, trace: [], node: 'blinded', holding: true };
     if (me.ammo[equipped(me)] === 0 || me.reloadingUntilTick > state.tick) return { input: { ...idle, reload: true, slot: me.slot === 'primary' && me.reserve[equipped(me)] === 0 ? 'secondary' : undefined }, trace: [], node: 'reload', holding: true };
     const act = decideAction(view, state);
+    /** The engage aim for this tick (already eased), before utility and sound overrides. */
+    const engageYaw = act.node === 'engage' ? act.yaw : undefined;
     const threat = [...view.visible, ...view.remembered].find(e => dist(me.pos, e.pos) <= 25);
     const lurker = opts.archetypeId === 'patient-lurker' || (!opts.archetypeId && traits.patience > 0.8);
     if (team) act.walk = lurker && !!threat;
@@ -437,12 +507,22 @@ export function createBot(opts: BotOptions): Bot {
       } else if (me.agent === 'rook' && moving && me.abilities.dash > 0 && utilityUntil >= 0) dash = true;
       if (me.abilities.recon > 0 && (me.agent === 'wren' || (me.agent === 'pike' && threat)) && dist(me.pos, angle) <= 30) reconAt = { ...angle };
     }
-    if (flashAt || view.tick < utilityUntil) { if (flashPoint) act.yaw = bearing(me.pos, flashPoint) + Math.PI; act.move = { x: 0, y: 0 }; act.fire = null; act.holding = true; }
+    if (flashAt || view.tick < utilityUntil) { if (flashPoint) act.yaw = bearing(me.pos, flashPoint) + Math.PI; act.move = { x: 0, y: 0 }; act.fireTarget = null; act.holding = true; }
 
     // A sound changes our aim immediately, including while holding the spike.
     // It never turns a post-plant hold into a chase.
     const heard = heardEvents.slice().reverse().find(e => e.type === 'footstep' && e.loud && state.agents.some(a => a.id === e.agent && a.team !== me.team) && dist(me.pos, e.pos) <= RUN_HEARING_M);
     if (heard?.type === 'footstep' && !flashAt && view.tick >= utilityUntil) act.yaw = bearing(me.pos, heard.pos);
+
+    // Human aim: no snapping. While an enemy is in view every yaw change (including the turn
+    // away from a flash and the turn to a heard footstep) is eased at the same rate cap, from
+    // the aim the bot already had this tick. With nothing in view, sound and flash turns stay
+    // as snappy as before.
+    if (view.visible.some(v => v.los)) {
+      const base = engageYaw ?? me.yaw;
+      const desired = act.yaw ?? base;
+      if (desired !== base) act.yaw = turnTo(base, desired);
+    }
     let smokeAt = smokeFor(view, act);
     if (smokeAt && me.team === 'attack' && view.spike?.status === 'planted' && !lineOfSight(me.pos, view.spike.pos, [], [{ pos: smokeAt, radius: SMOKE_RADIUS }])) smokeAt = null;
     let thrownNow = false;
@@ -458,12 +538,22 @@ export function createBot(opts: BotOptions): Bot {
       yaw: act.yaw ?? me.yaw,
       walk: act.walk ?? false,
       crouch: act.crouch ?? false,
-      fire: act.fire ?? null,
+      fire: null,
       smokeAt,
       flashAt, reconAt, dash,
       plantHeld: act.plant ?? false,
       defuseHeld: act.defuse ?? false,
     };
+    // Resolve the shot now that the final aim and movement are known: a settling aim and a
+    // running shooter are both less accurate. Two draws, exactly as before.
+    if (act.fireTarget) {
+      const running = Math.hypot(input.move.x, input.move.y) > 0 && !input.walk;
+      const accuracy = (act.fireScale ?? 1) * (running ? RUN_AND_GUN_SCALE : 1);
+      const r = rng.next();
+      const result: 'head' | 'body' | 'miss' = r < traits.headAccuracy * accuracy ? 'head' : rng.next() < traits.bodyAccuracy * accuracy ? 'body' : 'miss';
+      input.fire = { targetId: act.fireTarget, result };
+    }
+    const reason = act.fireTarget && input.fire ? `${act.reason} (${input.fire.result})` : act.reason;
     const trace: TraceEntry[] = [];
     if (thrownNow && smokeAt) {
       trace.push({ tick: view.tick, botId: id, node: 'smoke', reason: `utility ${traits.utility.toFixed(2)}: smoking ${calloutAt(map, smokeAt)} ${fmt(smokeAt)} between me and the threat or site`, traits: { ...traits } });
@@ -471,7 +561,7 @@ export function createBot(opts: BotOptions): Bot {
     }
     const key = `${act.node}:${act.target}`;
     if (key !== lastKey || act.forceTrace) {
-      trace.push({ tick: view.tick, botId: id, node: act.node, reason: act.reason, traits: { ...traits } });
+      trace.push({ tick: view.tick, botId: id, node: act.node, reason, traits: { ...traits } });
       lastKey = key;
     }
     return { input, trace, node: act.node, holding: act.holding ?? false };
@@ -484,6 +574,10 @@ export function createBot(opts: BotOptions): Bot {
       traits = { ...t };
       spotCache = null;
       lastKey = '';
+      encounterKey = '';
+      aimTarget = null;
+      aimOnTargetSince = null;
+      aimTurned = false;
     },
     traits: () => ({ ...traits }),
   };

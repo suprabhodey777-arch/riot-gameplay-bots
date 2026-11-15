@@ -2,8 +2,10 @@ import { AGENTS, type AgentId, type MatchLog, type PlayerInput, type SimEvent, t
 import { ARMOR, WEAPONS, roundType, weaponSlot, type ArmorId, type Loadout, type RoundType, type WeaponId } from '../shared/weapons.ts';
 import { loadMap } from '../shared/maps/index.ts';
 import { createMatch, type Match } from '../bot/match.ts';
+import { archetypeById } from '../bot/traits.ts';
 import { createRecorder, type Recorder } from './recorder.ts';
 import type { ServerMessage } from '../bridge/protocol.ts';
+import type { DrillBot, DrillSpec } from '../shared/coaching.ts';
 
 type Wallet = { id: string; ally: boolean; agent: AgentId; archetypeId: string; credits: number; primary: WeaponId | null; secondary: WeaponId; armor: ArmorId | null; armorPoints: number; purchases: Map<string, number>; previousWeapons: Map<WeaponId, WeaponId | null>; armorBefore?: { armor: ArmorId | null; points: number } };
 export const lossAward = (streak: number): number => [1900, 2400, 2900][Math.min(2, Math.max(0, streak - 1))];
@@ -115,6 +117,45 @@ export class MatchGame {
     this.recorder.push(this.purchases);
   }
   state(): SimState { if (!this.match) throw new Error('Round has not started'); return this.match.state(); }
+  /**
+   * The round's opening frame. A match round plays exactly like a drill, so the first `step` of a
+   * round carries the same fields a `drill` message holds: the client builds its world and bots
+   * from them, then applies this step. Later steps are plain.
+   */
+  roundStart(): Extract<ServerMessage, { type: 'step' }> {
+    if (!this.match) throw new Error('Round has not started');
+    const state = this.match.state();
+    const me = this.wallets[0];
+    const mine = state.agents.find(a => a.id === this.playerId);
+    if (!mine) throw new Error('The player is missing from the round');
+    const others = this.wallets.filter(w => w.id !== this.playerId);
+    const bots: DrillBot[] = others.map(w => {
+      const agent = state.agents.find(a => a.id === w.id);
+      if (!agent) throw new Error(`Missing agent ${w.id}`);
+      return { id: w.id, team: agent.team, spawn: { ...agent.pos }, archetypeId: w.archetypeId, traits: { ...archetypeById(w.archetypeId).traits } };
+    });
+    const spec: DrillSpec = {
+      id: `match-${this.seed}-r${this.round}`,
+      loadout: this.loadout(me),
+      skill: 'entry',
+      title: `Round ${this.round}`,
+      goal: `Win round ${this.round} of the match.`,
+      mapId: this.mapId,
+      seed: this.seed + this.round,
+      difficulty: 0.5,
+      player: { agent: me.agent, id: this.playerId, team: mine.team, spawn: { ...mine.pos }, hp: mine.hp, carryingSpike: mine.carryingSpike },
+      bots,
+      roundTimeLeftS: state.roundTimeLeftS,
+      spikePlanted: null,
+    };
+    return {
+      type: 'step', state, events: [], thoughts: {}, done: false,
+      matchStart: true, spec,
+      intro: `Round ${this.round}: ${this.types.player} buy.`,
+      playerId: this.playerId, playerTeam: mine.team, playerAgent: me.agent,
+      bots: others.map(w => ({ id: w.id, team: this.team(w), archetype: w.archetypeId, agent: w.agent })),
+    };
+  }
   step(input: PlayerInput | null): ServerMessage[] {
     if (this.phase !== 'live' || !this.match) throw new Error('No live round');
     const r = this.match.step(input ? [{ ...input, agentId: this.playerId }] : []);

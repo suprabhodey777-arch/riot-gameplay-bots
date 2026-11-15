@@ -109,8 +109,9 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   const startMatchRound = () => {
     if (!fullMatch || fullMatch.phase !== 'buy') return;
     clearBuyTimer(); fullMatch.ready();
-    const state = fullMatch.state();
-    send({ type: 'step', state, events: [], thoughts: {}, done: false });
+    // The first step of a match round carries the round-start fields (spec, teams, bots), so the
+    // Unity client can build its world before the input/step loop; plain steps follow.
+    send(fullMatch.roundStart());
   };
   const scheduleBuy = () => { clearBuyTimer(); buyTimer = setTimeout(startMatchRound, 20000); buyTimer.unref(); };
   const send = (msg: ServerMessage): void => { if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(weaponLegacy(msg)) : protocol === 'bots-wire.2' ? weaponLegacy(msg) : ammoInHand(msg)) + '\n'); };
@@ -254,8 +255,10 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         if (!fullMatch) throw new Error('No match');
         fullMatch[msg.type](msg.item); send(fullMatch.loadoutMessage()); break;
       case 'ready':
-        if (!fullMatch || fullMatch.phase !== 'buy') throw new Error('No buy phase');
-        startMatchRound(); break;
+        if (!fullMatch) throw new Error('No match');
+        // The buy timer may already have started the round; a late ready is not an error.
+        if (fullMatch.phase === 'buy') startMatchRound();
+        break;
       case 'input': {
         if (fullMatch) {
           validateInput(msg.input);

@@ -364,6 +364,9 @@ namespace Saltworks
             if (Game.SettingsOpen && layout) DrawSettings();
             DrawFps();
             DrawToast();
+            // After every HUD element: wash the HUD out too while blinded.
+            if (Game.Screen == AppScreen.Playing && FlashOverlay.Active)
+                FlashOverlay.Draw(new Rect(0f, 0f, W, H), Game.BlindSecondsLeft, Game.BlindTotalSeconds, true);
         }
 
         void DrawSettingsButton()
@@ -466,6 +469,7 @@ namespace Saltworks
             {
                 case "saltworks": return "Three sites, 110 x 80 m. Three lanes cross a field of buildings to a defender wall with three doors.";
                 case "ironvale": return "Two sites and a mid courtyard, 100 x 80 m. A long lane, tight alleys and a market flank.";
+                case "meridian": return "Three staggered sites, 120 x 84 m. Dish Court splits the middle; Relay Hall and the Culvert link the lanes.";
                 default: return "";
             }
         }
@@ -855,13 +859,8 @@ namespace Saltworks
                 Draw2D.End();
             }
 
-            // Blinded: a white-out over the world and the crosshair that eases out over the blind's remaining time.
-            float blind = Game.BlindAmount();
-            if (blind > 0f)
-            {
-                Fill(new Rect(0f, 0f, W, H), new Color(1f, 1f, 0.97f, 0.97f * blind));
-                if (blind > 0.5f) Shadowed(new Rect(0f, H * 0.62f, W, 30f), "BLINDED", hudCenter, new Color(0.35f, 0.35f, 0.4f, blind));
-            }
+            // Blinded: a flashbang white-out with an afterimage of the moment it went off.
+            FlashOverlay.Draw(new Rect(0f, 0f, W, H), Game.BlindSecondsLeft, Game.BlindTotalSeconds, false);
 
             // Top left: minimap, then the drill info beside it.
             float infoX = 16f;

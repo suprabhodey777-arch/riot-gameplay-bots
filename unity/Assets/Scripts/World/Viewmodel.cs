@@ -50,7 +50,7 @@ namespace Saltworks
 
         AudioSource audioSrc;
         readonly Dictionary<WeaponClass, AudioClip> shotClips = new Dictionary<WeaponClass, AudioClip>();
-        AudioClip magOut, magIn, slideClip, drawClip;
+        AudioClip magOut, magIn, slideClip, shellClip, dryClip, drawClip;
 
         float kickZ, kickZVel, kickPitch, kickPitchVel;
         Vector2 sway;
@@ -58,6 +58,7 @@ namespace Saltworks
         float cycleAt = -10f;
         bool cycleEjected = true;
         float lastReloadP;
+        bool dryLatch;
         float lastSwitchSeen = -20f;
         Material armsMat;
 
@@ -100,11 +101,13 @@ namespace Saltworks
             audioSrc = gameObject.AddComponent<AudioSource>();
             audioSrc.playOnAwake = false;
             audioSrc.spatialBlend = 0f;
-            foreach (WeaponClass c in System.Enum.GetValues(typeof(WeaponClass))) shotClips[c] = Synth.GunFor(c);
-            magOut = Synth.Click(1, 900f);
-            magIn = Synth.Click(2, 1400f);
-            slideClip = Synth.Click(3, 600f);
-            drawClip = Synth.Whoosh(0.18f, 7);
+            foreach (WeaponClass c in System.Enum.GetValues(typeof(WeaponClass))) shotClips[c] = SoundBank.Get(SoundBank.GunKey(c));
+            magOut = SoundBank.Get("reload.magout");
+            magIn = SoundBank.Get("reload.magin");
+            slideClip = SoundBank.Get("reload.slide");
+            shellClip = SoundBank.Get("reload.shell");
+            dryClip = SoundBank.Get("reload.dryfire");
+            drawClip = SoundBank.Get("weapon.draw");
             armsMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.3f, 0.6f, 0.5f, 1f);
         }
 
@@ -201,6 +204,11 @@ namespace Saltworks
             if (Gun == null || anchor == null) return;
             float now = Time.unscaledTime;
             if (WeaponCam != null) WeaponCam.fieldOfView = Settings.ViewmodelFov;
+
+            // A trigger pull on an empty magazine with no reserve left: one dry click per press.
+            bool dryHeld = GameInput.FireHeld && visible && Gun.Ammo <= 0 && Gun.Reserve == 0 && !Gun.Reloading(now) && !Gun.Drawing(now);
+            if (dryHeld && !dryLatch) audioSrc.PlayOneShot(dryClip, 0.5f);
+            dryLatch = dryHeld;
 
             // Holster the old weapon, then draw the new one.
             bool holstering = now < Gun.SwitchAt + Gunplay.HolsterS && !string.IsNullOrEmpty(Gun.SwitchFrom);
@@ -320,7 +328,8 @@ namespace Saltworks
                     bool active = rp > 0.15f && rp < 0.85f;
                     if (m.Mag.gameObject.activeSelf != active) m.Mag.gameObject.SetActive(active);
                     m.Mag.localPosition = m.MagHome + new Vector3(0f, -0.07f * (1f - frac), -0.02f * (1f - frac));
-                    if (Cross(rp, 0.15f + 0.7f / 3f) || Cross(rp, 0.15f + 1.4f / 3f) || Cross(rp, 0.85f)) audioSrc.PlayOneShot(magIn, 0.45f);
+                    if (Cross(rp, 0.15f + 0.7f / 3f) || Cross(rp, 0.15f + 1.4f / 3f) || Cross(rp, 0.85f)) audioSrc.PlayOneShot(shellClip, 0.45f);
+                    if (Cross(rp, 0.92f)) audioSrc.PlayOneShot(slideClip, 0.5f);
                     break;
                 }
                 default:
@@ -386,8 +395,22 @@ namespace Saltworks
             flashUntil = Time.unscaledTime + (w.Class == WeaponClass.Shotgun || w.Class == WeaponClass.Sniper ? 0.06f : 0.04f);
             if (shotClips.TryGetValue(w.Class, out AudioClip clip))
             {
-                audioSrc.pitch = Random.Range(0.96f, 1.04f);
-                audioSrc.PlayOneShot(clip, w.Class == WeaponClass.Sniper || w.Class == WeaponClass.Shotgun ? 0.85f : 0.7f);
+                // The SMG reuses the pistol recording pitched up; the revolver pitched down.
+                float pitch = Random.Range(0.96f, 1.04f);
+                if (w.Class == WeaponClass.Smg) pitch *= 1.12f;
+                else if (w.Class == WeaponClass.HeavyPistol) pitch *= 0.9f;
+                audioSrc.pitch = pitch;
+                // Gunshots are the loudest cue in the mix; the SMG fires fastest, so it sits a little lower.
+                float volume;
+                switch (w.Class)
+                {
+                    case WeaponClass.Smg: volume = 0.7f; break;
+                    case WeaponClass.Sidearm: volume = 0.85f; break;
+                    case WeaponClass.HeavyPistol: volume = 1f; break;
+                    case WeaponClass.Rifle: volume = 0.9f; break;
+                    default: volume = 1f; break;
+                }
+                audioSrc.PlayOneShot(clip, volume);
             }
             if (m.Slide != null)
             {

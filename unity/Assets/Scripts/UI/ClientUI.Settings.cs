@@ -65,7 +65,7 @@ namespace Saltworks
             Settings.FrameCap = 2;
             Settings.Crosshair = Settings.Preset(0);
             Settings.MinimapOn = true;
-            Settings.MinimapRotate = true;
+            Settings.MinimapRotate = false;
             Settings.MinimapZoom = 1f;
             Settings.MinimapSize = 230f;
             Settings.MinimapOpacity = 0.9f;

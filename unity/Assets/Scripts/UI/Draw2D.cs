@@ -11,6 +11,9 @@ namespace Saltworks
         static Material mat;
         static bool open;
 
+        /// <summary>True between Begin and End, so callers can close a batch in a finally.</summary>
+        public static bool IsOpen => open;
+
         public static Material Mat
         {
             get

@@ -1,8 +1,10 @@
 // Maps are authored as JSON and loaded here. `test-box` is a small two-site map for
 // unit tests; `saltworks` is the original three-site map used by default;
-// `ironvale` is an original two-site map with mid, built to cover every trained situation.
+// `ironvale` is an original two-site map with mid, built to cover every trained situation;
+// `meridian` is an original three-site map with staggered sites and a defender spine.
 import type { MapDef, Vec2 } from '../contract.ts';
 import ironvale from './ironvale.json' with { type: 'json' };
+import meridian from './meridian.json' with { type: 'json' };
 import saltworks from './saltworks.json' with { type: 'json' };
 import testBox from './test-box.json' with { type: 'json' };
 
@@ -35,6 +37,7 @@ const registry: Record<string, MapDef> = {
   'test-box': validateMap(testBox),
   saltworks: validateMap(saltworks),
   ironvale: validateMap(ironvale),
+  meridian: validateMap(meridian),
 };
 
 /** The map drills, sessions and demos use unless told otherwise. */
@@ -57,6 +60,7 @@ export function loadMap(id: string): MapDef {
 export const testBoxMap: MapDef = registry['test-box'];
 export const saltworksMap: MapDef = registry.saltworks;
 export const ironvaleMap: MapDef = registry.ironvale;
+export const meridianMap: MapDef = registry.meridian;
 
 /** Maps a player can pick, in menu order. */
-export const PLAYABLE_MAPS = ['saltworks', 'ironvale'] as const;
+export const PLAYABLE_MAPS = ['saltworks', 'ironvale', 'meridian'] as const;

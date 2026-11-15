@@ -140,7 +140,8 @@ namespace Saltworks
         public static CrosshairSettings Crosshair = Preset(0);
 
         public static bool MinimapOn = true;
-        public static bool MinimapRotate = true;
+        /// <summary>Rotate the map with the player. Off by default: north-up map, rotating player arrow.</summary>
+        public static bool MinimapRotate;
         public static float MinimapZoom = 1f;
         public static float MinimapSize = 230f;
         public static float MinimapOpacity = 0.9f;
@@ -218,7 +219,7 @@ namespace Saltworks
             Crosshair = c;
 
             MinimapOn = PlayerPrefs.GetInt(P + "mm.on", 1) == 1;
-            MinimapRotate = PlayerPrefs.GetInt(P + "mm.rot", 1) == 1;
+            MinimapRotate = PlayerPrefs.GetInt(P + "mm.rot", 0) == 1;
             MinimapZoom = PlayerPrefs.GetFloat(P + "mm.zoom", MinimapZoom);
             MinimapSize = PlayerPrefs.GetFloat(P + "mm.size", MinimapSize);
             MinimapOpacity = PlayerPrefs.GetFloat(P + "mm.alpha", MinimapOpacity);

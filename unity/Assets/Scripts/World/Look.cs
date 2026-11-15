@@ -331,7 +331,7 @@ namespace Saltworks
         }
     }
 
-    /// <summary>Short procedural sounds, so the project needs no audio assets.</summary>
+    /// <summary>Fallback procedural sounds: SoundBank plays the recorded clips, these stand in if one is missing.</summary>
     public static class Synth
     {
         const int Rate = 44100;
@@ -477,13 +477,14 @@ namespace Saltworks
             });
         }
 
-        /// <summary>The high whine heard while blinded.</summary>
+        /// <summary>The high whine heard while blinded: a pure sine, which is what ear ringing is. Kept soft.</summary>
         public static AudioClip BlindRing()
         {
-            return Make("blindring", 1.8f, t =>
+            return Make("blindring", 2f, t =>
             {
-                float env = Mathf.Clamp01(t * 40f) * Mathf.Exp(-t * 1.6f);
-                return (Mathf.Sin(2f * Mathf.PI * 4200f * t) * 0.6f + Mathf.Sin(2f * Mathf.PI * 4230f * t) * 0.4f) * 0.16f * env;
+                float x = Mathf.Clamp01(t / 2f);
+                float env = Mathf.Clamp01(t * 20f) * (1f - x) * (1f - x); // settles in, then a slow fade over the 2 s
+                return Mathf.Sin(2f * Mathf.PI * 3200f * t) * 0.06f * env;
             });
         }
     }

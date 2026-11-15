@@ -18,8 +18,10 @@ namespace Saltworks
         Material decalMat;
         ParticleSystem sparks, dust, shells;
         AudioSource tinkSource;
+        AudioSource hitSource;
         AudioClip tink;
         float nextTink;
+        float nextHit;
 
         void Awake()
         {
@@ -74,7 +76,28 @@ namespace Saltworks
             tinkSource = gameObject.AddComponent<AudioSource>();
             tinkSource.playOnAwake = false;
             tinkSource.spatialBlend = 0f;
-            tink = Synth.Tink();
+            tinkSource.volume = 0.35f;
+            tink = SoundBank.Get("foley.shell");
+
+            // Bullet impacts are positional: a quiet source on the Impacts root, moved per hit.
+            var ago = new GameObject("Impact audio");
+            ago.transform.SetParent(root, false);
+            hitSource = ago.AddComponent<AudioSource>();
+            hitSource.playOnAwake = false;
+            hitSource.spatialBlend = 1f;
+            hitSource.rolloffMode = AudioRolloffMode.Linear;
+            hitSource.minDistance = 3f;
+            hitSource.maxDistance = 45f;
+            hitSource.dopplerLevel = 0f;
+        }
+
+        /// <summary>A positional impact one-shot: a random variant of `key` from where the bullet struck.</summary>
+        void PlayHit(string key, Vector3 p, float volume)
+        {
+            if (hitSource == null) return;
+            hitSource.transform.position = p;
+            hitSource.pitch = Random.Range(0.94f, 1.06f);
+            hitSource.PlayOneShot(SoundBank.Pick(key), volume);
         }
 
         ParticleSystem MakeSystem(string name, Material mat, int max, float gravity)
@@ -171,6 +194,11 @@ namespace Saltworks
                 };
                 dust.Emit(ep, 1);
             }
+            if (Time.time >= nextHit)
+            {
+                nextHit = Time.time + 0.04f; // one impact sound per pellet volley
+                PlayHit("impact.wall", p, 0.3f);
+            }
         }
 
         /// <summary>A hit on an agent: a short burst of sparks in their colour (no blood, stylised armour).</summary>
@@ -189,6 +217,11 @@ namespace Saltworks
                     applyShapeToPosition = false,
                 };
                 sparks.Emit(ep, 1);
+            }
+            if (Time.time >= nextHit)
+            {
+                nextHit = Time.time + 0.04f;
+                PlayHit("impact.body", p, 0.55f);
             }
         }
 

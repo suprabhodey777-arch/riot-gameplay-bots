@@ -435,6 +435,10 @@ namespace Saltworks
         void MatchRoundStarted(DrillMsg d)
         {
             if (!string.IsNullOrEmpty(d.playerTeam)) MatchSide = d.playerTeam;
+            // The round is live, so the buy window is over even if the local timer had time left
+            // (the bridge starts the round when its own 20 s run out).
+            BuyEndsAt = Time.unscaledTime;
+            BuyOpen = false;
             if (Round <= 0) Round = 1;
             if (d?.spec?.loadout != null)
             {
