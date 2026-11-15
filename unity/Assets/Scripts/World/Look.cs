@@ -331,6 +331,14 @@ namespace Saltworks
         }
     }
 
+    /// <summary>What a footstep sounds like underfoot (MapBuilder.StepSurfaceAt).</summary>
+    public enum StepSurface
+    {
+        Concrete,
+        Metal,
+        Wood,
+    }
+
     /// <summary>Short procedural sounds, so the project needs no audio assets.</summary>
     public static class Synth
     {
@@ -415,21 +423,102 @@ namespace Saltworks
             return Make("hit", 0.05f, t => Mathf.Sin(2f * Mathf.PI * 2400f * t) * 0.3f * Mathf.Exp(-t * 80f));
         }
 
-        /// <summary>A boot on concrete: a low thump and a short low-passed scuff. Seeds give variants.</summary>
+        /// <summary>A boot on concrete (the older single-surface step; Step and Scuff are the current ones).</summary>
         public static AudioClip Footstep(int seed)
         {
-            var rng = new System.Random(100 + seed);
-            float pitch = 70f + seed * 9f;
-            float lp = 0f;
-            float k = 0.18f + seed * 0.03f;
-            return Make("footstep" + seed, 0.13f, t =>
+            return Step(StepSurface.Concrete, seed);
+        }
+
+        static AudioClip FromData(string name, float[] data, float peak)
+        {
+            float max = 1e-5f;
+            for (int i = 0; i < data.Length; i++) max = Mathf.Max(max, Mathf.Abs(data[i]));
+            float g = peak / max;
+            // Fade the last 8 ms so no clip ends on a click.
+            int fade = Mathf.Min(data.Length, Rate / 125);
+            for (int i = 0; i < data.Length; i++)
             {
+                float f = i >= data.Length - fade ? (data.Length - i) / (float)fade : 1f;
+                data[i] = Mathf.Clamp(data[i] * g * f, -1f, 1f);
+            }
+            AudioClip clip = AudioClip.Create(name, data.Length, 1, Rate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>
+        /// One soft footfall on `surface`: a heel strike and a lighter toe roll 40-70 ms later, each a twice low-passed
+        /// noise burst over a low body thump; metal adds a short damped ring, wood a hollow knock. Every seed varies the
+        /// timing, tone and filter, so a set of five never sounds like one sample on repeat.
+        /// </summary>
+        public static AudioClip Step(StepSurface surface, int seed)
+        {
+            var rng = new System.Random(900 + seed * 37 + (int)surface * 1009);
+            float R(float a, float b) => a + (float)rng.NextDouble() * (b - a);
+            float seconds = surface == StepSurface.Metal ? 0.26f : 0.2f;
+            int n = (int)(seconds * Rate);
+            var data = new float[n];
+            float toeAt = R(0.04f, 0.07f), toeGain = R(0.35f, 0.6f);
+            float cut = surface == StepSurface.Wood ? R(0.06f, 0.09f) : surface == StepSurface.Metal ? R(0.1f, 0.14f) : R(0.08f, 0.12f);
+            float thumpHz = surface == StepSurface.Metal ? R(85f, 110f) : surface == StepSurface.Wood ? R(70f, 90f) : R(55f, 72f);
+            float knockHz = R(150f, 200f);
+            float r1 = R(330f, 420f), r2 = R(560f, 690f), r3 = R(980f, 1150f);
+            float lp1 = 0f, lp2 = 0f, grit = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
                 float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
-                lp += (noise - lp) * k; // one-pole low-pass: a dull scuff, not a hiss
-                float thump = Mathf.Sin(2f * Mathf.PI * pitch * t) * Mathf.Exp(-t * 45f);
-                float heel = t < 0.004f ? t / 0.004f : 1f;
-                return (thump * 0.7f + lp * 1.6f * Mathf.Exp(-t * 32f)) * heel;
-            });
+                lp1 += (noise - lp1) * cut;
+                lp2 += (lp1 - lp2) * cut;
+                grit += (noise - grit) * 0.3f;
+                float heel = Env(t, 0f, 0.003f, 55f);
+                float toe = Env(t, toeAt, 0.006f, 70f) * toeGain;
+                float hit = heel + toe;
+                float v = lp2 * 3.2f * hit + Mathf.Sin(2f * Mathf.PI * thumpHz * t) * Env(t, 0f, 0.002f, 38f) * 0.55f;
+                switch (surface)
+                {
+                    case StepSurface.Metal:
+                        float ring = Env(t, 0f, 0.002f, 24f) + Env(t, toeAt, 0.002f, 30f) * toeGain * 0.6f;
+                        v += (Mathf.Sin(2f * Mathf.PI * r1 * t) * 0.1f + Mathf.Sin(2f * Mathf.PI * r2 * t) * 0.06f + Mathf.Sin(2f * Mathf.PI * r3 * t) * 0.03f) * ring;
+                        break;
+                    case StepSurface.Wood:
+                        v += (Mathf.Sin(2f * Mathf.PI * knockHz * t) * 0.32f + Mathf.Sin(2f * Mathf.PI * knockHz * 2.1f * t) * 0.08f) * (Env(t, 0f, 0.002f, 34f) + Env(t, toeAt, 0.003f, 40f) * toeGain * 0.7f);
+                        break;
+                    default:
+                        v += grit * 0.06f * hit;
+                        break;
+                }
+                data[i] = v;
+            }
+            return FromData("step_" + surface + "_" + seed, data, 0.55f);
+        }
+
+        /// <summary>A very quiet shoe scuff (the player's own careful steps): slow attack, low-passed, no thump.</summary>
+        public static AudioClip Scuff(int seed)
+        {
+            var rng = new System.Random(1700 + seed * 13);
+            int n = (int)(0.22f * Rate);
+            var data = new float[n];
+            float lp1 = 0f, lp2 = 0f;
+            float k = 0.05f + seed * 0.01f;
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+                lp1 += (noise - lp1) * k;
+                lp2 += (lp1 - lp2) * k;
+                float env = Mathf.Clamp01(t / 0.03f) * Mathf.Exp(-t * 16f);
+                data[i] = lp2 * env;
+            }
+            return FromData("scuff" + seed, data, 0.35f);
+        }
+
+        /// <summary>A transient at `at`: linear attack over `attack` seconds, then exponential decay at `decay` per second.</summary>
+        static float Env(float t, float at, float attack, float decay)
+        {
+            float x = t - at;
+            if (x < 0f) return 0f;
+            return x < attack ? x / attack : Mathf.Exp(-(x - attack) * decay);
         }
 
         /// <summary>The flash going off: a bright crack with a ringing tail.</summary>

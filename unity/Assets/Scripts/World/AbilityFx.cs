@@ -28,11 +28,12 @@ namespace Saltworks
         Material dartMat;
         Material popShell;
         AudioClip popClip, throwClip, dashClip, thunkClip, pingClip, ringClip;
-        AudioClip[] stepClips;
+        AudioClip[][] stepClips;
+        AudioClip[] scuffClips;
         AudioSource[] pool;
         int poolNext;
-        AudioSource ownSource;
-        readonly Dictionary<string, float> lastStep = new Dictionary<string, float>();
+        AudioSource ownSource, stepSource;
+        readonly Dictionary<string, StepTrack> tracks = new Dictionary<string, StepTrack>();
 
         // Aim marker.
         GameObject marker;
@@ -52,8 +53,15 @@ namespace Saltworks
             thunkClip = Synth.DartThunk();
             pingClip = Synth.ReconPing();
             ringClip = Synth.BlindRing();
-            stepClips = new AudioClip[4];
-            for (int i = 0; i < stepClips.Length; i++) stepClips[i] = Synth.Footstep(i);
+            // Five soft footfalls per surface (concrete, metal, wood) and three quiet scuffs.
+            stepClips = new AudioClip[3][];
+            for (int s = 0; s < 3; s++)
+            {
+                stepClips[s] = new AudioClip[5];
+                for (int i = 0; i < 5; i++) stepClips[s][i] = Synth.Step((StepSurface)s, i);
+            }
+            scuffClips = new AudioClip[3];
+            for (int i = 0; i < scuffClips.Length; i++) scuffClips[i] = Synth.Scuff(i);
 
             pool = new AudioSource[14];
             for (int i = 0; i < pool.Length; i++)
@@ -70,6 +78,9 @@ namespace Saltworks
             ownSource = gameObject.AddComponent<AudioSource>();
             ownSource.playOnAwake = false;
             ownSource.spatialBlend = 0f;
+            stepSource = gameObject.AddComponent<AudioSource>();
+            stepSource.playOnAwake = false;
+            stepSource.spatialBlend = 0f;
             BuildMarker();
         }
 
@@ -77,7 +88,7 @@ namespace Saltworks
         {
             foreach (Anim a in anims) a.Kill();
             anims.Clear();
-            lastStep.Clear();
+            tracks.Clear();
             HideMarker();
         }
 
@@ -121,26 +132,86 @@ namespace Saltworks
         }
 
         /// <summary>
-        /// One footstep event. The sim emits one per moving tick, so steps are spaced to a walking cadence here.
-        /// Loud (running) steps carry to `runHearingM` and beyond; quiet ones fade within a few metres.
-        /// The player's own steps are 2D and quieter, much quieter when walking or crouching.
+        /// One footstep event from the sim (it sends one per moving tick). Sounds follow the stride, not a timer: the
+        /// distance between an agent's events accumulates and a footfall plays every half gait cycle
+        /// (BotRig.CycleLength), so cadence matches the animation and speed. Each footfall picks one of five soft
+        /// samples for the surface underfoot (MapBuilder.StepSurfaceAt), never the same twice in a row, with random
+        /// pitch and volume. Other agents are heard only on loud (running) steps, positional, fading out at
+        /// `runHearingM`. The player's own running steps are 2D and quiet; walking or crouching gives only a faint
+        /// scuff every other step.
         /// </summary>
         public void Footstep(string agentId, Vector3 pos, bool loud, bool own, float runHearingM)
         {
+            if (stepClips == null) return;
+            if (!own && !loud) return;
             float now = Time.time;
-            float interval = loud ? 0.31f : 0.5f;
-            if (lastStep.TryGetValue(agentId ?? "", out float last) && now - last < interval) return;
-            lastStep[agentId ?? ""] = now;
-            AudioClip clip = stepClips[Random.Range(0, stepClips.Length)];
-            float pitch = Random.Range(0.92f, 1.08f);
-            if (own)
+            string key = agentId ?? "";
+            if (!tracks.TryGetValue(key, out StepTrack tr))
             {
-                ownSource.pitch = pitch;
-                ownSource.PlayOneShot(clip, loud ? 0.32f : 0.09f);
+                tr = new StepTrack();
+                tracks[key] = tr;
+            }
+            Vector3 flat = new Vector3(pos.x, 0f, pos.z);
+            if (!tr.Has || now - tr.LastEvent > 0.45f)
+            {
+                // First event of a new movement: the first footfall comes after a short half step.
+                tr.Has = true;
+                tr.Last = flat;
+                tr.LastEvent = now;
+                tr.Acc = 0.35f;
                 return;
             }
-            if (loud) Play3D(clip, pos + Vector3.up * 0.05f, 1f, 2f, Mathf.Max(8f, runHearingM * 1.8f), pitch);
-            else Play3D(clip, pos + Vector3.up * 0.05f, 0.35f, 1f, 7f, pitch);
+            float dist = (flat - tr.Last).magnitude;
+            float dt = Mathf.Max(1e-3f, now - tr.LastEvent);
+            tr.Last = flat;
+            tr.LastEvent = now;
+            if (dist > 2.5f)
+            {
+                // A dash or a respawn, not a stride.
+                tr.Acc = 0f;
+                return;
+            }
+            float speed = dist / dt;
+            float step = BotRig.CycleLength(speed, loud ? 0f : 0.5f) * 0.5f;
+            tr.Acc += dist;
+            if (tr.Acc < step) return;
+            tr.Acc = Mathf.Min(tr.Acc - step, step * 0.5f);
+            tr.Foot = !tr.Foot;
+            float pitch = Random.Range(0.9f, 1.07f);
+            float vol = Random.Range(0.82f, 1f);
+            if (own)
+            {
+                stepSource.pitch = pitch;
+                if (loud) stepSource.PlayOneShot(PickStep(pos, tr), 0.13f * vol);
+                else if (tr.Foot) stepSource.PlayOneShot(scuffClips[Random.Range(0, scuffClips.Length)], 0.035f * vol);
+                return;
+            }
+            float range = Mathf.Max(6f, runHearingM);
+            Play3D(PickStep(pos, tr), pos + Vector3.up * 0.05f, 0.5f * vol, 2f, range, pitch);
+        }
+
+        AudioClip PickStep(Vector3 pos, StepTrack tr)
+        {
+            AudioClip[] set = stepClips[(int)MapBuilder.StepSurfaceAt(pos)];
+            int i;
+            if (tr.LastClip >= 0 && tr.LastClip < set.Length)
+            {
+                i = Random.Range(0, set.Length - 1);
+                if (i >= tr.LastClip) i++;
+            }
+            else i = Random.Range(0, set.Length);
+            tr.LastClip = i;
+            return set[i];
+        }
+
+        class StepTrack
+        {
+            public bool Has;
+            public Vector3 Last;
+            public float LastEvent;
+            public float Acc;
+            public bool Foot;
+            public int LastClip = -1;
         }
 
         // ---- flash -----------------------------------------------------------------------------

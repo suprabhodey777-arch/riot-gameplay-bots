@@ -107,7 +107,7 @@ namespace Saltworks
         public static Material GlowMaterial(GunDef d)
         {
             if (glowMats.TryGetValue(d.Id, out Material m) && m != null) return m;
-            m = Mats.Glow(d.GlowColor, 2.6f);
+            m = Mats.Glow(d.GlowColor, 1.3f);
             glowMats[d.Id] = m;
             return m;
         }
@@ -129,7 +129,7 @@ namespace Saltworks
             {
                 case "pin":
                     // A compact polymer sidearm: angular slide with rear serrations, sand grip panels, green front dot.
-                    d = new GunDef { Id = "pin", Paint = new Color(0.78f, 0.67f, 0.48f), GlowColor = new Color(0.35f, 1f, 0.45f) };
+                    d = new GunDef { Id = "pin", Paint = new Color(0.66f, 0.58f, 0.45f), GlowColor = new Color(0.35f, 1f, 0.45f) };
                     d.Box(0f, -0.004f, 0.03f, 0.032f, 0.03f, 0.17f, GunMat.Polymer, 0.006f)
                      .Box(0f, 0.027f, 0.035f, 0.03f, 0.034f, 0.18f, GunMat.Metal, 0.005f, 0f, 2)
                      .Box(0f, 0.03f, -0.035f, 0.031f, 0.022f, 0.004f, GunMat.Dark, 0f, 0f, 2)
@@ -145,7 +145,7 @@ namespace Saltworks
                      .Box(0f, -0.113f, -0.039f, 0.032f, 0.012f, 0.044f, GunMat.Paint, 0.003f, 14f, 1)
                      .Box(0f, 0.048f, -0.045f, 0.024f, 0.01f, 0.008f, GunMat.Dark, 0.001f, 0f, 2)
                      .Box(0f, 0.048f, 0.115f, 0.006f, 0.01f, 0.006f, GunMat.Glow, 0.001f, 0f, 2)
-                     .Box(0.0165f, -0.003f, 0.065f, 0.002f, 0.005f, 0.07f, GunMat.Glow, 0f);
+                     .Box(0.0165f, -0.003f, 0.065f, 0.002f, 0.005f, 0.07f, GunMat.Paint, 0f);
                     d.Muzzle = new Vector3(0f, 0.027f, 0.14f);
                     d.Eject = new Vector3(0.02f, 0.035f, 0.03f);
                     d.Grip = new Vector3(0f, -0.05f, -0.03f);
@@ -157,7 +157,7 @@ namespace Saltworks
 
                 case "hammer":
                     // A heavy six-shot hand cannon: hexagonal drum, square barrel with an oxblood under-lug, vented top.
-                    d = new GunDef { Id = "hammer", Paint = new Color(0.55f, 0.13f, 0.12f), GlowColor = new Color(1f, 0.55f, 0.15f) };
+                    d = new GunDef { Id = "hammer", Paint = new Color(0.42f, 0.14f, 0.12f), GlowColor = new Color(1f, 0.55f, 0.15f) };
                     d.Box(0f, 0.012f, 0.02f, 0.034f, 0.05f, 0.1f, GunMat.Metal, 0.006f)
                      .Cyl(0f, 0.01f, 0.025f, 0.027f, 0.06f, GunMat.Metal, 6, 1)
                      .Cyl(0f, 0.01f, 0.025f, 0.009f, 0.062f, GunMat.Dark, 8, 1)
@@ -184,7 +184,7 @@ namespace Saltworks
 
                 case "wasp":
                     // A stubby boxy SMG: amber top cover, ported shroud, vertical foregrip, wire stock, red-dot sight.
-                    d = new GunDef { Id = "wasp", Paint = new Color(0.95f, 0.66f, 0.12f), GlowColor = new Color(1f, 0.25f, 0.2f) };
+                    d = new GunDef { Id = "wasp", Paint = new Color(0.64f, 0.46f, 0.2f), GlowColor = new Color(1f, 0.25f, 0.2f) };
                     d.Box(0f, 0.02f, 0.06f, 0.045f, 0.07f, 0.26f, GunMat.Polymer, 0.01f)
                      .Box(0f, 0.058f, 0.05f, 0.042f, 0.012f, 0.22f, GunMat.Paint, 0.004f)
                      .Box(0f, 0.022f, 0.235f, 0.036f, 0.04f, 0.1f, GunMat.Metal, 0.006f)
@@ -201,7 +201,7 @@ namespace Saltworks
                      .Box(0f, 0.076f, 0.02f, 0.03f, 0.022f, 0.04f, GunMat.Dark, 0.004f)
                      .Box(0f, 0.079f, 0.041f, 0.022f, 0.014f, 0.003f, GunMat.Glow, 0f)
                      .Box(0.024f, 0.03f, 0.03f, 0.012f, 0.012f, 0.02f, GunMat.Dark, 0.002f, 0f, 2)
-                     .Box(0.0235f, 0.008f, 0.1f, 0.002f, 0.005f, 0.09f, GunMat.Glow, 0f);
+                     .Box(0.0235f, 0.008f, 0.1f, 0.002f, 0.005f, 0.09f, GunMat.Paint, 0f);
                     d.Muzzle = new Vector3(0f, 0.022f, 0.32f);
                     d.Eject = new Vector3(0.025f, 0.035f, 0.06f);
                     d.Grip = new Vector3(0f, -0.05f, -0.025f);
@@ -213,7 +213,7 @@ namespace Saltworks
 
                 case "brick":
                     // A chunky pump shotgun: square olive heat shield over the barrel, tube magazine, ribbed pump, side shell carrier.
-                    d = new GunDef { Id = "brick", Paint = new Color(0.4f, 0.45f, 0.26f), GlowColor = new Color(1f, 0.85f, 0.2f) };
+                    d = new GunDef { Id = "brick", Paint = new Color(0.34f, 0.37f, 0.24f), GlowColor = new Color(1f, 0.85f, 0.2f) };
                     d.Box(0f, 0.015f, 0.03f, 0.05f, 0.07f, 0.22f, GunMat.Metal, 0.01f)
                      .Cyl(0f, 0.036f, 0.33f, 0.016f, 0.42f, GunMat.Dark, 12)
                      .Box(0f, 0.052f, 0.31f, 0.042f, 0.02f, 0.36f, GunMat.Paint, 0.005f)
@@ -245,7 +245,7 @@ namespace Saltworks
 
                 case "viper":
                     // A sleek teal bullpup: one long rounded shell, magazine behind the grip, top rail, green holo window.
-                    d = new GunDef { Id = "viper", Paint = new Color(0.1f, 0.5f, 0.46f), GlowColor = new Color(0.3f, 1f, 0.75f) };
+                    d = new GunDef { Id = "viper", Paint = new Color(0.12f, 0.36f, 0.34f), GlowColor = new Color(0.3f, 1f, 0.75f) };
                     d.Box(0f, 0.02f, -0.02f, 0.05f, 0.09f, 0.46f, GunMat.Paint, 0.02f)
                      .Box(0f, 0.012f, 0.255f, 0.044f, 0.062f, 0.12f, GunMat.Polymer, 0.015f)
                      .Cyl(0f, 0.025f, 0.35f, 0.009f, 0.1f, GunMat.Dark, 10)
@@ -259,8 +259,8 @@ namespace Saltworks
                      .Box(0f, 0.0f, -0.265f, 0.052f, 0.115f, 0.04f, GunMat.Polymer, 0.012f)
                      .Box(0f, 0.105f, 0.07f, 0.03f, 0.03f, 0.05f, GunMat.Dark, 0.004f)
                      .Box(0f, 0.107f, 0.096f, 0.024f, 0.022f, 0.003f, GunMat.Glow, 0f)
-                     .Box(0.0255f, 0.03f, 0.0f, 0.002f, 0.006f, 0.2f, GunMat.Glow, 0f)
-                     .Box(-0.0255f, 0.03f, 0.0f, 0.002f, 0.006f, 0.2f, GunMat.Glow, 0f)
+                     .Box(0.0255f, 0.03f, 0.0f, 0.002f, 0.006f, 0.2f, GunMat.Light, 0f)
+                     .Box(-0.0255f, 0.03f, 0.0f, 0.002f, 0.006f, 0.2f, GunMat.Light, 0f)
                      .Box(0.027f, 0.04f, -0.12f, 0.01f, 0.012f, 0.025f, GunMat.Dark, 0.002f, 0f, 2);
                     d.Muzzle = new Vector3(0f, 0.025f, 0.43f);
                     d.Eject = new Vector3(0.03f, 0.04f, -0.12f);
@@ -273,7 +273,7 @@ namespace Saltworks
 
                 case "longshot":
                     // A long bolt-action: fluted heavy barrel, big ported brake, large scope, skeleton stock, folded bipod.
-                    d = new GunDef { Id = "longshot", Paint = new Color(0.86f, 0.42f, 0.13f), GlowColor = new Color(1f, 0.5f, 0.15f) };
+                    d = new GunDef { Id = "longshot", Paint = new Color(0.56f, 0.32f, 0.17f), GlowColor = new Color(1f, 0.5f, 0.15f) };
                     d.Box(0f, 0.02f, 0f, 0.045f, 0.05f, 0.26f, GunMat.Metal, 0.006f)
                      .Box(0f, 0.004f, 0.25f, 0.052f, 0.05f, 0.3f, GunMat.Polymer, 0.012f)
                      .Box(0.0265f, 0.004f, 0.25f, 0.003f, 0.014f, 0.24f, GunMat.Paint, 0f)
@@ -311,7 +311,7 @@ namespace Saltworks
 
                 default:
                     // The Lancer: angular upper with a slate lower, slotted handguard, forward-leaning magazine, cyan optic.
-                    d = new GunDef { Id = "lancer", Paint = new Color(0.28f, 0.36f, 0.5f), GlowColor = new Color(0.25f, 0.9f, 1f) };
+                    d = new GunDef { Id = "lancer", Paint = new Color(0.26f, 0.32f, 0.42f), GlowColor = new Color(0.25f, 0.9f, 1f) };
                     d.Box(0f, 0.03f, 0.05f, 0.04f, 0.045f, 0.3f, GunMat.Metal, 0.006f)
                      .Box(0f, -0.005f, 0.03f, 0.038f, 0.035f, 0.2f, GunMat.Paint, 0.006f)
                      .Box(0f, 0.025f, 0.3f, 0.046f, 0.055f, 0.22f, GunMat.Polymer, 0.012f)
@@ -328,7 +328,7 @@ namespace Saltworks
                      .Box(0f, 0.04f, -0.2f, 0.03f, 0.02f, 0.14f, GunMat.Paint, 0.006f)
                      .Box(0f, 0.075f, 0.06f, 0.032f, 0.035f, 0.09f, GunMat.Dark, 0.006f)
                      .Box(0f, 0.077f, 0.106f, 0.024f, 0.022f, 0.003f, GunMat.Glow, 0f)
-                     .Box(0.021f, 0.03f, 0.08f, 0.002f, 0.006f, 0.16f, GunMat.Glow, 0f)
+                     .Box(0.021f, 0.03f, 0.08f, 0.002f, 0.006f, 0.16f, GunMat.Paint, 0f)
                      .Box(0.025f, 0.035f, -0.05f, 0.012f, 0.012f, 0.02f, GunMat.Dark, 0.002f, 0f, 2);
                     d.Muzzle = new Vector3(0f, 0.03f, 0.575f);
                     d.Eject = new Vector3(0.025f, 0.035f, 0.02f);
@@ -345,8 +345,8 @@ namespace Saltworks
         {
             switch (m)
             {
-                case GunMat.Metal: return new Color(0.25f, 0.26f, 0.28f, 1f);
-                case GunMat.Polymer: return new Color(0.12f, 0.125f, 0.135f, 0f);
+                case GunMat.Metal: return new Color(0.24f, 0.25f, 0.27f, 1f);
+                case GunMat.Polymer: return new Color(0.135f, 0.14f, 0.145f, 0f);
                 case GunMat.Paint: return new Color(d.Paint.r, d.Paint.g, d.Paint.b, 0f);
                 case GunMat.Dark: return new Color(0.075f, 0.08f, 0.085f, 1f);
                 case GunMat.Brass: return new Color(0.82f, 0.62f, 0.28f, 1f);

@@ -232,7 +232,8 @@ namespace Saltworks
         }
 
         /// <summary>"headshot" (a head in a reticle), "wallbang" (a bullet through a wall), "sentinel" (a shield),
-        /// "duelist" (a blade), "controller" (a cloud), "initiator" (an eye), "persona" (a star), "live" (a dot).</summary>
+        /// "duelist" (a blade), "controller" (a cloud), "initiator" (an eye), "persona" (a star), "live" (a dot),
+        /// and the interface icons "gear", "back", "play", "check", "edit", "target", "rewind".</summary>
         public static Texture2D Glyph(string id)
         {
             if (string.IsNullOrEmpty(id)) id = "persona";
@@ -302,6 +303,53 @@ namespace Saltworks
                     case "live":
                         v = Inside(14f, (p - c).magnitude);
                         break;
+                    case "gear":
+                    {
+                        // A cog: a ring with eight square teeth and a hole.
+                        Vector2 d = p - c;
+                        float r = d.magnitude;
+                        float ang = Mathf.Atan2(d.y, d.x);
+                        float tooth = Mathf.Cos(ang * 8f) > 0.35f ? 26f : 19f;
+                        v = Inside(tooth, r) * (1f - Inside(8f, r));
+                        break;
+                    }
+                    case "back":
+                        v = Inside(3.5f, Mathf.Min(Seg(p, new Vector2(14f, 32f), new Vector2(50f, 32f)),
+                            Mathf.Min(Seg(p, new Vector2(14f, 32f), new Vector2(30f, 48f)), Seg(p, new Vector2(14f, 32f), new Vector2(30f, 16f)))));
+                        break;
+                    case "play":
+                    {
+                        // A right-pointing triangle (texture y is up).
+                        float hw = (52f - p.x) * 0.5f;
+                        v = p.x > 16f && p.x < 52f ? Inside(hw, Mathf.Abs(p.y - 32f)) : 0f;
+                        break;
+                    }
+                    case "check":
+                        v = Inside(4f, Mathf.Min(Seg(p, new Vector2(12f, 34f), new Vector2(26f, 20f)), Seg(p, new Vector2(26f, 20f), new Vector2(52f, 48f))));
+                        break;
+                    case "edit":
+                    {
+                        // A pencil: a thick diagonal bar with a point at the lower left.
+                        v = Inside(5f, Seg(p, new Vector2(22f, 22f), new Vector2(50f, 50f)));
+                        v = Mathf.Max(v, Inside(2.5f, Seg(p, new Vector2(12f, 12f), new Vector2(22f, 22f))));
+                        v = Mathf.Max(v, Inside(1.5f, Seg(p, new Vector2(30f, 6f), new Vector2(56f, 6f))) * 0.6f);
+                        break;
+                    }
+                    case "target":
+                    {
+                        float r = (p - c).magnitude;
+                        v = Mathf.Max(Inside(2.5f, Mathf.Abs(r - 24f)), Inside(2.5f, Mathf.Abs(r - 13f)));
+                        v = Mathf.Max(v, Inside(4.5f, r));
+                        break;
+                    }
+                    case "rewind":
+                    {
+                        // Two left-pointing triangles.
+                        float a1 = p.x > 10f && p.x < 32f ? Inside((p.x - 10f) * 0.7f, Mathf.Abs(p.y - 32f)) : 0f;
+                        float a2 = p.x > 32f && p.x < 54f ? Inside((p.x - 32f) * 0.7f, Mathf.Abs(p.y - 32f)) : 0f;
+                        v = Mathf.Max(a1, a2);
+                        break;
+                    }
                     default:
                     {
                         // A five-point star.

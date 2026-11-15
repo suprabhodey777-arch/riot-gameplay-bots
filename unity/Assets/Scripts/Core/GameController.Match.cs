@@ -150,7 +150,20 @@ namespace Saltworks
         string ShortName(string id)
         {
             if (string.IsNullOrEmpty(id)) return "?";
-            return id == PlayerId ? "You" : id;
+            if (id == PlayerId) return "You";
+            return PersonaName(id) ?? id;
+        }
+
+        /// <summary>The display name of the persona bot `id` plays (the player's custom name when set), or null.</summary>
+        public string PersonaName(string id)
+        {
+            if (string.IsNullOrEmpty(id) || World == null) return null;
+            if (World.Bots.TryGetValue(id, out BotView b) && !string.IsNullOrEmpty(b.Persona))
+            {
+                Persona p = Personas.Get(b.Persona);
+                if (p != null) return p.Name;
+            }
+            return null;
         }
 
         void AddKill(SimEvent e)

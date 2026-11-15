@@ -157,10 +157,13 @@ namespace Saltworks
             ChatMsg m = ReadLenient<ChatMsg>(o, "chat");
             if (m == null || string.IsNullOrEmpty(m.text)) return;
             string user = string.IsNullOrEmpty(m.user) ? "viewer" : m.user;
+            // A persona speaking in chat shows under the player's name for it.
+            Persona speaker = Personas.Match(user);
+            if (speaker != null) user = speaker.Name;
             Chat.Add(new ChatLine
             {
                 User = user,
-                Text = m.text,
+                Text = Personas.Rename(m.text),
                 Badge = Lenient.Str(m.badge),
                 Color = Lenient.Color(m.color, ChatColor(user)),
                 At = Time.unscaledTime,
@@ -180,7 +183,7 @@ namespace Saltworks
         {
             AlertMsg m = ReadLenient<AlertMsg>(o, "alert");
             if (m == null) return;
-            PushAlert(m.kind, string.IsNullOrEmpty(m.text) ? AlertText(m.kind) : m.text, Lenient.Bool(m.big));
+            PushAlert(m.kind, string.IsNullOrEmpty(m.text) ? AlertText(m.kind) : Personas.Rename(m.text), Lenient.Bool(m.big));
         }
 
         static string AlertText(string kind)
@@ -210,12 +213,12 @@ namespace Saltworks
         {
             PersonaLineMsg m = ReadLenient<PersonaLineMsg>(o, "persona_line");
             if (m == null || string.IsNullOrEmpty(m.text)) return;
-            Persona p = Personas.Get(m.persona);
+            Persona p = Personas.Get(m.persona) ?? Personas.Match(m.persona);
             Callouts.Add(new Callout
             {
                 Persona = m.persona,
                 Name = p != null ? p.Name : Agents.NameOf(m.persona),
-                Text = m.text,
+                Text = Personas.Rename(m.text),
                 Color = p != null ? p.Primary : Settings.Enemy,
                 At = Time.unscaledTime,
             });

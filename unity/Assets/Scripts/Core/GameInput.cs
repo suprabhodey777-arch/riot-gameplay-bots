@@ -57,11 +57,26 @@ namespace Saltworks
             new[] { "Dash", "E" },
             new[] { "Recon dart", "Hold X, release" },
             new[] { "Plant / defuse", "Hold F" },
-            new[] { "Minimap / full map", "M / hold Tab" },
+            new[] { "Tactical map / peek", "M / hold Tab" },
             new[] { "Frame rate readout", "F3" },
             new[] { "Pause, close menus", "Esc" },
             new[] { "Confirm", "Enter / Space" },
+            new[] { "Move focus in menus", "Arrow keys / Tab" },
         };
+
+        /// <summary>
+        /// Keys held by the screenshot tour (Core/GameController.Tour.cs) instead of a person; null normally.
+        /// Held and Pressed report these as well as the real keyboard.
+        /// </summary>
+        public static System.Func<GameKey, bool> SyntheticHeld;
+
+        /// <summary>Look movement the tour adds each frame (degrees at sensitivity 1).</summary>
+        public static Vector2 SyntheticLook;
+
+        static bool Synthetic(GameKey k)
+        {
+            return SyntheticHeld != null && SyntheticHeld(k);
+        }
 
 #if ENABLE_INPUT_SYSTEM
         static readonly Key[][] Keys =
@@ -96,6 +111,7 @@ namespace Saltworks
 
         public static bool Held(GameKey k)
         {
+            if (Synthetic(k)) return true;
             foreach (Key key in Keys[(int)k])
             {
                 KeyControl c = Control(key);
@@ -133,8 +149,8 @@ namespace Saltworks
         /// <summary>Mouse movement this frame, in degrees at sensitivity 1 (x right, y up).</summary>
         public static Vector2 LookDelta()
         {
-            if (Mouse.current == null) return Vector2.zero;
-            return Mouse.current.delta.ReadValue() * DegreesPerPixel;
+            if (Mouse.current == null) return SyntheticLook;
+            return Mouse.current.delta.ReadValue() * DegreesPerPixel + SyntheticLook;
         }
 #else
         static readonly KeyCode[][] Keys =
@@ -163,6 +179,7 @@ namespace Saltworks
 
         public static bool Held(GameKey k)
         {
+            if (Synthetic(k)) return true;
             foreach (KeyCode key in Keys[(int)k])
                 if (Input.GetKey(key)) return true;
             return false;
@@ -184,7 +201,7 @@ namespace Saltworks
         public static Vector2 LookDelta()
         {
             // The default "Mouse X/Y" axes are pixels * 0.1.
-            return new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y")) * (DegreesPerPixel * 10f);
+            return new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y")) * (DegreesPerPixel * 10f) + SyntheticLook;
         }
 #endif
     }

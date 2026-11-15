@@ -23,11 +23,11 @@ namespace Saltworks
             hpBig = Text(lbl, 48, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             bugTimer = Text(lbl, 32, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             bugScore = Text(lbl, 34, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
-            bugSmall = Text(lbl, 10, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
+            bugSmall = Text(lbl, 11, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             keyCap = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             weaponName = Text(lbl, 22, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             sweepTitle = Text(lbl, 46, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
-            sweepSub = Text(lbl, 13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
+            sweepSub = Text(lbl, 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
         }
 
         // ---- score bug -----------------------------------------------------------------------------
@@ -515,7 +515,6 @@ namespace Saltworks
             Slash(new Rect(x - 40f, y, W + 80f, 86f), new Color(0.02f, 0.025f, 0.045f, 0.9f));
             Slash(new Rect(x + W * 0.12f, y - 4f, W * 0.76f, 4f), ac);
             Slash(new Rect(x + W * 0.2f, y + 86f, W * 0.6f, 3f), Theme.Neon2);
-            Scanlines(new Rect(x, y, W, 86f), 0.3f);
             float textX = x + (1f - inK) * -80f + outK * 80f;
             Condensed(new Rect(textX, y + 6f, W, 56f), Game.RoundBannerText, sweepTitle, Color.white, 0.82f, true);
             Lbl(new Rect(textX, y + 60f, W, 18f), Game.RoundBannerSub ?? "", sweepSub, ac);

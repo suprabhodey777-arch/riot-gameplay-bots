@@ -112,7 +112,7 @@ namespace Saltworks
             public Texture2D Normal;
         }
 
-        static Pair concrete, metal, tiles, crate, trim, ground;
+        static Pair concrete, metal, tiles, crate, trim, ground, brick, flags, deck, timber;
         static Texture2D grain, hole, dot, star, tracer, hazard, plant, scope, glowStrip;
 
         // ---- surfaces ----------------------------------------------------------------------------
@@ -349,6 +349,227 @@ namespace Saltworks
             trim.Albedo = Finish(New("SaltworksTrim", n, n, true, false, TextureWrapMode.Repeat), px);
             trim.Normal = NormalMap("SaltworksTrimN", h, n, 2f);
             return trim;
+        }
+
+        // ---- round 6 surfaces ------------------------------------------------------------------------
+        /// <summary>
+        /// Weathered brick, running bond, 8 bricks across and 16 courses per repeat (one repeat = one 2 m wall panel):
+        /// per-brick tone, chipped arrises, recessed mortar, soot and damp towards the foot. A = smoothness.
+        /// </summary>
+        public static Pair Brick()
+        {
+            if (brick.Albedo != null) return brick;
+            const int n = 256;
+            const int courses = 16, across = 8;
+            const int ch = n / courses, bw = n / across;
+            var px = new Color32[n * n];
+            var h = new float[n * n];
+            for (int y = 0; y < n; y++)
+            {
+                int row = y / ch;
+                int ly = y % ch;
+                int shift = (row % 2) * (bw / 2);
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    int xs = Wrap(x + shift, n);
+                    int col = xs / bw;
+                    int lx = xs % bw;
+                    float edge = Mathf.Min(Mathf.Min(lx, bw - 1 - lx), Mathf.Min(ly, ch - 1 - ly));
+                    float fine = Fbm(u, v, 32, 3, 101);
+                    float chipN = Fbm(u, v, 16, 3, 102);
+                    float tone = 0.78f + (Hash(col, row, 103) - 0.5f) * 0.22f;
+                    float c = tone + (fine - 0.5f) * 0.12f;
+                    float height = 0.6f + fine * 0.3f;
+                    float smooth = 0.18f;
+                    // Chipped edges: the mortar line eats into the brick where the noise is high.
+                    float mortarW = 1.6f + Mathf.Max(0f, chipN - 0.55f) * 6f;
+                    if (edge < mortarW)
+                    {
+                        c = 0.62f + fine * 0.1f;
+                        height = -0.6f;
+                        smooth = 0.08f;
+                    }
+                    else if (edge < mortarW + 1.5f) c *= 0.9f;
+                    // Damp and soot: darker towards the bottom of the repeat, in soft patches.
+                    float damp = Fbm(u, v * 0.5f, 4, 3, 104);
+                    c *= Mathf.Lerp(1f, 0.82f, Smooth(0.5f, 0.8f, damp) * (1f - v));
+                    px[y * n + x] = new Color32(B(c), B(c * 0.97f), B(c * 0.95f), B(smooth));
+                    h[y * n + x] = height;
+                }
+            }
+            brick.Albedo = Finish(New("SaltworksBrick", n, n, true, false, TextureWrapMode.Repeat), px);
+            brick.Normal = NormalMap("SaltworksBrickN", h, n, 3f);
+            return brick;
+        }
+
+        /// <summary>
+        /// Stone flagstones, one repeat = 4 m: four courses of stones of random length, each its own tone, worn
+        /// smooth in the middle, with dark recessed seams and a little moss-like grime in them. A = smoothness.
+        /// </summary>
+        public static Pair Flagstones()
+        {
+            if (flags.Albedo != null) return flags;
+            const int n = 256;
+            const int rows = 4;
+            const int rh = n / rows;
+            var px = new Color32[n * n];
+            var h = new float[n * n];
+            // Per row: cut points along u (tileable: the row wraps), 3 to 5 stones.
+            var cuts = new int[rows][];
+            for (int r = 0; r < rows; r++)
+            {
+                int count = 3 + (int)(Hash(r, 0, 111) * 2.99f);
+                cuts[r] = new int[count];
+                float off = Hash(r, 1, 112) * n;
+                for (int i = 0; i < count; i++)
+                {
+                    float jitter = (Hash(r, i + 2, 113) - 0.5f) * 0.45f;
+                    cuts[r][i] = Wrap(Mathf.RoundToInt(off + (i + jitter) * n / (float)count), n);
+                }
+                System.Array.Sort(cuts[r]);
+            }
+            for (int y = 0; y < n; y++)
+            {
+                int row = y / rh;
+                int ly = y % rh;
+                int[] cr = cuts[row];
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    // Which stone, and the distance to its side seams.
+                    int stone = 0;
+                    float dSide = float.MaxValue;
+                    for (int i = 0; i < cr.Length; i++)
+                    {
+                        int d = Mathf.Abs(x - cr[i]);
+                        d = Mathf.Min(d, n - d);
+                        dSide = Mathf.Min(dSide, d);
+                        if (x >= cr[i]) stone = i + 1;
+                    }
+                    if (stone >= cr.Length) stone = 0;
+                    float edge = Mathf.Min(dSide, Mathf.Min(ly, rh - 1 - ly));
+                    float fine = Fbm(u, v, 32, 4, 114);
+                    float broad = Fbm(u, v, 4, 3, 115);
+                    float tone = 0.8f + (Hash(stone, row, 116) - 0.5f) * 0.16f;
+                    float c = tone + (fine - 0.5f) * 0.1f + (broad - 0.5f) * 0.08f;
+                    float height = fine * 0.4f + Mathf.Clamp01(edge / 8f) * 0.6f;
+                    float smooth = 0.25f + Mathf.Clamp01(edge / 20f) * 0.2f;
+                    if (edge < 6f) c *= Mathf.Lerp(0.82f, 1f, edge / 6f);
+                    if (edge < 2f)
+                    {
+                        float grime = Fbm(u, v, 16, 2, 117);
+                        c = 0.36f + grime * 0.1f;
+                        height = -1.2f;
+                        smooth = 0.05f;
+                    }
+                    px[y * n + x] = new Color32(B(c), B(c * 0.985f), B(c * 0.955f), B(smooth));
+                    h[y * n + x] = height;
+                }
+            }
+            flags.Albedo = Finish(New("SaltworksFlagstones", n, n, true, false, TextureWrapMode.Repeat), px);
+            flags.Normal = NormalMap("SaltworksFlagstonesN", h, n, 2.6f);
+            return flags;
+        }
+
+        /// <summary>
+        /// Steel deck plate, one repeat = 2 m: 2 x 2 welded plates with a raised diagonal tread pattern, worn bright on
+        /// the tread tops, darker paint between, rust bloom near the seams. A = smoothness.
+        /// </summary>
+        public static Pair DeckPlate()
+        {
+            if (deck.Albedo != null) return deck;
+            const int n = 256;
+            var px = new Color32[n * n];
+            var h = new float[n * n];
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    int lx = x % 128, ly = y % 128;
+                    float edge = Mathf.Min(Mathf.Min(lx, 127 - lx), Mathf.Min(ly, 127 - ly));
+                    // Treads: short raised bars, alternating direction on a 16 px lattice.
+                    int cx = x / 16, cy = y / 16;
+                    float fx = (x % 16) - 7.5f, fy = (y % 16) - 7.5f;
+                    bool alt = ((cx + cy) & 1) == 0;
+                    float a = alt ? (fx + fy) * 0.7071f : (fx - fy) * 0.7071f;
+                    float b = alt ? (fx - fy) * 0.7071f : (fx + fy) * 0.7071f;
+                    float tread = Mathf.Clamp01(1f - Mathf.Max(Mathf.Abs(a) / 5.5f, Mathf.Abs(b) / 1.6f));
+                    tread = Smooth(0f, 0.35f, tread);
+                    float fine = Fbm(u, v, 32, 3, 121);
+                    float rust = Fbm(u, v, 8, 4, 122) - Mathf.Clamp01(edge / 30f) * 0.3f;
+                    float c = 0.55f + (fine - 0.5f) * 0.08f + tread * 0.22f;
+                    float smooth = 0.45f + tread * 0.3f;
+                    float height = tread * 1.2f + fine * 0.15f;
+                    if (rust > 0.55f)
+                    {
+                        c *= 0.75f;
+                        smooth *= 0.4f;
+                    }
+                    if (edge < 2f)
+                    {
+                        c *= 0.55f;
+                        height = -1.2f;
+                        smooth = 0.2f;
+                    }
+                    px[y * n + x] = new Color32(B(c), B(c * (rust > 0.55f ? 0.9f : 1f)), B(c * (rust > 0.55f ? 0.82f : 1.02f)), B(smooth));
+                    h[y * n + x] = height;
+                }
+            }
+            deck.Albedo = Finish(New("SaltworksDeckPlate", n, n, true, false, TextureWrapMode.Repeat), px);
+            deck.Normal = NormalMap("SaltworksDeckPlateN", h, n, 2.2f);
+            return deck;
+        }
+
+        /// <summary>
+        /// Timber decking, one repeat = 2 m: ten boards with staggered butt joints, grain, knots, dark gaps and
+        /// slightly varied weathering per board. A = smoothness.
+        /// </summary>
+        public static Pair Timber()
+        {
+            if (timber.Albedo != null) return timber;
+            const int n = 256;
+            const int boards = 10;
+            const float bwF = n / (float)boards;
+            var px = new Color32[n * n];
+            var h = new float[n * n];
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    int board = Mathf.Min(boards - 1, (int)(x / bwF));
+                    float lx = x - board * bwF;
+                    float edgeX = Mathf.Min(lx, bwF - 1f - lx);
+                    // One butt joint per board per repeat, staggered.
+                    int joint = (int)(Hash(board, 0, 131) * n);
+                    int dj = Mathf.Abs(y - joint);
+                    dj = Mathf.Min(dj, n - dj);
+                    float tone = 0.74f + (Hash(board, 1, 132) - 0.5f) * 0.18f;
+                    float grain = Mathf.Sin((u * 40f + Fbm(u, v, 4, 3, 133 + board) * 3f) * Mathf.PI * 2f) * 0.5f + 0.5f;
+                    float fine = Fbm(u, v, 32, 3, 134);
+                    float c = tone * (0.9f + grain * 0.1f) + (fine - 0.5f) * 0.06f;
+                    float height = grain * 0.25f + fine * 0.2f;
+                    float smooth = 0.2f;
+                    // A knot now and then.
+                    float kx = (board + 0.5f) * bwF, ky = Hash(board, 2, 135) * n;
+                    float kd = new Vector2(x - kx, Mathf.Min(Mathf.Abs(y - ky), n - Mathf.Abs(y - ky))).magnitude;
+                    if (Hash(board, 3, 136) < 0.5f && kd < 5f) c *= Mathf.Lerp(0.6f, 1f, kd / 5f);
+                    if (edgeX < 1.6f || dj < 1)
+                    {
+                        c *= 0.35f;
+                        height = -1.4f;
+                        smooth = 0.05f;
+                    }
+                    else if (edgeX < 3f) c *= 0.9f;
+                    px[y * n + x] = new Color32(B(c), B(c * 0.86f), B(c * 0.68f), B(smooth));
+                    h[y * n + x] = height;
+                }
+            }
+            timber.Albedo = Finish(New("SaltworksTimber", n, n, true, false, TextureWrapMode.Repeat), px);
+            timber.Normal = NormalMap("SaltworksTimberN", h, n, 2.4f);
+            return timber;
         }
 
         /// <summary>Fine grain for guns and armour (A = smoothness variation).</summary>

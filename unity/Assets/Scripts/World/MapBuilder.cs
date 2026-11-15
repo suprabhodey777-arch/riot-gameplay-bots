@@ -1,6 +1,15 @@
 // Builds the map from the MapDef the bridge sends: every wall polygon extruded
-// to its height (ear-clipped caps, mesh colliders for the shot raycast), a
-// floor with a collider, tinted sites with a big letter, and callout labels.
+// to its height (ear-clipped caps, mesh colliders for the shot raycast) in a
+// material that depends on its zone (weathered concrete, brick, painted plaster
+// or painted steel, chosen per callout area), architectural trim on every face
+// that looks onto the floor (plinths, cornices, string courses, pilasters,
+// framed windows above head height, ribs on steel), door frames with lintels
+// and stepped arches at the chokes, a stone flagstone floor with a collider,
+// each site paved in its own material (steel deck plate, timber or polished
+// tiles) with a painted border and big painted letters on the floor and on a
+// wall, and callout labels. Trim and frames carry no colliders and stay above
+// head height or within a few centimetres of a wall, so sight lines match the
+// sim. All trim is one merged mesh, windows another.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,6 +20,63 @@ namespace Saltworks
         /// <summary>Raycasts for shots and smokes use the Default layer; nothing else in the scene has colliders.</summary>
         public const int WorldLayer = 0;
 
+        struct SurfaceArea
+        {
+            public List<Vec2> Poly;
+            public StepSurface Surface;
+        }
+
+        static readonly List<SurfaceArea> surfaces = new List<SurfaceArea>();
+
+        /// <summary>The footstep surface at a world position: the site paving there, else the stone floor.</summary>
+        public static StepSurface StepSurfaceAt(Vector3 p)
+        {
+            var q = new Vector2(p.x, p.z);
+            for (int i = 0; i < surfaces.Count; i++)
+                if (Geo.PointInPolygon(q, surfaces[i].Poly)) return surfaces[i].Surface;
+            return StepSurface.Concrete;
+        }
+
+        enum Zone { Concrete, Brick, Plaster, Steel }
+
+        struct ZoneLook
+        {
+            public Color Side;
+            public Textures.Pair Tex;
+            public float Gloss, Bump;
+        }
+
+        static ZoneLook LookOf(Zone z)
+        {
+            switch (z)
+            {
+                case Zone.Brick: return new ZoneLook { Side = new Color(0.66f, 0.43f, 0.34f), Tex = Textures.Brick(), Gloss = 0.15f, Bump = 1f };
+                case Zone.Plaster: return new ZoneLook { Side = new Color(0.86f, 0.8f, 0.69f), Tex = Textures.Concrete(), Gloss = 0.18f, Bump = 0.45f };
+                case Zone.Steel: return new ZoneLook { Side = new Color(0.42f, 0.5f, 0.52f), Tex = Textures.PaintedMetal(), Gloss = 0.42f, Bump = 1f };
+                default: return new ZoneLook { Side = new Color(0.76f, 0.74f, 0.7f), Tex = Textures.Concrete(), Gloss = 0.25f, Bump = 1f };
+            }
+        }
+
+        /// <summary>The zone a wall belongs to: the callout area around its centre (else a 24 m grid cell), hashed with the map id.</summary>
+        static Zone ZoneOf(WallDef wall, MapDef map)
+        {
+            Vector2 c = Geo.Centroid(wall.points);
+            string key = null;
+            float best = 30f;
+            if (map.callouts != null)
+            {
+                foreach (CalloutDef co in map.callouts)
+                {
+                    if (co == null || co.polygon == null || co.polygon.Count < 3 || string.IsNullOrEmpty(co.name)) continue;
+                    if (Geo.PointInPolygon(c, co.polygon)) { key = co.name; break; }
+                    float d = (Geo.Centroid(co.polygon) - c).magnitude;
+                    if (d < best) { best = d; key = co.name; }
+                }
+            }
+            if (key == null) key = Mathf.FloorToInt(c.x / 24f) + "," + Mathf.FloorToInt(c.y / 24f);
+            return (Zone)(StableHash((map.id ?? map.name ?? "") + "/" + key) % 4);
+        }
+
         public static GameObject Build(MapDef map, Font font, Material textMat)
         {
             var root = new GameObject("Map " + (map.name ?? map.id));
@@ -18,10 +84,10 @@ namespace Saltworks
             float h = map.bounds != null && map.bounds.height > 0 ? map.bounds.height : 100f;
 
             WorldLook.Prune();
+            surfaces.Clear();
             BuildFloor(root.transform, w, h);
 
             Textures.Pair concrete = Textures.Concrete();
-            Textures.Pair metal = Textures.PaintedMetal();
             Textures.Pair crate = Textures.Crate();
             Textures.Pair trimTex = Textures.Trim();
             var matCache = new Dictionary<string, Material>();
@@ -39,26 +105,41 @@ namespace Saltworks
             var walls = new GameObject("Walls").transform;
             walls.SetParent(root.transform, false);
             var contact = new MeshBuilder(1);
+            var trim = new MeshKit(1) { UvScale = 0.5f };
+            var glass = new MeshKit(1);
+            if (map.walls == null) map.walls = new List<WallDef>();
             foreach (WallDef wall in map.walls)
             {
-                if (wall.points == null || wall.points.Count < 3) continue;
+                if (wall == null || wall.points == null || wall.points.Count < 3) continue;
                 bool outer = wall.id != null && wall.id.StartsWith("outer");
                 Color side, top;
                 Textures.Pair sideTex;
-                float sideGloss = 0.3f;
-                if (outer) { side = Palette.Outer; top = Palette.Outer; sideTex = concrete; }
-                else if (wall.height <= 1.5f) { side = Palette.Crate; top = Palette.CrateTop; sideTex = crate; sideGloss = 0.2f; }
-                else if (wall.height <= 3.2f) { side = Palette.Pillar; top = Palette.WallTop; sideTex = metal; sideGloss = 0.45f; }
+                float sideGloss, bump = 1f;
+                Zone zone = outer ? Zone.Concrete : ZoneOf(wall, map);
+                if (outer)
+                {
+                    side = Palette.Outer;
+                    top = Palette.Outer;
+                    sideTex = concrete;
+                    sideGloss = 0.25f;
+                }
+                else if (wall.height <= 1.5f)
+                {
+                    side = Palette.Crate;
+                    top = Palette.CrateTop;
+                    sideTex = crate;
+                    sideGloss = 0.2f;
+                }
                 else
                 {
-                    side = Palette.Wall;
+                    ZoneLook zl = LookOf(zone);
+                    side = zl.Side;
                     top = Palette.WallTop;
-                    // Tall walls alternate between cast concrete and painted panels, by id, so a map reads as built.
-                    bool panels = StableHash(wall.id) % 3 == 0;
-                    sideTex = panels ? metal : concrete;
-                    if (panels) sideGloss = 0.45f;
+                    sideTex = zl.Tex;
+                    sideGloss = zl.Gloss;
+                    bump = zl.Bump;
                 }
-                Color trim = new Color(side.r * 0.66f, side.g * 0.66f, side.b * 0.68f);
+                Color baseTrim = new Color(side.r * 0.6f, side.g * 0.6f, side.b * 0.62f);
                 float height = Mathf.Max(0.05f, wall.height);
                 Mesh mesh = Prism(wall.points, height, Mathf.Min(TrimHeight, height * 0.3f));
                 mesh.name = "wall " + wall.id;
@@ -69,15 +150,23 @@ namespace Saltworks
                 string tk = sideTex.Albedo != null ? sideTex.Albedo.name : "";
                 mr.sharedMaterials = new[]
                 {
-                    Get("s" + side + tk, side, Surface.Wall, sideTex, sideGloss, 1f),
+                    Get("s" + side + tk, side, Surface.Wall, sideTex, sideGloss, bump),
                     Get("t" + top, top, Surface.Wall, concrete, 0.25f, 0.8f),
-                    Get("r" + trim, trim, Surface.Trim, trimTex, 0.45f, 1f),
+                    Get("r" + baseTrim, baseTrim, Surface.Trim, trimTex, 0.45f, 1f),
                 };
                 go.AddComponent<MeshCollider>().sharedMesh = mesh;
-                ContactShadow(contact, wall.points, ContactWidth, 0.006f);
+                ContactShadow(contact, wall.points, ContactWidth, 0.012f);
+                if (height > 1.5f) WallTrim(trim, glass, wall, map, w, h, outer ? Zone.Concrete : zone, side);
             }
+            Doorways(trim, map);
             // One draw call per wall material: static batching of every wall (the colliders stay per wall).
             StaticBatchingUtility.Combine(walls.gameObject);
+
+            // The trim (stone and paint, by vertex colour) and the window glass, each one mesh.
+            Material trimMat = Get("trim", Color.white, Surface.Trim, concrete, 0.22f, 0.6f);
+            AddMesh(root.transform, "Architectural trim", trim, trimMat, true);
+            Material glassMat = Mats.World(new Color(0.16f, 0.19f, 0.22f), Texture2D.whiteTexture, null, 0f, 0.88f, 0.2f, 0.9f, 0f);
+            AddMesh(root.transform, "Window glass", glass, glassMat, false);
 
             // Soft darkening on the floor around every wall base: an ambient-occlusion feel in one mesh.
             var contactGo = new GameObject("Wall contact shadows");
@@ -93,38 +182,14 @@ namespace Saltworks
 
             var deco = new GameObject("Sites and callouts").transform;
             deco.SetParent(root.transform, false);
-            foreach (KeyValuePair<string, List<Vec2>> site in map.SiteList())
-            {
-                Color c = Palette.Site(site.Key);
-                var tint = new GameObject("Site " + site.Key);
-                tint.transform.SetParent(deco, false);
-                tint.AddComponent<MeshFilter>().sharedMesh = FlatPolygon(site.Value, 0.012f);
-                tint.AddComponent<MeshRenderer>().sharedMaterial = Mats.Transparent(new Color(c.r, c.g, c.b, 0.18f), 3000);
-
-                // A wide soft inner glow fading inward, then a crisp bright edge on top of it.
-                var glow = new GameObject("Site " + site.Key + " glow");
-                glow.transform.SetParent(deco, false);
-                glow.AddComponent<MeshFilter>().sharedMesh = EdgeStrip(site.Value, 1.4f, 0.014f);
-                Material gm = Mats.Transparent(new Color(c.r, c.g, c.b, 0.35f), 3001);
-                if (gm.HasProperty("_MainTex")) gm.mainTexture = Mats.GradientTexture();
-                glow.AddComponent<MeshRenderer>().sharedMaterial = gm;
-
-                var edge = new GameObject("Site " + site.Key + " edge");
-                edge.transform.SetParent(deco, false);
-                edge.AddComponent<MeshFilter>().sharedMesh = EdgeStrip(site.Value, 0.22f, 0.016f);
-                edge.AddComponent<MeshRenderer>().sharedMaterial = Mats.Transparent(new Color(Mathf.Min(1f, c.r * 1.05f), Mathf.Min(1f, c.g * 1.05f), Mathf.Min(1f, c.b * 1.05f), 0.95f), 3002);
-
-                Vector2 cen = FreeSpot(site.Value, map, 2.5f);
-                Label(site.Key, new Vector3(cen.x, 0.03f, cen.y), 6f, new Color(c.r * 0.85f, c.g * 0.85f, c.b * 0.85f, 0.9f), font, textMat, deco, true);
-                SiteBeacon(deco, site.Key, new Vector3(cen.x, 0f, cen.y), c);
-            }
+            foreach (KeyValuePair<string, List<Vec2>> site in map.SiteList()) SiteArt(deco, site.Key, site.Value, map, font, textMat, w, h);
             if (map.callouts != null)
             {
                 foreach (CalloutDef co in map.callouts)
                 {
-                    if (co.polygon == null || co.polygon.Count < 3 || string.IsNullOrEmpty(co.name)) continue;
+                    if (co == null || co.polygon == null || co.polygon.Count < 3 || string.IsNullOrEmpty(co.name)) continue;
                     Vector2 cen = FreeSpot(co.polygon, map, 1.2f);
-                    Label(co.name.ToUpperInvariant(), new Vector3(cen.x, 0.03f, cen.y), 0.7f, new Color(0.25f, 0.27f, 0.32f, 0.55f), font, textMat, deco, true);
+                    Label(co.name.ToUpperInvariant(), new Vector3(cen.x, 0.03f, cen.y), 0.7f, new Color(0.2f, 0.21f, 0.24f, 0.5f), font, textMat, deco, true);
                 }
             }
             if (map.spawns != null)
@@ -133,6 +198,252 @@ namespace Saltworks
                 AddSpawnPads(deco, map.spawns.defense, Palette.Defense);
             }
             return root;
+        }
+
+        static void AddMesh(Transform parent, string name, MeshKit k, Material m, bool shadows)
+        {
+            if (k.Empty) return;
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.AddComponent<MeshFilter>().sharedMesh = k.ToMesh(name);
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = m;
+            mr.shadowCastingMode = shadows ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        }
+
+        // ---- architecture ---------------------------------------------------------------------------
+        static readonly Color StoneTrim = new Color(0.72f, 0.69f, 0.63f, 0f);
+        static readonly Color DarkStone = new Color(0.42f, 0.4f, 0.38f, 0f);
+
+        /// <summary>A box along a wall face: `along` from the edge start, `y` its centre height, `proud` metres out from the face.</summary>
+        static void FaceBox(MeshKit k, Vector2 a, Vector2 dir, Vector2 n, float along, float length, float y, float height, float proud, Color c, float bevel = 0f)
+        {
+            Vector2 p = a + dir * along + n * (proud * 0.5f - 0.01f);
+            float yaw = Mathf.Atan2(n.x, n.y) * Mathf.Rad2Deg;
+            k.Box(0, MeshKit.At(new Vector3(p.x, y, p.y), new Vector3(0f, yaw, 0f)), new Vector3(length, height, proud + 0.02f), bevel, c);
+        }
+
+        /// <summary>Plinth, cornice, string course, pilasters or steel ribs, and framed windows on every face that looks onto the floor.</summary>
+        static void WallTrim(MeshKit k, MeshKit glass, WallDef wall, MapDef map, float mapW, float mapH, Zone zone, Color side)
+        {
+            List<Vector2> p = ToCounterClockwise(wall.points);
+            float height = wall.height;
+            int seed = StableHash(wall.id ?? "");
+            Color plinth = zone == Zone.Steel ? new Color(0.24f, 0.25f, 0.26f, 0.6f) : DarkStone;
+            Color stone = zone == Zone.Steel ? new Color(side.r * 0.8f, side.g * 0.8f, side.b * 0.8f, 0.4f) : zone == Zone.Brick ? StoneTrim : new Color(side.r * 1.06f, side.g * 1.05f, side.b * 1.03f, 0f);
+            for (int i = 0; i < p.Count; i++)
+            {
+                Vector2 a = p[i], b = p[(i + 1) % p.Count];
+                Vector2 e = b - a;
+                float len = e.magnitude;
+                if (len < 0.6f) continue;
+                Vector2 dir = e / len;
+                var n = new Vector2(e.y, -e.x) / len;
+                Vector2 front = (a + b) * 0.5f + n * 0.6f;
+                if (front.x < 0.2f || front.y < 0.2f || front.x > mapW - 0.2f || front.y > mapH - 0.2f) continue;
+                if (!IsClear(front, map, 0.2f)) continue;
+                float mid = len * 0.5f;
+                // Plinth with a chamfered cap.
+                float ph = height >= 2.9f ? 0.34f : 0.22f;
+                FaceBox(k, a, dir, n, mid, len + 0.07f, ph * 0.5f, ph, 0.035f, plinth, 0.008f);
+                FaceBox(k, a, dir, n, mid, len + 0.09f, ph + 0.02f, 0.04f, 0.045f, plinth, 0.012f);
+                if (height < 2.4f)
+                {
+                    // Half walls: a coping stone on top instead of a cornice.
+                    FaceBox(k, a, dir, n, mid, len + 0.06f, height - 0.04f, 0.08f, 0.04f, stone, 0.01f);
+                    continue;
+                }
+                bool cornice = height >= 2.9f;
+                if (cornice)
+                {
+                    if (zone == Zone.Steel)
+                    {
+                        FaceBox(k, a, dir, n, mid, len + 0.06f, height - 0.06f, 0.12f, 0.04f, stone, 0.006f);
+                    }
+                    else
+                    {
+                        FaceBox(k, a, dir, n, mid, len + 0.14f, height - 0.08f, 0.16f, 0.07f, stone, 0.012f);
+                        FaceBox(k, a, dir, n, mid, len + 0.08f, height - 0.2f, 0.07f, 0.04f, stone, 0.008f);
+                    }
+                }
+                if (height >= 4.6f && zone != Zone.Steel) FaceBox(k, a, dir, n, mid, len + 0.06f, 3.1f, 0.08f, 0.035f, stone, 0.006f);
+                float top = cornice ? height - 0.24f : height;
+                // Vertical rhythm: steel gets ribs every metre; masonry gets pilasters in bays of about 4.5 m.
+                var bays = new List<float>();
+                if (zone == Zone.Steel)
+                {
+                    for (float t = 0.5f; t < len - 0.3f; t += 1f) FaceBox(k, a, dir, n, t, 0.06f, (ph + top) * 0.5f, top - ph, 0.03f, stone);
+                    bays.Add(0f);
+                    bays.Add(len);
+                }
+                else
+                {
+                    int count = len >= 6f ? Mathf.Max(1, Mathf.RoundToInt(len / 4.5f)) : 0;
+                    bays.Add(0f);
+                    for (int j = 1; j < count; j++)
+                    {
+                        float t = len * j / count;
+                        bays.Add(t);
+                        FaceBox(k, a, dir, n, t, 0.36f, (ph + top) * 0.5f, top - ph, 0.05f, stone, 0.006f);
+                    }
+                    bays.Add(len);
+                }
+                // Windows above head height, centred in each bay, on about two faces in three.
+                bool windows = height >= 4.2f && len >= 3.5f && (seed + i) % 3 != 0;
+                if (!windows) continue;
+                const float sill = 2.55f;
+                float wh = Mathf.Min(1.3f, top - 0.35f - sill);
+                if (wh < 0.7f) continue;
+                for (int j = 0; j + 1 < bays.Count; j++)
+                {
+                    float b0 = bays[j], b1 = bays[j + 1];
+                    float bay = b1 - b0;
+                    int per = zone == Zone.Steel ? Mathf.FloorToInt((bay - 0.6f) / 2.4f) : bay >= 3.4f ? 2 : bay >= 1.6f ? 1 : 0;
+                    for (int q = 0; q < per; q++)
+                    {
+                        float c = b0 + bay * (q + 0.5f) / per;
+                        Window(k, glass, a, dir, n, c, sill, 0.9f, wh, stone, zone);
+                    }
+                }
+            }
+        }
+
+        static void Window(MeshKit k, MeshKit glass, Vector2 a, Vector2 dir, Vector2 n, float c, float sill, float ww, float wh, Color stone, Zone zone)
+        {
+            Color frame = zone == Zone.Steel ? new Color(0.16f, 0.17f, 0.18f, 0.7f) : new Color(0.2f, 0.19f, 0.18f, 0.2f);
+            float yc = sill + wh * 0.5f;
+            // The pane, a hair off the wall, then the frame, a mullion and a transom, the sill and the lintel.
+            Vector2 gp = a + dir * c + n * 0.012f;
+            Vector3 g = new Vector3(gp.x, yc, gp.y);
+            Vector3 right = new Vector3(dir.x, 0f, dir.y) * (ww * 0.5f), up = Vector3.up * (wh * 0.5f);
+            glass.Quad(0, g - right - up, g + right - up, g + right + up, g - right + up, new Vector3(n.x, 0f, n.y), Color.white);
+            FaceBox(k, a, dir, n, c, ww + 0.1f, sill + wh + 0.025f, 0.05f, 0.05f, frame);
+            FaceBox(k, a, dir, n, c, ww + 0.1f, sill - 0.025f, 0.05f, 0.05f, frame);
+            FaceBox(k, a, dir, n, c - ww * 0.5f - 0.025f, 0.05f, yc, wh, 0.05f, frame);
+            FaceBox(k, a, dir, n, c + ww * 0.5f + 0.025f, 0.05f, yc, wh, 0.05f, frame);
+            FaceBox(k, a, dir, n, c, 0.035f, yc, wh, 0.035f, frame);
+            FaceBox(k, a, dir, n, c, ww, sill + wh * 0.62f, 0.03f, 0.035f, frame);
+            FaceBox(k, a, dir, n, c, ww + 0.24f, sill - 0.08f, 0.07f, 0.09f, stone, 0.01f);
+            if (zone != Zone.Steel) FaceBox(k, a, dir, n, c, ww + 0.2f, sill + wh + 0.12f, 0.14f, 0.045f, stone, 0.008f);
+        }
+
+        /// <summary>
+        /// Door frames at every choke between two walls: stone jambs at both sides, and where the walls are tall
+        /// enough a lintel with a keystone and a stepped arch, all above 2.6 m.
+        /// </summary>
+        static void Doorways(MeshKit k, MapDef map)
+        {
+            foreach (PropBuilder.Choke c in PropBuilder.FindChokes(map))
+            {
+                if (c.MinHeight < 2.6f) continue;
+                Vector2 dir = (c.B - c.A).normalized;
+                var perp = new Vector2(-dir.y, dir.x);
+                float yaw = Mathf.Atan2(perp.x, perp.y) * Mathf.Rad2Deg;
+                bool lintel = c.MinHeight >= 3.3f;
+                float jambTop = lintel ? 2.9f : Mathf.Min(c.MinHeight, 3f);
+                Color jamb = StoneTrim;
+                for (int s = 0; s < 2; s++)
+                {
+                    Vector2 at = s == 0 ? c.A - dir * 0.13f : c.B + dir * 0.13f;
+                    k.Box(0, MeshKit.At(new Vector3(at.x, jambTop * 0.5f, at.y), new Vector3(0f, yaw, 0f)), new Vector3(0.32f, jambTop, 0.44f), 0.012f, jamb);
+                    k.Box(0, MeshKit.At(new Vector3(at.x, 0.12f, at.y), new Vector3(0f, yaw, 0f)), new Vector3(0.38f, 0.24f, 0.5f), 0.01f, DarkStone);
+                    if (!lintel)
+                        k.Box(0, MeshKit.At(new Vector3(at.x, jambTop + 0.05f, at.y), new Vector3(0f, yaw, 0f)), new Vector3(0.4f, 0.1f, 0.52f), 0.012f, jamb);
+                }
+                if (!lintel) continue;
+                Vector2 mid = (c.A + c.B) * 0.5f;
+                float topY = Mathf.Min(c.MinHeight, 3.5f);
+                float lh = topY - 2.9f;
+                k.Box(0, MeshKit.At(new Vector3(mid.x, 2.9f + lh * 0.5f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(c.Width + 0.64f, lh, 0.44f), 0.012f, jamb);
+                k.Box(0, MeshKit.At(new Vector3(mid.x, 2.9f + lh * 0.5f - 0.02f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(0.32f, lh + 0.08f, 0.5f), 0.01f, new Color(0.78f, 0.75f, 0.68f, 0f));
+                // The stepped arch: three courses closing in from each jamb under the lintel.
+                for (int s = 0; s < 2; s++)
+                {
+                    float sign = s == 0 ? 1f : -1f;
+                    Vector2 from = s == 0 ? c.A : c.B;
+                    for (int step = 0; step < 3; step++)
+                    {
+                        float reach = new[] { 0.55f, 0.34f, 0.16f }[step];
+                        if (reach * 2f > c.Width - 1.2f) continue;
+                        Vector2 at = from + dir * sign * (reach * 0.5f);
+                        float y = 2.9f - 0.06f - step * 0.12f;
+                        k.Box(0, MeshKit.At(new Vector3(at.x, y, at.y), new Vector3(0f, yaw, 0f)), new Vector3(reach, 0.12f, 0.42f), 0.006f, jamb);
+                    }
+                }
+            }
+        }
+
+        // ---- sites ---------------------------------------------------------------------------------
+        /// <summary>
+        /// A site: paving in its own material (steel deck or timber, alternating per map; C polished tiles) that
+        /// also sets the footstep sound, a painted border, the big painted letter on the floor, and the letter again
+        /// painted large on the tallest wall face looking onto the site.
+        /// </summary>
+        static void SiteArt(Transform parent, string letter, List<Vec2> poly, MapDef map, Font font, Material textMat, float mapW, float mapH)
+        {
+            Color sc = Palette.Site(letter);
+            Color paint = Color.Lerp(sc, new Color(0.93f, 0.9f, 0.84f), 0.4f);
+            int baseline = StableHash(map.id ?? map.name ?? "") % 2;
+            int pick = letter == "C" ? 2 : letter == "B" ? 1 - baseline : baseline;
+            StepSurface surf = pick == 0 ? StepSurface.Metal : pick == 1 ? StepSurface.Wood : StepSurface.Concrete;
+            Textures.Pair tex = surf == StepSurface.Metal ? Textures.DeckPlate() : surf == StepSurface.Wood ? Textures.Timber() : Textures.FloorTiles();
+            Color fc = surf == StepSurface.Metal ? new Color(0.62f, 0.64f, 0.64f) : surf == StepSurface.Wood ? new Color(0.78f, 0.62f, 0.46f) : new Color(0.84f, 0.84f, 0.82f);
+            Material fm = Mats.World(fc, tex.Albedo, tex.Normal, 1f, surf == StepSurface.Wood ? 0.2f : 0.45f, surf == StepSurface.Metal ? 0.65f : 0f, 0.55f, 0f);
+            WorldLook.Register(fm, fc, Surface.Floor);
+            var floor = new GameObject("Site " + letter + " paving");
+            floor.transform.SetParent(parent, false);
+            floor.AddComponent<MeshFilter>().sharedMesh = FlatPolygon(poly, 0.008f, surf == StepSurface.Concrete ? 4f : 2f);
+            var fmr = floor.AddComponent<MeshRenderer>();
+            fmr.sharedMaterial = fm;
+            fmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            surfaces.Add(new SurfaceArea { Poly = poly, Surface = surf });
+
+            var edge = new GameObject("Site " + letter + " border");
+            edge.transform.SetParent(parent, false);
+            edge.AddComponent<MeshFilter>().sharedMesh = EdgeStrip(poly, 0.16f, 0.014f);
+            var emr = edge.AddComponent<MeshRenderer>();
+            emr.sharedMaterial = Mats.Transparent(new Color(paint.r, paint.g, paint.b, 0.8f), 3002);
+            emr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            Vector2 cen = FreeSpot(poly, map, 2.5f);
+            Label(letter, new Vector3(cen.x, 0.03f, cen.y), 6f, new Color(paint.r, paint.g, paint.b, 0.72f), font, textMat, parent, true);
+
+            // The wall letter: the longest tall face whose front is on (or within 3 m of) the site.
+            float bestLen = 0f;
+            Vector2 wa = Vector2.zero, wn = Vector2.zero;
+            float wTop = 0f;
+            foreach (WallDef wall in map.walls)
+            {
+                if (wall == null || wall.points == null || wall.points.Count < 3 || wall.height < 3.2f) continue;
+                List<Vector2> p = ToCounterClockwise(wall.points);
+                for (int i = 0; i < p.Count; i++)
+                {
+                    Vector2 a = p[i], b = p[(i + 1) % p.Count];
+                    Vector2 e = b - a;
+                    float len = e.magnitude;
+                    if (len < 2.6f || len <= bestLen) continue;
+                    var n = new Vector2(e.y, -e.x) / len;
+                    Vector2 front = (a + b) * 0.5f + n * 1.5f;
+                    if (front.x < 0.2f || front.y < 0.2f || front.x > mapW - 0.2f || front.y > mapH - 0.2f) continue;
+                    if (!IsClear(front, map, 0.5f)) continue;
+                    if (!Geo.PointInPolygon(front, poly) && !Geo.PointInPolygon(front + n * 1.5f, poly)) continue;
+                    bestLen = len;
+                    wa = (a + b) * 0.5f;
+                    wn = n;
+                    wTop = wall.height;
+                }
+            }
+            if (bestLen > 0f && font != null && textMat != null)
+            {
+                float size = Mathf.Min(2f, wTop - 1.9f);
+                if (size >= 1f)
+                {
+                    Vector3 at = new Vector3(wa.x + wn.x * 0.04f, 1.65f + size * 0.5f, wa.y + wn.y * 0.04f);
+                    GameObject l = Label(letter, at, size, new Color(paint.r, paint.g, paint.b, 0.85f), font, textMat, parent, false);
+                    l.transform.rotation = Quaternion.LookRotation(new Vector3(-wn.x, 0f, -wn.y), Vector3.up);
+                }
+            }
         }
 
         /// <summary>Height of the darker trim strip at the base of every wall.</summary>
@@ -149,32 +460,6 @@ namespace Saltworks
                     foreach (char ch in s) h = (h ^ ch) * 16777619u;
                 return (int)(h & 0x7fffffff);
             }
-        }
-
-        /// <summary>A translucent column of light over a site's letter, visible from across the map, with a floor ring.</summary>
-        static void SiteBeacon(Transform parent, string letter, Vector3 at, Color c)
-        {
-            var beacon = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            beacon.name = "Site " + letter + " beacon";
-            Object.DestroyImmediate(beacon.GetComponent<Collider>());
-            beacon.transform.SetParent(parent, false);
-            beacon.transform.position = at + new Vector3(0f, 7f, 0f);
-            beacon.transform.localScale = new Vector3(0.35f, 7f, 0.35f);
-            var mr = beacon.GetComponent<MeshRenderer>();
-            mr.sharedMaterial = Mats.Transparent(new Color(c.r, c.g, c.b, 0.16f), 3003);
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-
-            var ring = new List<Vec2>();
-            for (int i = 0; i < 32; i++)
-            {
-                float a = i * Mathf.PI * 2f / 32f;
-                ring.Add(new Vec2 { x = at.x + Mathf.Cos(a) * 1.1f, y = at.z + Mathf.Sin(a) * 1.1f });
-            }
-            var rg = new GameObject("Site " + letter + " ring");
-            rg.transform.SetParent(parent, false);
-            rg.AddComponent<MeshFilter>().sharedMesh = EdgeStrip(ring, 0.12f, 0.02f);
-            rg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Transparent(new Color(c.r, c.g, c.b, 0.9f), 3002);
         }
 
         /// <summary>
@@ -274,7 +559,7 @@ namespace Saltworks
             if (map.walls == null) return true;
             foreach (WallDef w in map.walls)
             {
-                if (w.points == null || w.points.Count < 3) continue;
+                if (w == null || w.points == null || w.points.Count < 3) continue;
                 if (Geo.PointInPolygon(p, w.points)) return false;
                 if (clearance <= 0f) continue;
                 for (int i = 0, j = w.points.Count - 1; i < w.points.Count; j = i++)
@@ -299,8 +584,8 @@ namespace Saltworks
             };
             Mesh m = FlatPolygon(pts, 0f, 4f);
             floor.AddComponent<MeshFilter>().sharedMesh = m;
-            Textures.Pair tiles = Textures.FloorTiles();
-            Material fm = Mats.World(Palette.Floor, tiles.Albedo, tiles.Normal, 1f, 0.5f, 0f, 0.5f, 0f);
+            Textures.Pair tiles = Textures.Flagstones();
+            Material fm = Mats.World(Palette.Floor, tiles.Albedo, tiles.Normal, 1f, 0.45f, 0f, 0.45f, 0f);
             WorldLook.Register(fm, Palette.Floor, Surface.Floor);
             floor.AddComponent<MeshRenderer>().sharedMaterial = fm;
             var box = floor.AddComponent<BoxCollider>();
@@ -325,7 +610,7 @@ namespace Saltworks
         static void AddSpawnPads(Transform parent, List<Vec2> spawns, Color c)
         {
             if (spawns == null) return;
-            Material mat = Mats.Transparent(new Color(c.r, c.g, c.b, 0.35f), 3000);
+            Material mat = Mats.Transparent(new Color(c.r, c.g, c.b, 0.22f), 3000);
             foreach (Vec2 s in spawns)
             {
                 var pts = new List<Vec2>();

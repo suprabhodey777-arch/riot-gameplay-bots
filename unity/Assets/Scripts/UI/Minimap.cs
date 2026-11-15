@@ -1,8 +1,12 @@
-// Corner minimap (toggle M) and full map (hold Tab). The static map (floor,
-// sites, walls) is one vertex-coloured mesh built once per MapDef and drawn with
-// a single DrawMeshNow, so it stays sharp at every zoom. Dynamic icons (player
-// and view cone, teammates, smokes, spike, enemies) are GL triangles drawn each
-// frame inside a GL viewport that clips them to the panel.
+// The corner minimap (a setting) and the full tactical map (M, or hold Tab).
+// The static map (floor, site fills, wall fills) is one vertex-coloured mesh
+// built once per MapDef and drawn with a single DrawMeshNow. Edges (wall and
+// site outlines, callout borders on the full map) are drawn per frame with GL
+// in whole screen pixels, so line weights stay the same at every zoom and
+// resolution (about 1.3 virtual px, times the UI scale). Dynamic icons (player
+// and view cone, teammates, smokes, spike, enemies) are GL triangles sized in
+// virtual pixels times the UI scale, drawn inside a GL viewport that clips them
+// to the panel.
 //
 // Enemies appear only when the player can see them (inside the view cone with
 // line of sight from the eye, walls and smokes block, not while blind), while a
@@ -31,23 +35,57 @@ namespace Saltworks
             public Vector2 Sim;
         }
 
-        static readonly Color32 FloorC = new Color32(46, 50, 60, 255);
-        static readonly Color32 WallC = new Color32(165, 172, 188, 255);
-        static readonly Color32 LowC = new Color32(112, 118, 132, 255);
-        static readonly Color32 OuterC = new Color32(90, 96, 110, 255);
-        static readonly Color BackC = new Color(0.05f, 0.06f, 0.08f, 0.88f);
+        public struct CalloutLabel
+        {
+            public string Name;
+            public Vector2 Sim;
+            /// <summary>Rough size of the region (metres), so small rooms get small labels.</summary>
+            public float Size;
+        }
+
+        public struct SpawnZone
+        {
+            public string Team;
+            public Vector2 Sim;
+            public List<Vector2> Points;
+        }
+
+        static readonly Color32 FloorC = new Color32(38, 42, 52, 255);
+        static readonly Color32 WallC = new Color32(126, 134, 150, 255);
+        static readonly Color32 LowC = new Color32(84, 90, 104, 255);
+        static readonly Color32 OuterC = new Color32(56, 61, 74, 255);
+        static readonly Color32 WallEdgeC = new Color32(214, 220, 232, 255);
+        static readonly Color32 LowEdgeC = new Color32(150, 156, 170, 255);
+        static readonly Color32 OuterEdgeC = new Color32(104, 110, 124, 255);
+        static readonly Color32 CalloutEdgeC = new Color32(255, 255, 255, 26);
+        static readonly Color BackC = new Color(0.03f, 0.035f, 0.05f, 0.92f);
 
         Mesh mesh;
         MapDef builtFor;
         float mapW = 100f, mapH = 100f;
         readonly List<SiteLabel> sites = new List<SiteLabel>();
+        readonly List<CalloutLabel> callouts = new List<CalloutLabel>();
+        readonly List<SpawnZone> spawns = new List<SpawnZone>();
         readonly Dictionary<string, Track> tracks = new Dictionary<string, Track>();
+        // Outline edges in sim coordinates; callout edges come last (from calloutEdges on) and are drawn on the full map only.
+        readonly List<Vector2> edgeA = new List<Vector2>(), edgeB = new List<Vector2>();
+        readonly List<Color32> edgeC = new List<Color32>();
+        readonly List<float> edgeW = new List<float>();
+        int calloutEdges;
 
         public IReadOnlyList<SiteLabel> Sites => sites;
+        public IReadOnlyList<CalloutLabel> Callouts => callouts;
+        public IReadOnlyList<SpawnZone> Spawns => spawns;
+        public float MapWidth => mapW;
+        public float MapHeight => mapH;
+        public bool Ready => mesh != null;
 
         /// <summary>The panel transform of the last Draw, for labels drawn over it.</summary>
         Vector2 focus, centre;
-        float pxPerM = 1f, angle;
+        float pxPerM = 1f, angle, ui = 1f;
+
+        /// <summary>Screen pixels per metre in the last Draw.</summary>
+        public float PxPerM => pxPerM;
 
         public void Clear()
         {
@@ -61,7 +99,14 @@ namespace Saltworks
             builtFor = map;
             tracks.Clear();
             sites.Clear();
+            callouts.Clear();
+            spawns.Clear();
+            edgeA.Clear();
+            edgeB.Clear();
+            edgeC.Clear();
+            edgeW.Clear();
             if (mesh != null) Object.Destroy(mesh);
+            mesh = null;
             mapW = map.bounds != null && map.bounds.width > 0 ? map.bounds.width : 100f;
             mapH = map.bounds != null && map.bounds.height > 0 ? map.bounds.height : 100f;
 
@@ -79,9 +124,10 @@ namespace Saltworks
             }
             void Poly(List<Vec2> pts, Color32 c)
             {
-                if (pts == null || pts.Count < 3) return;
+                if (!Valid(pts)) return;
                 List<Vector2> p = MapBuilder.ToCounterClockwise(pts);
                 List<int> t = MapBuilder.Triangulate(p);
+                if (t == null) return;
                 int b = verts.Count;
                 foreach (Vector2 v in p)
                 {
@@ -90,22 +136,17 @@ namespace Saltworks
                 }
                 foreach (int i in t) tris.Add(b + i);
             }
-            void Outline(List<Vec2> pts, float w, Color32 c)
+            void Edges(List<Vec2> pts, Color32 c, float w)
             {
-                if (pts == null || pts.Count < 3) return;
-                List<Vector2> p = MapBuilder.ToCounterClockwise(pts);
-                for (int i = 0; i < p.Count; i++)
+                if (!Valid(pts)) return;
+                for (int i = 0; i < pts.Count; i++)
                 {
-                    Vector2 a = p[i], d = p[(i + 1) % p.Count];
-                    Vector2 e = d - a;
-                    if (e.sqrMagnitude < 1e-8f) continue;
-                    Vector2 n = new Vector2(-e.y, e.x).normalized * w;
-                    int b = verts.Count;
-                    verts.Add(new Vector3(a.x, a.y, 0f)); verts.Add(new Vector3(d.x, d.y, 0f));
-                    verts.Add(new Vector3(d.x + n.x, d.y + n.y, 0f)); verts.Add(new Vector3(a.x + n.x, a.y + n.y, 0f));
-                    for (int k = 0; k < 4; k++) cols.Add(c);
-                    tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
-                    tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+                    Vec2 a = pts[i], d = pts[(i + 1) % pts.Count];
+                    if (a == null || d == null) continue;
+                    edgeA.Add(new Vector2(a.x, a.y));
+                    edgeB.Add(new Vector2(d.x, d.y));
+                    edgeC.Add(c);
+                    edgeW.Add(w);
                 }
             }
 
@@ -113,18 +154,44 @@ namespace Saltworks
             foreach (KeyValuePair<string, List<Vec2>> s in map.SiteList())
             {
                 Color sc = Palette.Site(s.Key);
-                Poly(s.Value, new Color32((byte)(sc.r * 110), (byte)(sc.g * 110), (byte)(sc.b * 110), 255));
-                Outline(s.Value, 0.5f, new Color32((byte)(sc.r * 255), (byte)(sc.g * 255), (byte)(sc.b * 255), 230));
+                Poly(s.Value, new Color32((byte)(sc.r * 92), (byte)(sc.g * 92), (byte)(sc.b * 92), 255));
+                Edges(s.Value, new Color32((byte)(sc.r * 255), (byte)(sc.g * 255), (byte)(sc.b * 255), 235), 1.6f);
                 sites.Add(new SiteLabel { Letter = s.Key, Sim = Geo.Centroid(s.Value) });
             }
             if (map.walls != null)
             {
                 foreach (WallDef w in map.walls)
                 {
+                    if (w == null) continue;
                     bool outer = w.id != null && w.id.StartsWith("outer");
-                    Poly(w.points, outer ? OuterC : w.height <= 1.5f ? LowC : WallC);
+                    bool low = w.height <= 1.5f;
+                    Poly(w.points, outer ? OuterC : low ? LowC : WallC);
+                    Edges(w.points, outer ? OuterEdgeC : low ? LowEdgeC : WallEdgeC, outer ? 1f : 1.3f);
                 }
             }
+            calloutEdges = edgeA.Count;
+            if (map.callouts != null)
+            {
+                foreach (CalloutDef c in map.callouts)
+                {
+                    if (c == null || string.IsNullOrEmpty(c.name) || !Valid(c.polygon)) continue;
+                    Edges(c.polygon, CalloutEdgeC, 1f);
+                    float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+                    foreach (Vec2 v in c.polygon)
+                    {
+                        if (v == null) continue;
+                        minX = Mathf.Min(minX, v.x); maxX = Mathf.Max(maxX, v.x);
+                        minY = Mathf.Min(minY, v.y); maxY = Mathf.Max(maxY, v.y);
+                    }
+                    callouts.Add(new CalloutLabel { Name = c.name, Sim = Geo.Centroid(c.polygon), Size = Mathf.Min(maxX - minX, maxY - minY) });
+                }
+            }
+            if (map.spawns != null)
+            {
+                AddSpawn("attack", map.spawns.attack);
+                AddSpawn("defense", map.spawns.defense);
+            }
+
             mesh = new Mesh { name = "Minimap", hideFlags = HideFlags.DontSave };
             if (verts.Count > 65000) mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             mesh.SetVertices(verts);
@@ -134,6 +201,29 @@ namespace Saltworks
             mesh.SetUVs(0, uv);
             mesh.SetTriangles(tris, 0);
             mesh.RecalculateBounds();
+        }
+
+        static bool Valid(List<Vec2> pts)
+        {
+            if (pts == null || pts.Count < 3) return false;
+            foreach (Vec2 v in pts) if (v == null) return false;
+            return true;
+        }
+
+        void AddSpawn(string team, List<Vec2> pts)
+        {
+            if (pts == null || pts.Count == 0) return;
+            var list = new List<Vector2>();
+            Vector2 sum = Vector2.zero;
+            foreach (Vec2 v in pts)
+            {
+                if (v == null) continue;
+                var p = new Vector2(v.x, v.y);
+                list.Add(p);
+                sum += p;
+            }
+            if (list.Count == 0) return;
+            spawns.Add(new SpawnZone { Team = team, Sim = sum / list.Count, Points = list });
         }
 
         // ---- per frame: who is visible --------------------------------------------------------
@@ -210,13 +300,16 @@ namespace Saltworks
         }
 
         /// <summary>
-        /// Draws the map into `screenRect` (screen pixels, top-left origin). `full` = whole map, north up;
-        /// otherwise the corner view around the player. Call during a Repaint event.
+        /// Draws the map into `screenRect` (screen pixels, top-left origin). `full` = whole map, north up; otherwise
+        /// the corner view around the player. `uiScale` sizes icons and lines (the UI's virtual-to-screen scale).
+        /// `icons` false draws the layout only (previews). Call during a Repaint event.
         /// </summary>
-        public void Draw(GameController g, Rect screenRect, bool full, Vector2 eye, float headingDeg, float opacity)
+        public void Draw(GameController g, Rect screenRect, bool full, Vector2 eye, float headingDeg, float opacity, float uiScale, bool icons = true)
         {
             if (mesh == null || Event.current == null || Event.current.type != EventType.Repaint) return;
             float w = Mathf.Round(screenRect.width), h = Mathf.Round(screenRect.height);
+            if (w < 4f || h < 4f) return;
+            ui = Mathf.Max(0.5f, uiScale);
             centre = new Vector2(w / 2f, h / 2f);
             if (full)
             {
@@ -257,24 +350,58 @@ namespace Saltworks
             GL.PopMatrix();
 
             Draw2D.Begin(w, h);
-            DrawDynamic(g, eye, headingDeg, full);
-            // A thin frame.
-            Color frame = new Color(1f, 1f, 1f, 0.16f);
-            Draw2D.Rect(0f, 0f, w, 1f, frame);
-            Draw2D.Rect(0f, h - 1f, w, 1f, frame);
-            Draw2D.Rect(0f, 0f, 1f, h, frame);
-            Draw2D.Rect(w - 1f, 0f, 1f, h, frame);
+            DrawEdges(w, h, full);
+            if (full) DrawSpawns();
+            if (icons) DrawDynamic(g, eye, headingDeg, full);
+            // A crisp frame, one UI pixel wide.
+            float f = Mathf.Max(1f, Mathf.Round(ui));
+            Color frame = new Color(1f, 1f, 1f, 0.18f);
+            Draw2D.Rect(0f, 0f, w, f, frame);
+            Draw2D.Rect(0f, h - f, w, f, frame);
+            Draw2D.Rect(0f, f, f, h - 2f * f, frame);
+            Draw2D.Rect(w - f, f, f, h - 2f * f, frame);
             Draw2D.End();
 
             GL.Viewport(new Rect(0f, 0f, Screen.width, Screen.height));
             if (m.HasProperty("_Color")) m.color = oldTint;
         }
 
+        /// <summary>Wall, site and (full map) callout outlines at a fixed pixel weight, with square joints.</summary>
+        void DrawEdges(float w, float h, bool full)
+        {
+            int n = full ? edgeA.Count : calloutEdges;
+            float pad = 8f * ui;
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 a = ToPanel(edgeA[i]), b = ToPanel(edgeB[i]);
+                if ((a.x < -pad && b.x < -pad) || (a.x > w + pad && b.x > w + pad) || (a.y < -pad && b.y < -pad) || (a.y > h + pad && b.y > h + pad)) continue;
+                float lw = Mathf.Max(1f, edgeW[i] * ui);
+                Color col = edgeC[i];
+                Draw2D.Line(a, b, lw, col);
+                if (i < calloutEdges) Draw2D.Rect(a.x - lw * 0.5f, a.y - lw * 0.5f, lw, lw, col);
+            }
+        }
+
+        /// <summary>The two spawn zones: a soft team-coloured patch under each spawn point.</summary>
+        void DrawSpawns()
+        {
+            foreach (SpawnZone z in spawns)
+            {
+                Color tc = Palette.Team(z.Team);
+                foreach (Vector2 p in z.Points)
+                {
+                    Vector2 q = ToPanel(p);
+                    float r = 3f * ui;
+                    Draw2D.Rect(q.x - r, q.y - r, 2f * r, 2f * r, new Color(tc.r, tc.g, tc.b, 0.55f));
+                }
+            }
+        }
+
         void DrawDynamic(GameController g, Vector2 eye, float headingDeg, bool full)
         {
             WorldView world = g.World;
             float now = Time.unscaledTime;
-            float k = full ? 1.25f : 1f;
+            float k = (full ? 1.2f : 1f) * ui;
             SimState st = world?.Curr;
 
             // Smokes.
@@ -285,8 +412,9 @@ namespace Saltworks
                 {
                     if (sm?.pos == null) continue;
                     Vector2 p = ToPanel(new Vector2(sm.pos.x, sm.pos.y));
-                    Draw2D.Disc(p, sm.radius * pxPerM, sc, 28);
-                    Draw2D.Ring(p, sm.radius * pxPerM - 1.5f, sm.radius * pxPerM, new Color(1f, 1f, 1f, 0.5f), 28);
+                    float rr = sm.radius * pxPerM;
+                    Draw2D.Disc(p, rr, sc, 36);
+                    Draw2D.Ring(p, rr - 1.2f * ui, rr, new Color(1f, 1f, 1f, 0.55f), 36);
                 }
             }
 
@@ -296,7 +424,7 @@ namespace Saltworks
             {
                 Vector2 p = ToPanel(new Vector2(sp.pos.x, sp.pos.y));
                 float pulse = sp.status == "planted" ? 0.6f + 0.4f * Mathf.Abs(Mathf.Sin(now * 5f)) : 1f;
-                Diamond(p, 6f * k + 1.5f, new Color(0f, 0f, 0f, 0.7f));
+                Diamond(p, 6f * k + 1.5f * ui, new Color(0f, 0f, 0f, 0.7f));
                 Diamond(p, 6f * k, new Color(Palette.Spike.r, Palette.Spike.g, Palette.Spike.b, pulse));
             }
 
@@ -308,7 +436,7 @@ namespace Saltworks
                 if (b.Team != g.PlayerTeam || !b.Alive) continue;
                 Vector3 wp = b.Root.transform.position;
                 Vector2 p = ToPanel(new Vector2(wp.x, wp.z));
-                Dot(p, 4.5f * k, ally);
+                Dot(p, 4.5f * k, ally, ui);
                 if (st?.spike != null && st.spike.status == "carried" && st.spike.carrierId == b.Id) Diamond(p + new Vector2(0f, -9f * k), 3.5f * k, Palette.Spike);
             }
 
@@ -323,8 +451,8 @@ namespace Saltworks
                     float a = 1f - pingAge / 1.6f;
                     Vector2 pp = ToPanel(t.PingPos);
                     float r = (4f + 10f * (1f - a)) * k;
-                    Draw2D.Ring(pp, r - 1.6f, r, new Color(enemy.r, enemy.g, enemy.b, 0.9f * a), 24);
-                    Draw2D.Disc(pp, 2f * k, new Color(enemy.r, enemy.g, enemy.b, a), 10);
+                    Draw2D.Ring(pp, r - 1.5f * ui, r, new Color(enemy.r, enemy.g, enemy.b, 0.9f * a), 28);
+                    Draw2D.Disc(pp, 2f * k, new Color(enemy.r, enemy.g, enemy.b, a), 12);
                 }
                 float age = now - t.SeenAt;
                 bool live = t.Visible || t.Revealed;
@@ -334,9 +462,9 @@ namespace Saltworks
                 if (t.Revealed)
                 {
                     float rr = (7f + 2f * Mathf.Sin(now * 10f)) * k;
-                    Draw2D.Ring(p, rr - 1.5f, rr, new Color(enemy.r, enemy.g, enemy.b, 0.8f * alpha), 24);
+                    Draw2D.Ring(p, rr - 1.5f * ui, rr, new Color(enemy.r, enemy.g, enemy.b, 0.8f * alpha), 28);
                 }
-                Dot(p, 4.5f * k, new Color(enemy.r, enemy.g, enemy.b, alpha));
+                Dot(p, 4.5f * k, new Color(enemy.r, enemy.g, enemy.b, alpha), ui);
             }
 
             // The player: view cone and an arrow.
@@ -351,11 +479,10 @@ namespace Saltworks
             if (alive)
             {
                 float cone = Settings.FovH * 0.5f * Mathf.Deg2Rad;
-                float reach = (full ? 14f : 20f) * pxPerM * (full ? 1f : 0.6f);
-                reach = Mathf.Clamp(reach, 30f, 160f);
-                const int segs = 10;
+                float reach = Mathf.Clamp((full ? 14f : 12f) * pxPerM, 30f * ui, 160f * ui);
+                const int segs = 12;
                 float baseAng = Mathf.Atan2(up.y, up.x);
-                Color cc = new Color(accent.r, accent.g, accent.b, 0.22f);
+                Color cc = new Color(accent.r, accent.g, accent.b, 0.2f);
                 for (int i = 0; i < segs; i++)
                 {
                     float a0 = baseAng - cone + 2f * cone * i / segs;
@@ -365,22 +492,74 @@ namespace Saltworks
             }
             Vector2 side = new Vector2(-up.y, up.x);
             float sz = 7f * k;
+            float o = 1.5f * ui;
             Color body = alive ? Color.white : new Color(0.6f, 0.6f, 0.65f);
-            Draw2D.Tri(me + up * (sz + 2f), me - up * (sz * 0.6f + 1.5f) + side * (sz * 0.75f + 1.5f), me - up * (sz * 0.6f + 1.5f) - side * (sz * 0.75f + 1.5f), new Color(0f, 0f, 0f, 0.75f));
+            Draw2D.Tri(me + up * (sz + o + 1f), me - up * (sz * 0.6f + o) + side * (sz * 0.75f + o), me - up * (sz * 0.6f + o) - side * (sz * 0.75f + o), new Color(0f, 0f, 0f, 0.8f));
             Draw2D.Tri(me + up * sz, me - up * sz * 0.6f + side * sz * 0.75f, me - up * sz * 0.6f - side * sz * 0.75f, body);
-            if (mine != null && mine.carryingSpike) Diamond(me - up * (sz + 6f), 3.5f * k, Palette.Spike);
+            if (mine != null && mine.carryingSpike) Diamond(me - up * (sz + 6f * ui), 3.5f * k, Palette.Spike);
         }
 
-        static void Dot(Vector2 p, float r, Color c)
+        static void Dot(Vector2 p, float r, Color c, float ui)
         {
-            Draw2D.Disc(p, r + 1.5f, new Color(0f, 0f, 0f, 0.75f * c.a), 14);
-            Draw2D.Disc(p, r, c, 14);
+            Draw2D.Disc(p, r + 1.5f * ui, new Color(0f, 0f, 0f, 0.75f * c.a), 18);
+            Draw2D.Disc(p, r, c, 18);
         }
 
         static void Diamond(Vector2 p, float r, Color c)
         {
             Draw2D.Tri(p + new Vector2(0f, -r), p + new Vector2(r, 0f), p + new Vector2(0f, r), c);
             Draw2D.Tri(p + new Vector2(0f, -r), p + new Vector2(0f, r), p + new Vector2(-r, 0f), c);
+        }
+
+        // ---- legend icons (drawn by the map view, inside Draw2D.Begin in screen pixels) -----------------
+        /// <summary>One legend glyph at `p` (screen pixels): "you", "ally", "enemy", "revealed", "heard", "smoke", "spike", "spawn".</summary>
+        public static void LegendIcon(string kind, Vector2 p, float ui)
+        {
+            float k = 1.2f * ui;
+            switch (kind)
+            {
+                case "you":
+                {
+                    float sz = 7f * k;
+                    var up = new Vector2(0f, -1f);
+                    var side = new Vector2(1f, 0f);
+                    Draw2D.Tri(p + up * sz, p - up * sz * 0.6f + side * sz * 0.75f, p - up * sz * 0.6f - side * sz * 0.75f, Color.white);
+                    break;
+                }
+                case "ally": Dot(p, 4.5f * k, Settings.Ally, ui); break;
+                case "enemy": Dot(p, 4.5f * k, Settings.Enemy, ui); break;
+                case "revealed":
+                {
+                    Color e = Settings.Enemy;
+                    Draw2D.Ring(p, 7f * k - 1.5f * ui, 7f * k, new Color(e.r, e.g, e.b, 0.85f), 28);
+                    Dot(p, 4.5f * k, e, ui);
+                    break;
+                }
+                case "heard":
+                {
+                    Color e = Settings.Enemy;
+                    Draw2D.Ring(p, 8f * k - 1.5f * ui, 8f * k, new Color(e.r, e.g, e.b, 0.8f), 28);
+                    Draw2D.Disc(p, 2f * k, e, 12);
+                    break;
+                }
+                case "smoke":
+                    Draw2D.Disc(p, 8f * k, new Color(Palette.Smoke.r, Palette.Smoke.g, Palette.Smoke.b, 0.7f), 28);
+                    Draw2D.Ring(p, 8f * k - 1.2f * ui, 8f * k, new Color(1f, 1f, 1f, 0.55f), 28);
+                    break;
+                case "spike":
+                    Diamond(p, 6f * k + 1.5f * ui, new Color(0f, 0f, 0f, 0.7f));
+                    Diamond(p, 6f * k, Palette.Spike);
+                    break;
+                case "spawn-attack":
+                case "spawn-defense":
+                {
+                    Color tc = Palette.Team(kind == "spawn-attack" ? "attack" : "defense");
+                    float r = 3f * ui;
+                    Draw2D.Rect(p.x - 7f * ui - r, p.y - r, 2f * r, 2f * r, new Color(tc.r, tc.g, tc.b, 0.8f));
+                    Draw2D.Rect(p.x + 7f * ui - r, p.y - r, 2f * r, 2f * r, new Color(tc.r, tc.g, tc.b, 0.8f));
+                    break;
+                }
+            }
         }
     }
 }

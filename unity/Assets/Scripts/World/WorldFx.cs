@@ -1,7 +1,7 @@
 // Round 5 atmosphere, built per map and cheap enough for 120 fps: a drifting
 // cloud dome over the procedural sky, additive light shafts at the site
 // entrances with dust motes in them, glossy puddles that catch the reflection
-// probe, animated neon site signs, heat haze over the spawn barriers (High and
+// probe, painted hanging site signs, heat haze over the spawn barriers (High and
 // Ultra only, one GrabPass), plus the pooled light flashes for muzzles and
 // impacts (FxLights) and the chromatic damage edge (DamageFx). Static parts are
 // merged into one mesh per material; nothing allocates per frame.
@@ -426,14 +426,8 @@ namespace Saltworks
         // ---- signs -------------------------------------------------------------------------------------
         void BuildSigns(MapDef map, Font font, Material textMat)
         {
-            Shader s = Find("Saltworks/FxAdditive");
-            if (s != null)
-            {
-                chevronMat = Own(new Material(s) { hideFlags = HideFlags.DontSave });
-                chevronMat.SetTexture("_MainTex", FxTex.Chevrons());
-                chevronMat.SetFloat("_Intensity", 1.6f);
-                chevronMat.mainTextureScale = new Vector2(6f, 1f);
-            }
+            // Painted signs: no additive chevron strip (round 6: restrained lighting, no neon).
+            chevronMat = null;
             int n = 0;
             foreach (KeyValuePair<string, List<Vec2>> site in map.SiteList())
             {
@@ -445,7 +439,7 @@ namespace Saltworks
 
                 var k = new MeshKit(1);
                 k.Box(0, Matrix4x4.identity, new Vector3(2.8f, 0.95f, 0.08f), 0.02f, Color.white);
-                Material board = Own(Mats.Glow(c, 0.9f));
+                Material board = Own(Mats.World(Color.Lerp(c, new Color(0.93f, 0.9f, 0.84f), 0.35f), Textures.Grain(), null, 0f, 0.3f, 0f, 0.3f, 0f));
                 GameObject b = Child("Board", Own(k.ToMesh("Sign board")), board);
                 b.transform.SetParent(sign, false);
                 var fk = new MeshKit(1);
@@ -557,15 +551,11 @@ namespace Saltworks
                 shaftMat.SetFloat("_Intensity", (0.5f + 0.06f * Mathf.Sin(t * 0.7f) + 0.03f * Mathf.Sin(t * 2.3f)) * night);
             }
             if (chevronMat != null) chevronMat.mainTextureOffset = new Vector2(-Mathf.Repeat(t * 0.6f, 1f), 0f);
-            float boost = Settings.World == WorldPaletteId.Night ? 2f : Settings.World == WorldPaletteId.Dusk ? 1.4f : 1f;
             foreach (Sign s in signs)
             {
                 if (s.T == null) continue;
-                s.T.rotation = Quaternion.Euler(0f, t * 12f + s.Seed * 40f, 0f);
-                // A neon hum with an occasional stutter.
-                float stutter = Mathf.Repeat(t * 0.37f + s.Seed, 1f) < 0.035f ? 0.15f : 1f;
-                float hum = 0.85f + 0.15f * Mathf.Sin(t * 13f + s.Seed);
-                if (s.Board != null && s.Board.HasProperty("_EmissionColor")) s.Board.SetColor("_EmissionColor", s.Color * (1.1f * hum * stutter * boost));
+                // A painted hanging board (no glow), swaying a little.
+                s.T.rotation = Quaternion.Euler(Mathf.Sin(t * 0.9f + s.Seed) * 0.8f, s.Seed * 40f + Mathf.Sin(t * 0.45f + s.Seed) * 3f, Mathf.Sin(t * 0.7f + s.Seed * 2f) * 0.8f);
             }
             if (haze != null)
             {

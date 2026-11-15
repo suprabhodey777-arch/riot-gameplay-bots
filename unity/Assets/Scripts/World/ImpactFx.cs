@@ -41,7 +41,7 @@ namespace Saltworks
                 go.SetActive(false);
                 decals[i] = go.transform;
             }
-            sparks = MakeSystem("Sparks", Mats.Additive(Textures.SoftDot(), Color.white, 2.2f, 3150), 400, 1.6f);
+            sparks = MakeSystem("Sparks", Mats.Additive(Textures.SoftDot(), Color.white, 1.6f, 3150), 400, 1.6f);
             var sr = sparks.GetComponent<ParticleSystemRenderer>();
             sr.renderMode = ParticleSystemRenderMode.Stretch;
             sr.velocityScale = 0.035f;

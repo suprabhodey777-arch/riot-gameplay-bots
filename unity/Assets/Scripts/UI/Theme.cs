@@ -7,21 +7,29 @@ namespace Saltworks
 {
     public static class Theme
     {
-        // Type scale (virtual pixels at 900 px window height).
-        public const int Display = 40;
-        public const int Title = 30;
-        public const int H2 = 20;
-        public const int H3 = 16;
-        public const int Body = 15;
-        public const int Small = 13;
-        public const int Caption = 11;
+        // Type scale (virtual pixels at 900 px window height; the UI scales with the window height, so a
+        // 16 px body is 13 px at 720p and 38 px on a 2146 px Retina panel). Nothing below Caption.
+        public const int Display = 44;
+        public const int Title = 32;
+        public const int H2 = 22;
+        public const int H3 = 18;
+        public const int Body = 16;
+        public const int Small = 14;
+        public const int Caption = 12;
 
-        // Spacing scale.
+        // Spacing scale (an 8 px grid).
         public const float S1 = 4f;
         public const float S2 = 8f;
         public const float S3 = 12f;
         public const float S4 = 16f;
         public const float S5 = 24f;
+        public const float S6 = 32f;
+        public const float S7 = 48f;
+
+        /// <summary>Standard control heights.</summary>
+        public const float ButtonH = 48f;
+        public const float ButtonSmallH = 38f;
+        public const float RowH = 44f;
 
         /// <summary>Corner radius of every panel, card and button (design system: 8 px).</summary>
         public const int Radius = 8;
@@ -35,6 +43,12 @@ namespace Saltworks
         public static readonly Color ButtonC = new Color(0.12f, 0.135f, 0.18f, 0.96f);
         public static readonly Color ButtonHoverC = new Color(0.18f, 0.2f, 0.27f, 1f);
         public static readonly Color ButtonDownC = new Color(0.08f, 0.09f, 0.12f, 1f);
+        /// <summary>Text on an accent-filled control.</summary>
+        public static readonly Color OnAccent = new Color(0.04f, 0.04f, 0.05f);
+        /// <summary>Hairlines and quiet outlines.</summary>
+        public static readonly Color Line = new Color(1f, 1f, 1f, 0.09f);
+        /// <summary>The dark inset behind controls (tracks, fields, segmented bars).</summary>
+        public static readonly Color WellC = new Color(0.02f, 0.025f, 0.04f, 0.85f);
         /// <summary>The broadcast's second neon (cyan), used against the accent in lines and glitches.</summary>
         public static readonly Color Neon2 = new Color(0.25f, 0.95f, 1f);
         /// <summary>Chamfer of the cut corners (top-left and bottom-right) on panels and buttons.</summary>

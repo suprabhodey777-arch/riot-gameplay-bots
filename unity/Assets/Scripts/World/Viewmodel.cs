@@ -142,30 +142,41 @@ namespace Saltworks
             return m;
         }
 
-        /// <summary>Gloved hands and sleeves on the grip and the support point (one merged mesh per weapon).</summary>
+        /// <summary>
+        /// Gloved hands and sleeves on the grip and the support point (one merged mesh per weapon): tapered lofted
+        /// forearms with a cuff and a team-coloured band, gloves with a palm, wrapped fingers, a thumb and a knuckle plate.
+        /// </summary>
         void AttachArms(GunModel m)
         {
             GunDef d = m.Def;
             var k = new MeshKit(1) { UvScale = 8f };
-            var glove = new Color(0.1f, 0.105f, 0.115f, 0f);
-            var sleeve = new Color(0.2f, 0.22f, 0.26f, 0f);
-            var cuff = new Color(0.18f, 0.7f, 0.66f, 0f);
-            var plate = new Color(0.36f, 0.38f, 0.42f, 1f);
+            var glove = new Color(0.1f, 0.095f, 0.09f, 0.3f);
+            var knuckle = new Color(0.16f, 0.16f, 0.17f, 0.8f);
+            var sleeve = new Color(0.19f, 0.21f, 0.24f, 0f);
+            var cuff = new Color(0.13f, 0.14f, 0.16f, 0f);
+            var band = new Color(0.18f, 0.6f, 0.58f, 0f);
+            Matrix4x4 id = Matrix4x4.identity;
             // Right hand on the grip, its forearm running back and down to the right.
             Vector3 g = d.Grip;
-            k.Box(0, MeshKit.At(g + new Vector3(0.004f, 0.005f, 0f), new Vector3(16f, 0f, 0f)), new Vector3(0.05f, 0.075f, 0.06f), 0.012f, glove);
             Vector3 elbowR = g + new Vector3(0.07f, -0.12f, -0.3f);
-            Vector3 midR = (g + elbowR) * 0.5f + new Vector3(0f, 0f, -0.02f);
-            k.Box(0, MeshKit.Along(midR, elbowR - g), new Vector3(0.07f, 0.07f, (elbowR - g).magnitude), 0.018f, sleeve);
-            k.Box(0, MeshKit.Along(g + (elbowR - g).normalized * 0.06f, elbowR - g), new Vector3(0.075f, 0.075f, 0.025f), 0.008f, cuff);
-            k.Box(0, MeshKit.Along(midR + new Vector3(0.0f, 0.03f, 0f), elbowR - g), new Vector3(0.05f, 0.02f, 0.12f), 0.006f, plate);
+            Vector3 wristR = g + (elbowR - g).normalized * 0.05f;
+            Loft.Rod(k, id, wristR, elbowR, 0.031f, 0.044f, sleeve, 14);
+            Loft.Band(k, Loft.Along(id, wristR, elbowR), 0.0f, 0.035f, 0.035f, 0.035f, cuff, 0f, 0f, 2f, 14);
+            Loft.Band(k, Loft.Along(id, wristR, elbowR), 0.11f, 0.13f, 0.04f, 0.04f, band, 0f, 0f, 2f, 14);
+            Loft.Blob(k, id, g + new Vector3(0.006f, 0.004f, -0.004f), new Vector3(0.026f, 0.04f, 0.034f), glove, new Vector3(16f, 0f, 0f), 12, 8);
+            Loft.Blob(k, id, g + new Vector3(-0.012f, -0.012f, 0.026f), new Vector3(0.022f, 0.036f, 0.02f), glove, new Vector3(16f, 0f, 0f), 10, 6, 2.6f);
+            Loft.Rod(k, id, g + new Vector3(-0.016f, 0.026f, -0.01f), g + new Vector3(-0.02f, 0.03f, 0.03f), 0.01f, 0.009f, glove, 8);
+            k.Box(0, MeshKit.At(g + new Vector3(0.022f, -0.004f, 0.012f), new Vector3(16f, 0f, 0f)), new Vector3(0.008f, 0.045f, 0.03f), 0.003f, knuckle);
             // Left hand on the support point, its forearm back and down to the left.
             Vector3 s = d.Support;
-            k.Box(0, MeshKit.At(s + new Vector3(-0.01f, -0.01f, 0f), Vector3.zero), new Vector3(0.055f, 0.05f, 0.075f), 0.012f, glove);
             Vector3 elbowL = s + new Vector3(-0.12f, -0.12f, -0.26f);
-            Vector3 midL = (s + elbowL) * 0.5f;
-            k.Box(0, MeshKit.Along(midL, elbowL - s), new Vector3(0.068f, 0.068f, (elbowL - s).magnitude), 0.018f, sleeve);
-            k.Box(0, MeshKit.Along(s + (elbowL - s).normalized * 0.07f, elbowL - s), new Vector3(0.073f, 0.073f, 0.025f), 0.008f, cuff);
+            Vector3 wristL = s + (elbowL - s).normalized * 0.055f;
+            Loft.Rod(k, id, wristL, elbowL, 0.031f, 0.044f, sleeve, 14);
+            Loft.Band(k, Loft.Along(id, wristL, elbowL), 0.0f, 0.035f, 0.035f, 0.035f, cuff, 0f, 0f, 2f, 14);
+            Loft.Blob(k, id, s + new Vector3(-0.012f, -0.012f, -0.004f), new Vector3(0.03f, 0.026f, 0.04f), glove, Vector3.zero, 12, 8);
+            Loft.Blob(k, id, s + new Vector3(0.004f, -0.004f, 0.024f), new Vector3(0.026f, 0.02f, 0.024f), glove, new Vector3(0f, 0f, -20f), 10, 6, 2.6f);
+            Loft.Rod(k, id, s + new Vector3(-0.02f, 0.006f, 0.0f), s + new Vector3(0.002f, 0.016f, 0.03f), 0.009f, 0.008f, glove, 8);
+            k.Box(0, MeshKit.At(s + new Vector3(-0.03f, -0.006f, 0.012f), Vector3.zero), new Vector3(0.008f, 0.03f, 0.045f), 0.003f, knuckle);
             var go = new GameObject("Arms") { layer = Layer };
             go.transform.SetParent(m.Root.transform, false);
             go.AddComponent<MeshFilter>().sharedMesh = k.ToMesh("Arms " + d.Id);

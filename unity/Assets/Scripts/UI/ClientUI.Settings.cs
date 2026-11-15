@@ -1,65 +1,71 @@
 // The settings screen, opened from the menus (top-right button) and from the
-// pause menu: General (mouse, field of view, volume, video), Crosshair (with a
-// live GL preview), Minimap (with a live preview) and Colours. Every control
-// writes straight into Settings and applies live; closing saves to PlayerPrefs.
+// pause menu. Tabs: Gameplay, Mouse & view, Video, Controls, Crosshair (with a
+// live GL preview), Map (the corner minimap, with a live preview), Colours,
+// Personas (custom display names) and About. Every control writes straight
+// into Settings and applies live; closing (Done or Esc) saves to PlayerPrefs.
+// Each tab fits the 900 px virtual height without scrolling, so every label is
+// crisp and every control is reachable with the mouse or the keyboard.
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Saltworks
 {
     public partial class ClientUI
     {
-        static readonly string[] TabNames = { "General", "Video", "Controls", "Crosshair", "Minimap", "Colours", "About" };
+        static readonly string[] TabNames = { "Gameplay", "Mouse & view", "Video", "Controls", "Crosshair", "Map", "Colours", "Personas", "About" };
         /// <summary>The About tab (the menu's About button opens settings on it).</summary>
-        const int AboutTab = 6;
+        const int AboutTab = 8;
+        /// <summary>The Personas tab (persona select's "Rename" opens settings on it).</summary>
+        const int PersonasTab = 7;
         static readonly string[] OnOff = { "Off", "On" };
         static readonly string[] MapModes = { "Rotate with me", "Fixed north" };
         int settingsTab;
         Rect settingsArea;
 
+        // The row cursor of the tab being drawn.
+        float rowX, rowY, rowW, rowLabelW = 240f, rowTop;
+
         void DrawSettings()
         {
-            Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.6f * Intro01));
-            settingsArea = Centered(1020f, H - 60f);
-            Frame(settingsArea, "Settings");
-            GUILayout.BeginArea(settingsArea, panel);
-            GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical(GUILayout.Width(400f));
-            TitleBlock("Settings");
-            GUILayout.EndVertical();
-            GUILayout.FlexibleSpace();
-            if (Btn("Done", primary, GUILayout.Width(140f), GUILayout.Height(40f))) Game.Do(Game.CloseSettings);
-            GUILayout.EndHorizontal();
-            GUILayout.Label("Changes apply at once and are saved when you close this screen (Esc).", muted);
-            GUILayout.Space(Theme.S3);
+            Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.62f * Intro01));
+            Rect r = Centered(Mathf.Min(1200f, W - 60f), H - 60f);
+            settingsArea = r;
+            Frame(r, "Settings");
+            Glass(r);
+            float x = r.x + Pad;
+            Header(x, r.y + 26f, r.width - 400f, null, "Settings", "Changes apply at once and are saved when you close this screen.");
+            if (GButton(new Rect(r.xMax - Pad - 180f, r.y + 32f, 180f, Theme.ButtonH), "Done", 1, true, 0, false, null, "Esc")) Game.Do(Game.CloseSettings);
 
             GUI.changed = false;
-            GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical(GUILayout.Width(180f));
+            // Left: the tabs.
+            float navW = 220f, top = r.y + 132f;
             for (int i = 0; i < TabNames.Length; i++)
             {
                 int idx = i;
-                if (Btn(TabNames[i], i == settingsTab ? tabOn : tab, GUILayout.Height(42f))) settingsTab = idx;
+                if (GButton(new Rect(x, top + i * 50f, navW, 42f), TabNames[i], 2, true, StableKey("tab:" + TabNames[i]), i == settingsTab)) settingsTab = idx;
             }
-            GUILayout.FlexibleSpace();
-            if (Btn("Reset everything", ghost, GUILayout.Height(34f))) ResetAll();
-            GUILayout.EndVertical();
-            GUILayout.Space(Theme.S5);
-            GUILayout.BeginVertical();
+            if (GButton(new Rect(x, r.yMax - Pad - 40f, navW, 40f), "Reset everything", 2)) ResetAll();
+
+            // Right: the tab's rows.
+            float cx = x + navW + 36f, cw = r.xMax - Pad - cx;
+            rowX = cx;
+            rowY = top;
+            rowTop = top;
+            rowW = cw;
+            rowLabelW = 240f;
             switch (settingsTab)
             {
-                case 1: VideoTab(); break;
-                case 2: ControlsTab(); break;
-                case 3: CrosshairTab(); break;
-                case 4: MinimapTab(); break;
-                case 5: ColoursTab(); break;
+                case 1: MouseTab(); break;
+                case 2: VideoTab(); break;
+                case 3: ControlsTab(); break;
+                case 4: CrosshairTab(); break;
+                case 5: MinimapTab(); break;
+                case 6: ColoursTab(); break;
+                case PersonasTab: PersonasPanel(); break;
                 case AboutTab: AboutPanel(); break;
-                default: GeneralTab(); break;
+                default: GameplayTab(); break;
             }
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-            bool changed = GUI.changed;
-            GUILayout.EndArea();
-            if (changed) Game.Do(Settings.Changed);
+            if (GUI.changed) Game.Do(Settings.Changed);
         }
 
         void ResetAll()
@@ -94,107 +100,125 @@ namespace Saltworks
         }
 
         // ---- rows ------------------------------------------------------------------------------
-        float SliderRow(string label, float v, float min, float max, string valueText)
+        void Section(string text)
         {
-            GUILayout.BeginHorizontal(GUILayout.Height(30f));
-            GUILayout.Label(label, body, GUILayout.Width(190f));
-            GUILayout.BeginVertical();
-            GUILayout.Space(6f);
-            v = GUILayout.HorizontalSlider(v, min, max, slider, thumb, GUILayout.ExpandWidth(true));
-            GUILayout.EndVertical();
-            GUILayout.Space(Theme.S3);
-            GUILayout.Label(valueText, bodyBold, GUILayout.Width(80f));
-            GUILayout.EndHorizontal();
+            if (rowY > rowTop + 1f) rowY += 10f;
+            rowY = SectionLabel(rowX, rowY, rowW, text);
+        }
+
+        void Note(string text)
+        {
+            rowY = Para(rowX, rowY - 2f, rowW, text, small, Theme.Faint) + 8f;
+        }
+
+        void RowLabel(string label, float h)
+        {
+            Lbl(new Rect(rowX, rowY, rowLabelW - 12f, h), label, bodyMid, Theme.Ink);
+        }
+
+        float SliderRow(string label, float v, float min, float max, string valueText, float step, bool enabled = true)
+        {
+            const float h = 40f, valW = 84f;
+            RowLabel(label, h);
+            float cx = rowX + rowLabelW;
+            float before = v;
+            v = SliderCtl(new Rect(cx, rowY + 8f, rowW - rowLabelW - valW - 12f, 24f), v, min, max, StableKey("slider:" + label), step, enabled);
+            if (v != before) GUI.changed = true;
+            Lbl(new Rect(rowX + rowW - valW, rowY, valW, h), valueText, valueStyle, enabled ? Theme.Ink : Theme.Faint);
+            rowY += h + 4f;
             return v;
         }
 
         int IntRow(string label, int v, int min, int max, string unit = " px")
         {
-            return Mathf.RoundToInt(SliderRow(label, v, min, max, v + unit));
+            return Mathf.RoundToInt(SliderRow(label, v, min, max, v + unit, 1f));
         }
 
         bool ToggleRow(string label, bool v, string note = null)
         {
-            GUILayout.BeginHorizontal(GUILayout.Height(34f));
-            GUILayout.Label(label, body, GUILayout.Width(190f));
-            int i = GUILayout.Toolbar(v ? 1 : 0, OnOff, toolbar, GUILayout.Width(160f));
-            if (note != null)
-            {
-                GUILayout.Space(Theme.S3);
-                GUILayout.Label(note, small);
-            }
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            return i == 1;
+            const float h = 40f;
+            RowLabel(label, h);
+            float cx = rowX + rowLabelW;
+            bool nv = SwitchCtl(new Rect(cx, rowY + 7f, 54f, 26f), v, StableKey("toggle:" + label));
+            if (nv != v) GUI.changed = true;
+            Lbl(new Rect(cx + 66f, rowY, 40f, h), nv ? "On" : "Off", bodyMid, nv ? Theme.Ink : Theme.Muted);
+            if (!string.IsNullOrEmpty(note)) Lbl(new Rect(cx + 110f, rowY, rowW - rowLabelW - 110f, h), note, smallMid, Theme.Faint);
+            rowY += h + 4f;
+            return nv;
         }
 
-        int ChoiceRow(string label, int v, string[] options, float width = 0f)
+        int ChoiceRow(string label, int v, string[] options, float width = 0f, bool enabled = true)
         {
-            GUILayout.BeginHorizontal(GUILayout.MinHeight(34f));
-            GUILayout.Label(label, body, GUILayout.Width(190f));
-            v = width > 0f ? GUILayout.Toolbar(v, options, toolbar, GUILayout.Width(width)) : GUILayout.Toolbar(v, options, toolbar);
-            GUILayout.EndHorizontal();
-            return v;
+            const float h = 40f;
+            RowLabel(label, h);
+            float avail = rowW - rowLabelW;
+            float w = width > 0f ? Mathf.Min(width, avail) : avail;
+            int nv = SegmentedCtl(new Rect(rowX + rowLabelW, rowY + 2f, w, 36f), v, options, StableKey("choice:" + label), enabled);
+            if (nv != v) GUI.changed = true;
+            rowY += h + 4f;
+            return nv;
         }
 
         /// <summary>A row of colour swatches; returns the picked index (or `selected`).</summary>
         int SwatchRow(string label, int selected, NamedColor[] colors)
         {
-            GUILayout.BeginHorizontal(GUILayout.Height(40f));
-            GUILayout.Label(label, body, GUILayout.Width(190f));
+            const float h = 44f, s = 34f;
+            RowLabel(label, h);
+            float x = rowX + rowLabelW;
             for (int i = 0; i < colors.Length; i++)
             {
-                Rect r = GUILayoutUtility.GetRect(34f, 34f, GUILayout.Width(34f), GUILayout.Height(34f));
-                if (GUI.Button(r, GUIContent.none, ghost)) selected = i;
-                if (i == selected) Round(r, Settings.Accent);
-                Round(new Rect(r.x + 4f, r.y + 4f, r.width - 8f, r.height - 8f), colors[i].Color);
-                GUILayout.Space(Theme.S1);
+                var r = new Rect(x, rowY + 5f, s, s);
+                int key = StableKey("swatch:" + label + i);
+                float hv = CardHover(r, key, true);
+                if (i == selected) PlateLine(new Rect(r.x - 3f, r.y - 3f, r.width + 6f, r.height + 6f), Settings.Accent);
+                else if (hv > 0.01f) PlateLine(new Rect(r.x - 3f, r.y - 3f, r.width + 6f, r.height + 6f), new Color(1f, 1f, 1f, 0.4f * hv));
+                Plate(r, colors[i].Color);
+                if (CardHit(r, key, true) && selected != i)
+                {
+                    selected = i;
+                    GUI.changed = true;
+                }
+                x += s + 10f;
             }
-            GUILayout.Space(Theme.S2);
-            GUILayout.Label(selected >= 0 && selected < colors.Length ? colors[selected].Name : "Custom", small);
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
+            Lbl(new Rect(x + 6f, rowY, rowX + rowW - x - 6f, h), selected >= 0 && selected < colors.Length ? colors[selected].Name : "Custom", smallMid, Theme.Muted);
+            rowY += h + 4f;
             return selected;
         }
 
         // ---- tabs ------------------------------------------------------------------------------
-        void GeneralTab()
+        void GameplayTab()
         {
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            SectionHeader("Streamer mode");
-            bool streamer = ToggleRow("Streamer mode", Settings.StreamerMode, "A broadcast overlay: chat, alerts, a goal bar, the LIVE pill and a camera frame.");
+            Section("Streamer mode");
+            bool streamer = ToggleRow("Streamer mode", Settings.StreamerMode, "Chat, alerts, a goal bar, the LIVE pill and a camera frame.");
             if (streamer != Settings.StreamerMode) Game.Do(() => Game.SetStreamer(streamer));
-            if (!Game.V4) GUILayout.Label("Chat comes from a bridge that speaks bots-wire.4; on this bridge the overlay shows your own kill alerts.", small);
-            SectionHeader("Mouse");
-            GUILayout.BeginHorizontal();
-            float sens = SliderRow("Sensitivity", Settings.ValorantSens, 0.05f, 3f, Settings.ValorantSens.ToString("0.000"));
-            if (Btn("\u2212", toolbar, GUILayout.Width(34f))) sens -= 0.005f;
-            if (Btn("+", toolbar, GUILayout.Width(34f))) sens += 0.005f;
-            Settings.ValorantSens = Mathf.Clamp(Mathf.Round(sens * 1000f) / 1000f, 0.05f, 5f);
-            GUILayout.EndHorizontal();
-            GUILayout.Label("Same scale as VALORANT (0.07\u00b0 per mouse count \u00d7 sensitivity), so your number carries over.   " +
-                            "800 DPI: " + Settings.CmPer360(800f).ToString("0.0") + " cm/360   1600 DPI: " + Settings.CmPer360(1600f).ToString("0.0") + " cm/360", small);
-            Settings.ScopedSens = Mathf.Round(SliderRow("Scoped sensitivity", Settings.ScopedSens, 0.2f, 2f, Settings.ScopedSens.ToString("0.00") + "\u00d7") * 100f) / 100f;
-            GUILayout.Label("Relative to the zoom: 1.00 turns the same distance across the scope as across the unscoped view.", small);
-            Settings.InvertY = ToggleRow("Invert vertical look", Settings.InvertY);
-
-            SectionHeader("View");
-            Settings.FovH = Mathf.Round(SliderRow("Field of view", Settings.FovH, 80f, 110f, Settings.FovH.ToString("0") + "\u00b0"));
-            GUILayout.Label("Horizontal. The sim's own vision cone stays 103\u00b0.", small);
-            Settings.ViewmodelFov = Mathf.Round(SliderRow("Weapon field of view", Settings.ViewmodelFov, 45f, 80f, Settings.ViewmodelFov.ToString("0") + "\u00b0"));
-            Settings.ViewmodelLeft = ChoiceRow("Weapon hand", Settings.ViewmodelLeft ? 1 : 0, Settings.HandNames, 220f) == 1;
-            Settings.ViewmodelX = Mathf.Round(SliderRow("Weapon position: side", Settings.ViewmodelX, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelX * 4f) + " cm") * 20f) / 20f;
-            Settings.ViewmodelY = Mathf.Round(SliderRow("Weapon position: height", Settings.ViewmodelY, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelY * 4f) + " cm") * 20f) / 20f;
-            Settings.ViewmodelZ = Mathf.Round(SliderRow("Weapon position: reach", Settings.ViewmodelZ, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelZ * 4f) + " cm") * 20f) / 20f;
-
-            SectionHeader("Gameplay");
+            if (!Game.V4) Note("Chat comes from a bridge that speaks bots-wire.4; on this bridge the overlay shows your own kill alerts.");
+            Section("Movement");
             Settings.ToggleCrouch = ToggleRow("Toggle crouch", Settings.ToggleCrouch, "On: Ctrl switches crouch on and off. Off: hold.");
             Settings.ToggleWalk = ToggleRow("Toggle walk", Settings.ToggleWalk, "On: Shift switches walk on and off. Off: hold.");
+            Section("Feedback");
             Settings.DamageNumbers = ToggleRow("Damage numbers", Settings.DamageNumbers, "Floating numbers over the bots you hit.");
+            Section("Audio");
+            Settings.Volume = SliderRow("Master volume", Settings.Volume, 0f, 1f, Mathf.RoundToInt(Settings.Volume * 100f) + "%", 0.05f);
+        }
 
-            SectionHeader("Audio");
-            Settings.Volume = SliderRow("Master volume", Settings.Volume, 0f, 1f, Mathf.RoundToInt(Settings.Volume * 100f) + "%");
-            GUILayout.EndScrollView();
+        void MouseTab()
+        {
+            Section("Mouse");
+            float sens = SliderRow("Sensitivity", Settings.ValorantSens, 0.05f, 3f, Settings.ValorantSens.ToString("0.000"), 0.005f);
+            Settings.ValorantSens = Mathf.Clamp(Mathf.Round(sens * 1000f) / 1000f, 0.05f, 5f);
+            Note("0.07\u00b0 per mouse count \u00d7 sensitivity, the common tactical-shooter scale, so your number carries over.   800 DPI: "
+                 + Settings.CmPer360(800f).ToString("0.0") + " cm/360   \u00b7   1600 DPI: " + Settings.CmPer360(1600f).ToString("0.0") + " cm/360");
+            Settings.ScopedSens = Mathf.Round(SliderRow("Scoped sensitivity", Settings.ScopedSens, 0.2f, 2f, Settings.ScopedSens.ToString("0.00") + "\u00d7", 0.05f) * 100f) / 100f;
+            Settings.InvertY = ToggleRow("Invert vertical look", Settings.InvertY);
+            Section("View");
+            Settings.FovH = Mathf.Round(SliderRow("Field of view", Settings.FovH, 80f, 110f, Settings.FovH.ToString("0") + "\u00b0", 1f));
+            Note("Horizontal. The sim's own vision cone stays 103\u00b0.");
+            Section("Weapon");
+            Settings.ViewmodelFov = Mathf.Round(SliderRow("Weapon field of view", Settings.ViewmodelFov, 45f, 80f, Settings.ViewmodelFov.ToString("0") + "\u00b0", 1f));
+            Settings.ViewmodelLeft = ChoiceRow("Weapon hand", Settings.ViewmodelLeft ? 1 : 0, Settings.HandNames, 260f) == 1;
+            Settings.ViewmodelX = Mathf.Round(SliderRow("Position: side", Settings.ViewmodelX, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelX * 4f) + " cm", 0.05f) * 20f) / 20f;
+            Settings.ViewmodelY = Mathf.Round(SliderRow("Position: height", Settings.ViewmodelY, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelY * 4f) + " cm", 0.05f) * 20f) / 20f;
+            Settings.ViewmodelZ = Mathf.Round(SliderRow("Position: reach", Settings.ViewmodelZ, -1f, 1f, Mathf.RoundToInt(Settings.ViewmodelZ * 4f) + " cm", 0.05f) * 20f) / 20f;
         }
 
         static readonly string[] GfxNotes =
@@ -207,94 +231,109 @@ namespace Saltworks
 
         void VideoTab()
         {
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            SectionHeader("Graphics");
-            Settings.GfxPreset = ChoiceRow("Preset", Settings.GfxPreset, Settings.GfxNames);
-            GUILayout.Label(GfxNotes[Mathf.Clamp(Settings.GfxPreset, 0, GfxNotes.Length - 1)], small);
-            GUILayout.Label("Changing the preset rebuilds the map's decoration (pipes, vents, light strips, markings); walls and play are unchanged.", small);
-            SectionHeader("Display");
+            Section("Graphics");
+            Settings.GfxPreset = ChoiceRow("Preset", Settings.GfxPreset, Settings.GfxNames, 520f);
+            Note(GfxNotes[Mathf.Clamp(Settings.GfxPreset, 0, GfxNotes.Length - 1)]);
+            Note("Changing the preset rebuilds the map's decoration (pipes, vents, light strips, markings); walls and play are unchanged.");
+            Section("Display");
             Settings.VSync = ToggleRow("Vertical sync", Settings.VSync, "Off gives the lowest input lag.");
-            GUI.enabled = !Settings.VSync;
-            Settings.FrameCap = ChoiceRow("Frame rate cap", Settings.FrameCap, Settings.FrameCapNames);
-            GUI.enabled = true;
+            Settings.FrameCap = ChoiceRow("Frame rate cap", Settings.FrameCap, Settings.FrameCapNames, 0f, !Settings.VSync);
             Settings.ShowFps = ToggleRow("Frame rate counter", Settings.ShowFps, "F3 in game.");
-            GUILayout.EndScrollView();
         }
 
         void ControlsTab()
         {
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            SectionHeader("Keys");
-            GUILayout.Label("The key map is fixed in this build. Toggle crouch and walk are in General.", small);
-            GUILayout.Space(Theme.S2);
-            foreach (string[] b in GameInput.Bindings)
+            Section("Keys");
+            Note("The key map is fixed in this build. Toggle crouch and walk are under Gameplay.");
+            int n = GameInput.Bindings.Length;
+            int perCol = Mathf.CeilToInt(n / 2f);
+            float colW = (rowW - 24f) / 2f;
+            float y0 = rowY;
+            for (int i = 0; i < n; i++)
             {
-                GUILayout.BeginHorizontal(GUILayout.Height(28f));
-                GUILayout.Label(b[0], body, GUILayout.Width(260f));
-                Vector2 sz = badge.CalcSize(new GUIContent(b[1]));
-                Rect r = GUILayoutUtility.GetRect(sz.x + 16f, 24f, GUILayout.Width(sz.x + 16f), GUILayout.Height(24f));
-                Round(r, new Color(1f, 1f, 1f, 0.1f));
-                GUI.Label(r, b[1], badge);
-                GUILayout.FlexibleSpace();
-                GUILayout.EndHorizontal();
+                string[] b = GameInput.Bindings[i];
+                float x = rowX + (i / perCol) * (colW + 24f);
+                float y = y0 + (i % perCol) * 38f;
+                Fill(new Rect(x, y + 36f, colW, 1f), Theme.Line);
+                Lbl(new Rect(x, y, colW - 170f, 36f), b[0], bodyMid, Theme.Ink);
+                float kw = Mathf.Min(170f, TextW(b[1], keyCap) + 16f);
+                KeyCapAt(new Rect(x + colW - kw, y + 6f, kw, 24f), b[1], new Color(1f, 1f, 1f, 0.1f), Theme.Ink);
             }
-            GUILayout.EndScrollView();
+            rowY = y0 + perCol * 38f;
         }
 
         void CrosshairTab()
         {
             CrosshairSettings c = Settings.Crosshair;
-            // Live preview (outside the scroll view, so GL drawing is never clipped wrongly).
-            Rect pv = GUILayoutUtility.GetRect(10f, 150f, GUILayout.ExpandWidth(true), GUILayout.Height(150f));
+            // Live preview: light, dark and a 4x zoom.
+            var pv = new Rect(rowX, rowY, rowW, 132f);
             if (Event.current.type == EventType.Repaint)
             {
                 float third = (pv.width - 16f) / 3f;
                 var a = new Rect(pv.x, pv.y, third, pv.height);
                 var b = new Rect(pv.x + third + 8f, pv.y, third, pv.height);
                 var z = new Rect(pv.x + 2f * (third + 8f), pv.y, third, pv.height);
-                Round(a, new Color(0.78f, 0.84f, 0.90f));
-                Round(new Rect(a.x, a.y + a.height * 0.55f, a.width, a.height * 0.45f), new Color(0.86f, 0.84f, 0.80f));
-                Round(b, new Color(0.10f, 0.11f, 0.14f));
-                Round(z, new Color(0.18f, 0.20f, 0.24f));
-                GUI.Label(new Rect(a.x + 10f, a.y + 6f, a.width, 18f), "LIGHT", caption);
-                GUI.Label(new Rect(b.x + 10f, b.y + 6f, b.width, 18f), "DARK", caption);
-                GUI.Label(new Rect(z.x + 10f, z.y + 6f, z.width, 18f), "ZOOM \u00d74", caption);
+                Plate(a, new Color(0.78f, 0.84f, 0.90f));
+                Fill(new Rect(a.x, a.y + a.height * 0.55f, a.width, a.height * 0.45f - 2f), new Color(0.86f, 0.84f, 0.80f));
+                Plate(b, new Color(0.10f, 0.11f, 0.14f));
+                Plate(z, new Color(0.18f, 0.20f, 0.24f));
+                Lbl(new Rect(a.x + 12f, a.y + 8f, a.width, 18f), "L I G H T", tinyCaps, new Color(0.1f, 0.1f, 0.12f, 0.8f));
+                Lbl(new Rect(b.x + 12f, b.y + 8f, b.width, 18f), "D A R K", tinyCaps, Theme.Muted);
+                Lbl(new Rect(z.x + 12f, z.y + 8f, z.width, 18f), "Z O O M   \u00d7 4", tinyCaps, Theme.Muted);
                 int k = Crosshair.PixelScale(Screen.height);
                 float demoSpread = c.Dynamic ? (Mathf.Sin(Time.unscaledTime * 2.5f) * 0.5f + 0.5f) * 6f : 0f;
                 Draw2D.Begin(Screen.width, Screen.height);
-                Crosshair.Draw((settingsArea.x + a.center.x) * scale, (settingsArea.y + a.center.y) * scale, c, k, demoSpread, 1f);
-                Crosshair.Draw((settingsArea.x + b.center.x) * scale, (settingsArea.y + b.center.y) * scale, c, k, demoSpread, 1f);
-                Crosshair.Draw((settingsArea.x + z.center.x) * scale, (settingsArea.y + z.center.y) * scale, c, k * 4, demoSpread, 1f);
+                Crosshair.Draw(a.center.x * scale, a.center.y * scale, c, k, demoSpread, 1f);
+                Crosshair.Draw(b.center.x * scale, b.center.y * scale, c, k, demoSpread, 1f);
+                Crosshair.Draw(z.center.x * scale, z.center.y * scale, c, k * 4, demoSpread, 1f);
                 float hitAge = Mathf.Repeat(Time.unscaledTime, 1.6f);
-                Crosshair.HitMarker((settingsArea.x + b.center.x) * scale, (settingsArea.y + b.center.y) * scale, k, hitAge, false, false);
+                Crosshair.HitMarker(b.center.x * scale, b.center.y * scale, k, hitAge, false, false);
                 Draw2D.End();
             }
-            GUILayout.Space(Theme.S2);
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Presets", bodyBold, GUILayout.Width(80f));
+            rowY += pv.height + 12f;
+            // Presets.
+            float px = rowX;
+            Lbl(new Rect(px, rowY, 90f, 38f), "Presets", bodyMid, Theme.Ink);
+            px += 90f;
+            float pw = (rowW - 90f - 8f * (Settings.PresetNames.Length - 1)) / Settings.PresetNames.Length;
             for (int i = 0; i < Settings.PresetNames.Length; i++)
             {
-                if (Btn(Settings.PresetNames[i], button, GUILayout.Height(34f)))
+                if (GButton(new Rect(px + i * (pw + 8f), rowY, pw, 38f), Settings.PresetNames[i], 0, true, StableKey("xh-preset" + i)))
                 {
                     int hit = c.HitColorPreset;
                     Settings.Crosshair = Settings.Preset(i);
                     Settings.Crosshair.HitColorPreset = hit;
                     c = Settings.Crosshair;
+                    GUI.changed = true;
                 }
             }
-            GUILayout.EndHorizontal();
+            rowY += 50f;
 
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            SectionHeader("Shape");
-            c.Style = (CrosshairStyle)ChoiceRow("Style", (int)c.Style, Settings.StyleNames);
+            // Two columns: shape and outline, colour and hit marker.
+            float colW = (rowW - 28f) / 2f;
+            float y0 = rowY, baseX = rowX, baseW = rowW;
+            rowW = colW;
+            rowLabelW = 150f;
+            Section("Shape");
+            c.Style = (CrosshairStyle)ChoiceRow("Style", (int)c.Style, ShortStyleNames);
             bool arms = c.Style == CrosshairStyle.Cross || c.Style == CrosshairStyle.CrossDot || c.Style == CrosshairStyle.TShape;
             if (arms) c.Length = IntRow("Line length", c.Length, 0, 20);
-            c.Thickness = IntRow(c.Style == CrosshairStyle.Circle ? "Ring thickness" : "Line thickness", c.Thickness, 1, 10);
+            c.Thickness = IntRow(c.Style == CrosshairStyle.Circle ? "Ring width" : "Thickness", c.Thickness, 1, 10);
             if (c.Style != CrosshairStyle.Dot) c.Gap = IntRow(c.Style == CrosshairStyle.Circle ? "Ring radius" : "Centre gap", c.Gap, 0, 24);
             c.DotSize = IntRow("Centre dot", c.DotSize, 0, 10);
-            c.Dynamic = ToggleRow("Dynamic spread", c.Dynamic, "Opens while running and firing.");
+            c.Dynamic = ToggleRow("Dynamic", c.Dynamic, "Opens when moving");
+            Section("Outline");
+            c.Outline = ToggleRow("Outline", c.Outline);
+            if (c.Outline)
+            {
+                c.OutlineThickness = IntRow("Thickness ", c.OutlineThickness, 1, 4);
+                c.OutlineOpacity = SliderRow("Opacity ", c.OutlineOpacity, 0f, 1f, Mathf.RoundToInt(c.OutlineOpacity * 100f) + "%", 0.05f);
+            }
 
-            SectionHeader("Colour");
+            rowX = baseX + colW + 28f;
+            rowY = y0;
+            rowTop = y0;
+            Section("Colour");
             int picked = SwatchRow("Colour", c.ColorPreset, Settings.CrosshairColors);
             if (picked != c.ColorPreset && picked >= 0)
             {
@@ -302,115 +341,144 @@ namespace Saltworks
                 c.Color = Settings.CrosshairColors[picked].Color;
             }
             Color before = c.Color;
-            float r = SliderRow("Red", c.Color.r * 255f, 0f, 255f, Mathf.RoundToInt(c.Color.r * 255f).ToString());
-            float g = SliderRow("Green", c.Color.g * 255f, 0f, 255f, Mathf.RoundToInt(c.Color.g * 255f).ToString());
-            float bl = SliderRow("Blue", c.Color.b * 255f, 0f, 255f, Mathf.RoundToInt(c.Color.b * 255f).ToString());
+            float r = SliderRow("Red", c.Color.r * 255f, 0f, 255f, Mathf.RoundToInt(c.Color.r * 255f).ToString(), 5f);
+            float g = SliderRow("Green", c.Color.g * 255f, 0f, 255f, Mathf.RoundToInt(c.Color.g * 255f).ToString(), 5f);
+            float bl = SliderRow("Blue", c.Color.b * 255f, 0f, 255f, Mathf.RoundToInt(c.Color.b * 255f).ToString(), 5f);
             var custom = new Color(Mathf.Round(r) / 255f, Mathf.Round(g) / 255f, Mathf.Round(bl) / 255f, 1f);
             if (Mathf.Abs(custom.r - before.r) + Mathf.Abs(custom.g - before.g) + Mathf.Abs(custom.b - before.b) > 0.002f)
             {
                 c.Color = custom;
                 c.ColorPreset = -1;
             }
-            c.Opacity = SliderRow("Opacity", c.Opacity, 0.1f, 1f, Mathf.RoundToInt(c.Opacity * 100f) + "%");
-
-            SectionHeader("Outline");
-            c.Outline = ToggleRow("Outline", c.Outline);
-            GUI.enabled = c.Outline;
-            c.OutlineThickness = IntRow("Outline thickness", c.OutlineThickness, 1, 4);
-            c.OutlineOpacity = SliderRow("Outline opacity", c.OutlineOpacity, 0f, 1f, Mathf.RoundToInt(c.OutlineOpacity * 100f) + "%");
-            GUI.enabled = true;
-
-            SectionHeader("Hit marker");
-            c.HitColorPreset = SwatchRow("Hit marker colour", c.HitColorPreset, Settings.HitColors);
-            GUILayout.EndScrollView();
+            c.Opacity = SliderRow("Opacity", c.Opacity, 0.1f, 1f, Mathf.RoundToInt(c.Opacity * 100f) + "%", 0.05f);
+            Section("Hit marker");
+            c.HitColorPreset = SwatchRow("Colour ", c.HitColorPreset, Settings.HitColors);
+            rowX = baseX;
+            rowW = baseW;
+            rowLabelW = 240f;
         }
+
+        static readonly string[] ShortStyleNames = { "Cross", "Dot", "+ Dot", "Circle", "T" };
 
         void MinimapTab()
         {
             float size = Settings.MinimapSize;
-            GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical();
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            SectionHeader("Minimap");
-            Settings.MinimapOn = ToggleRow("Show minimap", Settings.MinimapOn, "M in game. Hold Tab for the full map.");
-            Settings.MinimapRotate = ChoiceRow("Orientation", Settings.MinimapRotate ? 0 : 1, MapModes, 300f) == 0;
-            Settings.MinimapZoom = Mathf.Round(SliderRow("Zoom", Settings.MinimapZoom, 0.5f, 3f, Settings.MinimapZoom.ToString("0.0") + "\u00d7") * 10f) / 10f;
-            Settings.MinimapSize = Mathf.Round(SliderRow("Size", Settings.MinimapSize, 150f, 380f, Settings.MinimapSize.ToString("0") + " px"));
-            Settings.MinimapOpacity = SliderRow("Opacity", Settings.MinimapOpacity, 0.3f, 1f, Mathf.RoundToInt(Settings.MinimapOpacity * 100f) + "%");
-            GUILayout.Space(Theme.S2);
-            GUILayout.Label("Enemies show only when you can see them (in your view, with line of sight, not through smokes), while a recon dart reveals them, or as a ripple when you hear them run within " + Game.Rules.runHearingM.ToString("0") + " m.", small);
-            GUILayout.EndScrollView();
-            GUILayout.EndVertical();
-            GUILayout.Space(Theme.S4);
-            Rect pv = GUILayoutUtility.GetRect(size, size, GUILayout.Width(size), GUILayout.Height(size));
-            GUILayout.EndHorizontal();
+            float baseW = rowW;
+            rowW = baseW - Mathf.Max(size, 230f) - 32f;
+            rowLabelW = 190f;
+            Section("Tactical map");
+            Note("M opens the full tactical map during a round (M or Esc closes it); hold Tab to peek at it.");
+            Section("Corner minimap");
+            Settings.MinimapOn = ToggleRow("Show minimap", Settings.MinimapOn);
+            Settings.MinimapRotate = ChoiceRow("Orientation", Settings.MinimapRotate ? 0 : 1, MapModes) == 0;
+            Settings.MinimapZoom = Mathf.Round(SliderRow("Zoom", Settings.MinimapZoom, 0.5f, 3f, Settings.MinimapZoom.ToString("0.0") + "\u00d7", 0.1f) * 10f) / 10f;
+            Settings.MinimapSize = Mathf.Round(SliderRow("Size", Settings.MinimapSize, 150f, 380f, Settings.MinimapSize.ToString("0") + " px", 10f));
+            Settings.MinimapOpacity = SliderRow("Opacity", Settings.MinimapOpacity, 0.3f, 1f, Mathf.RoundToInt(Settings.MinimapOpacity * 100f) + "%", 0.05f);
+            Note("Enemies show only when you can see them (in your view, with line of sight, not through smokes), while a recon dart reveals them, or as a ripple when you hear them run within " + Game.Rules.runHearingM.ToString("0") + " m.");
+            var pv = new Rect(rowX + rowW + 32f, rowTop + 34f, size, size);
+            Lbl(new Rect(pv.x, rowTop, pv.width, 24f), Spaced("Preview"), tinyCaps, Theme.Muted);
             if (Event.current.type == EventType.Repaint && Game.Map != null)
             {
-                var vr = new Rect(settingsArea.x + pv.x, settingsArea.y + pv.y, pv.width, pv.height);
                 Vector2 eye = Game.EyePos;
                 if (eye == Vector2.zero && Game.Map.bounds != null) eye = new Vector2(Game.Map.bounds.width / 2f, Game.Map.bounds.height / 2f);
-                Game.Minimap.Draw(Game, new Rect(vr.x * scale, vr.y * scale, vr.width * scale, vr.height * scale), false, eye, Game.Rig.Heading, Settings.MinimapOpacity);
+                Game.Minimap.Draw(Game, PhysRect(pv), false, eye, Game.Rig.Heading, Settings.MinimapOpacity, scale);
             }
+            rowW = baseW;
+            rowLabelW = 240f;
         }
 
         void ColoursTab()
         {
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            SectionHeader("Players");
+            Section("Players");
             Settings.EnemyColor = Mathf.Max(0, SwatchRow("Enemy highlight", Settings.EnemyColor, Settings.EnemyColors));
             Settings.AllyColor = Mathf.Max(0, SwatchRow("Ally colour", Settings.AllyColor, Settings.AllyColors));
-            GUILayout.Label("The colour-blind safe enemy colour (vermillion) stays distinct from sky-blue allies for deuteranopia, protanopia and tritanopia.", small);
-
-            SectionHeader("Interface");
+            Note("The colour-blind safe enemy colour (vermillion) stays distinct from sky-blue allies for deuteranopia, protanopia and tritanopia.");
+            Section("Interface");
             Settings.AccentColor = Mathf.Max(0, SwatchRow("Accent", Settings.AccentColor, Settings.AccentColors));
-
-            SectionHeader("World");
+            Section("World");
             Settings.World = (WorldPaletteId)ChoiceRow("Palette", (int)Settings.World, Settings.PaletteNames);
-            GUILayout.Label("Day: soft pastel daylight.  Dusk: low warm sun, long shadows.  Night: cool moonlight.  High contrast: bright walls, dark floor, thin fog.", small);
+            Note("Day: soft pastel daylight.  Dusk: low warm sun, long shadows.  Night: cool moonlight.  High contrast: bright walls, dark floor, thin fog.");
+            Section("Preview");
+            float x = rowX;
+            x += PreviewChip(x, rowY, "ENEMY", Settings.Enemy) + 12f;
+            x += PreviewChip(x, rowY, "ALLY", Settings.Ally) + 12f;
+            x += PreviewChip(x, rowY, "ACCENT", Settings.Accent) + 24f;
+            GButton(new Rect(x, rowY, 220f, 40f), "Primary button", 1, true, StableKey("preview-primary"));
+            GButton(new Rect(x + 232f, rowY, 200f, 40f), "Button", 0, true, StableKey("preview-secondary"));
+            rowY += 52f;
+        }
 
-            SectionHeader("Preview");
-            GUILayout.BeginHorizontal(card);
-            PreviewChip("ENEMY", Settings.Enemy);
-            PreviewChip("ALLY", Settings.Ally);
-            PreviewChip("ACCENT", Settings.Accent);
-            GUILayout.FlexibleSpace();
-            Btn("Primary button", primary, GUILayout.Width(200f), GUILayout.Height(38f));
-            GUILayout.EndHorizontal();
-            GUILayout.EndScrollView();
+        float PreviewChip(float x, float y, string label, Color c)
+        {
+            var r = new Rect(x, y, 128f, 40f);
+            Plate(r, new Color(c.r * 0.25f, c.g * 0.25f, c.b * 0.25f, 0.95f));
+            Plate(new Rect(r.x + 12f, r.y + 12f, 16f, 16f), c);
+            Lbl(new Rect(r.x + 36f, r.y, r.width - 40f, r.height), label, bodyBoldMid, c);
+            return r.width;
+        }
+
+        // ---- personas: custom display names ------------------------------------------------------------
+        readonly Dictionary<string, string> nameEdits = new Dictionary<string, string>();
+
+        void PersonasPanel()
+        {
+            Section("Persona names");
+            Note("Give each pro persona the name you want to see. It is used everywhere the client shows the persona: the select screens, name tags, the kill feed, chat and callouts. Leave a field empty for the original name.");
+            List<Persona> all = Personas.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Persona p = all[i];
+                if (rowY + 52f > settingsArea.yMax - Pad) break;
+                var r = new Rect(rowX, rowY, rowW, 48f);
+                Fill(new Rect(r.x, r.y + 8f, 4f, r.height - 16f), p.Primary);
+                Lbl(new Rect(r.x + 16f, r.y + 2f, 360f, 24f), p.DefaultName, bodyBoldMid, p.Primary);
+                Lbl(new Rect(r.x + 16f, r.y + 26f, 360f, 18f), Upper(p.Style ?? ""), tinyCaps, Theme.Faint);
+                float fx = r.x + 390f, fw = Mathf.Max(160f, r.width - 390f - 130f);
+                PersonaNameField(new Rect(fx, r.y + 4f, fw, 40f), p);
+                bool custom = !string.IsNullOrEmpty(Personas.CustomName(p.Id));
+                if (GButton(new Rect(fx + fw + 12f, r.y + 4f, 112f, 40f), "Reset", 2, custom, StableKey("pname-reset:" + p.Id)))
+                {
+                    string id = p.Id;
+                    nameEdits[id] = "";
+                    Personas.SetCustomName(id, "");
+                    GUI.FocusControl(null);
+                }
+                rowY += 56f;
+            }
+        }
+
+        /// <summary>The custom-name field of persona `p` (empty shows the default name as a hint).</summary>
+        void PersonaNameField(Rect r, Persona p)
+        {
+            string field = "pname:" + p.Id;
+            if (!nameEdits.TryGetValue(p.Id, out string buf)) buf = Personas.CustomName(p.Id) ?? "";
+            string typed = Personas.FilterTyped(TextFieldCtl(r, buf, Personas.MaxNameLength, field));
+            if (typed != buf)
+            {
+                nameEdits[p.Id] = typed;
+                Personas.SetCustomName(p.Id, typed, false);
+            }
+            if (typed.Length == 0 && GUI.GetNameOfFocusedControl() != field)
+                Lbl(new Rect(r.x + 14f, r.y, r.width - 28f, r.height), p.DefaultName + "   (original name)", smallMid, Theme.Faint);
         }
 
         /// <summary>About: what this is, who made it, and the persona rule.</summary>
         void AboutPanel()
         {
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
-            Rect hero = GUILayoutUtility.GetRect(10f, 70f, GUILayout.ExpandWidth(true));
-            Condensed(hero, Spaced("Saltworks"), displayL, Theme.Ink, 0.78f);
-            Rect line = GUILayoutUtility.GetRect(10f, 10f, GUILayout.ExpandWidth(true));
-            Neon(new Rect(line.x, line.y + 3f, 120f, 3f), Settings.Accent, 1f);
-            Rect credit = GUILayoutUtility.GetRect(10f, 24f, GUILayout.ExpandWidth(true));
-            DrawCredit(new Vector2(credit.x, credit.y + 3f));
-            GUILayout.Space(Theme.S2);
-            GUILayout.Label("A tactical coaching client: the bridge reads a player's matches, finds the situation they lose most, and builds drills against bots that play like people. Then the same skills go into full matches, duels against pro personas, and a practice stream with its own chat.", body);
-            SectionHeader("Built from code");
-            GUILayout.Label("Every figure, gun, map prop, texture, sound and screen is generated at runtime: no downloaded models, textures or audio.", small);
-            SectionHeader("Pro personas");
-            GUILayout.Label("Zephyr, Atlas, Ember, Wisp and Nova are original characters that play a famous style. No real player's name, likeness or voice is used.", small);
-            SectionHeader("Credits");
-            GUILayout.Label("Built for DevHacks 2026.", bodyBold);
-            GUILayout.Label("Bridge protocol " + (Game.V4 ? Wire.Protocol4 : Game.V3 ? Wire.Protocol : Game.V2 ? Wire.Protocol2 : Wire.LegacyProtocol) + "   \u00b7   Unity " + Application.unityVersion, small);
-            GUILayout.EndScrollView();
-        }
-
-        void PreviewChip(string label, Color c)
-        {
-            Rect r = GUILayoutUtility.GetRect(120f, 38f, GUILayout.Width(120f), GUILayout.Height(38f));
-            Round(r, new Color(c.r * 0.25f, c.g * 0.25f, c.b * 0.25f, 0.9f));
-            Round(new Rect(r.x + 10f, r.y + 11f, 16f, 16f), c);
-            Color old = GUI.contentColor;
-            GUI.contentColor = c;
-            GUI.Label(new Rect(r.x + 34f, r.y + 10f, r.width - 36f, 20f), label, bodyBold);
-            GUI.contentColor = old;
-            GUILayout.Space(Theme.S2);
+            Condensed(new Rect(rowX, rowY, rowW, 70f), Spaced("Saltworks"), displayL, Theme.Ink, 0.78f);
+            rowY += 74f;
+            Neon(new Rect(rowX, rowY, 120f, 3f), Settings.Accent, 1f);
+            rowY += 14f;
+            DrawCredit(new Vector2(rowX, rowY));
+            rowY += 34f;
+            rowY = Para(rowX, rowY, rowW, "A tactical coaching client: the bridge reads a player's matches, finds the situation they lose most, and builds drills against bots that play like people. Then the same skills go into full matches, duels against pro personas, and a practice stream with its own chat.", body, Theme.Ink) + 8f;
+            Section("Built from code");
+            Note("Every figure, gun, map prop, texture, sound and screen is generated at runtime: no downloaded models, textures or audio.");
+            Section("Pro personas");
+            Note("The pro personas are original characters that play a well-known style. No real player's name, likeness or voice is used; you can rename them under Personas.");
+            Section("Credits");
+            rowY = Para(rowX, rowY, rowW, "Built for DevHacks 2026.", bodyBold, Theme.Ink) + 6f;
+            Note("Bridge protocol " + (Game.V4 ? Wire.Protocol4 : Game.V3 ? Wire.Protocol : Game.V2 ? Wire.Protocol2 : Wire.LegacyProtocol) + "   \u00b7   Unity " + Application.unityVersion);
         }
     }
 }

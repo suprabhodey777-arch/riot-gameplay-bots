@@ -160,8 +160,12 @@ namespace Saltworks
         /// <summary>Where the player's eye is drawn this frame (predicted while alive), sim coordinates.</summary>
         public Vector2 EyePos { get; private set; }
         public bool SettingsOpen { get; private set; }
-        /// <summary>Tab is held during a drill: the full map is shown.</summary>
+        /// <summary>The full map is on screen: the tactical map (M) is open, or Tab is held to peek.</summary>
         public bool FullMap { get; private set; }
+        /// <summary>The tactical map overlay is open (M toggles it, Esc closes it).</summary>
+        public bool MapOpen { get; private set; }
+        /// <summary>Tab is held during a drill (a peek at the full map).</summary>
+        public bool MapPeek { get; private set; }
         /// <summary>Smoothed frames per second and the worst frame time of the last second (ms), for F3.</summary>
         public float Fps { get; private set; }
         public float WorstMs { get; private set; }
@@ -246,6 +250,7 @@ namespace Saltworks
         void Start()
         {
             ConnectNow();
+            StartTourIfAsked();
         }
 
         void OnDestroy()
@@ -261,7 +266,7 @@ namespace Saltworks
 
         void OnApplicationFocus(bool focus)
         {
-            if (!focus && Screen == AppScreen.Playing && !DrillDone) Paused = true;
+            if (!focus && Screen == AppScreen.Playing && !DrillDone && !TourActive) Paused = true;
         }
 
         void OnFontTextureRebuilt(Font f)
@@ -358,6 +363,17 @@ namespace Saltworks
             if (!SettingsOpen) return;
             SettingsOpen = false;
             Settings.Save();
+        }
+
+        /// <summary>Opens or closes the tactical map (only during a round).</summary>
+        public void ToggleMap()
+        {
+            MapOpen = !MapOpen && Screen == AppScreen.Playing;
+        }
+
+        public void CloseMap()
+        {
+            MapOpen = false;
         }
 
         public void AbandonDrill()
@@ -474,9 +490,14 @@ namespace Saltworks
                 Settings.ShowFps = !Settings.ShowFps;
                 Settings.Save();
             }
-            // Esc closes the settings first, on any screen; then an open buy menu.
+            // Esc closes the settings first, on any screen; then the tactical map; then an open buy menu.
             bool escForSettings = SettingsOpen && GameInput.Pressed(GameKey.Pause);
             if (escForSettings) CloseSettings();
+            else if (MapOpen && Screen == AppScreen.Playing && GameInput.Pressed(GameKey.Pause))
+            {
+                MapOpen = false;
+                escForSettings = true;
+            }
             else if (BuyOpen && Screen == AppScreen.Playing && GameInput.Pressed(GameKey.Pause))
             {
                 BuyOpen = false;
@@ -503,7 +524,9 @@ namespace Saltworks
             }
             TickMatch();
             TickRound5();
-            FullMap = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
+            if (Screen != AppScreen.Playing || Paused) MapOpen = false;
+            MapPeek = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
+            FullMap = MapOpen || MapPeek;
             if (Screen == AppScreen.Playing || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
             if (Screen != AppScreen.Playing && Aiming.HasValue) CancelAim();
             bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null && !SettingsOpen && !BuyOpen && !(InMatch && DrillDone && MatchEnd != null);
@@ -557,11 +580,8 @@ namespace Saltworks
             }
             if (!Paused && !fireArmed && !GameInput.FireHeld) fireArmed = true;
             if (!GameInput.FireHeld) semiReleased = true;
-            if (!Paused && GameInput.Pressed(GameKey.Minimap))
-            {
-                Settings.MinimapOn = !Settings.MinimapOn;
-                Settings.Save();
-            }
+            // M opens and closes the tactical map (the corner minimap is a setting).
+            if (!Paused && GameInput.Pressed(GameKey.Minimap)) ToggleMap();
 
             AgentState me = Me;
             bool alive = me != null && me.alive;
@@ -1290,6 +1310,8 @@ namespace Saltworks
         {
             if (string.IsNullOrEmpty(id)) return "?";
             if (id == PlayerId) return "You";
+            string persona = PersonaName(id);
+            if (persona != null) return persona;
             if (World.Bots.TryGetValue(id, out BotView b)) return id + " " + ArchetypeName(b.Archetype);
             return id;
         }

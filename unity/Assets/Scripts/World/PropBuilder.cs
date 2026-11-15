@@ -1,9 +1,11 @@
-// Decoration generated from the MapDef alone: pipes and vents on tall walls
-// (above head height or flush, so sight lines do not change), metal corner caps
-// and straps on crates, emissive light strips with soft additive halos (site
-// coloured near a site), hazard markings across chokes, a plant-zone stencil on
-// every site and a fogged skyline beyond the outer walls. Nothing here has a
-// collider: the sim's walls are the only geometry that matters for play.
+// Decoration generated from the MapDef alone: pipes, vents and air-conditioning
+// units on tall walls (above head height or flush, so sight lines do not
+// change), wall lamps with a warm lens and a faint halo, painted metal sign
+// plates, metal corner caps and straps on crates, small prop groups tucked into
+// inside corners (barrels, crate stacks, pallets with sacks), hazard markings
+// across chokes, a plant-zone stencil on every site and a fogged skyline of
+// banded buildings with rooftop tanks beyond the outer walls. Nothing here has
+// a collider: the sim's walls are the only geometry that matters for play.
 // Everything is merged into one mesh per material, so the whole set costs about
 // eight draw calls. Density (0.35 to 1.3) comes from the graphics preset.
 using System.Collections.Generic;
@@ -14,8 +16,8 @@ namespace Saltworks
 {
     public static class PropBuilder
     {
-        static Material metalMat, skyMat, hazardMat, plantMat, haloMat;
-        static readonly Dictionary<Color, Material> stripMats = new Dictionary<Color, Material>();
+        static Material metalMat, skyMat, hazardMat, plantMat, haloMat, woodMat, lampMat;
+        static readonly Color LampColor = new Color(1f, 0.84f, 0.62f);
 
         struct Edge
         {
@@ -28,17 +30,15 @@ namespace Saltworks
         {
             if (metalMat == null) metalMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.35f, 0.8f, 0.6f, 1f);
             if (skyMat == null) skyMat = Mats.World(Color.white, Texture2D.whiteTexture, null, 0f, 0.1f, 0f, 0.1f, 1f);
+            if (woodMat == null)
+            {
+                Textures.Pair cr = Textures.Crate();
+                woodMat = Mats.World(Color.white, cr.Albedo, cr.Normal, 0.8f, 0.18f, 0f, 0.18f, 1f);
+            }
+            if (lampMat == null) lampMat = Mats.Glow(LampColor, 1.4f);
             if (hazardMat == null) hazardMat = Mats.Decal(Textures.Hazard(), Color.white, 2455);
             if (plantMat == null) plantMat = Mats.Decal(Textures.PlantZone(), Color.white, 2456);
             if (haloMat == null) haloMat = Mats.Additive(Textures.GlowStrip(), Color.white, 1f, 3050);
-        }
-
-        static Material StripMat(Color c)
-        {
-            if (stripMats.TryGetValue(c, out Material m) && m != null) return m;
-            m = Mats.Glow(c, 2.2f);
-            stripMats[c] = m;
-            return m;
         }
 
         public static GameObject Build(MapDef map, float density)
@@ -52,43 +52,39 @@ namespace Saltworks
             float h = map.bounds != null && map.bounds.height > 0 ? map.bounds.height : 100f;
 
             var metal = new MeshKit(1) { UvScale = 2f };
+            var wood = new MeshKit(1) { UvScale = 1.2f };
+            var lamps = new MeshKit(1);
             var halo = new MeshKit(1);
             var hazard = new MeshKit(1);
             var plant = new MeshKit(1);
             var sky = new MeshKit(1) { UvScale = 0.1f };
-            var strips = new Dictionary<Color, MeshKit>();
 
-            var sites = new List<KeyValuePair<string, Vector2>>();
-            foreach (KeyValuePair<string, List<Vec2>> s in map.SiteList()) sites.Add(new KeyValuePair<string, Vector2>(s.Key, Geo.Centroid(s.Value)));
+            // Places where floor props must not go: spawns, choke mouths and the site letters.
+            var keepOut = new List<Vector2>();
+            if (map.spawns != null)
+            {
+                if (map.spawns.attack != null) foreach (Vec2 s in map.spawns.attack) if (s != null) keepOut.Add(new Vector2(s.x, s.y));
+                if (map.spawns.defense != null) foreach (Vec2 s in map.spawns.defense) if (s != null) keepOut.Add(new Vector2(s.x, s.y));
+            }
+            foreach (Choke c in FindChokes(map)) keepOut.Add((c.A + c.B) * 0.5f);
+            foreach (KeyValuePair<string, List<Vec2>> s in map.SiteList()) keepOut.Add(MapBuilder.FindFreeSpot(s.Value, map, 2.5f));
 
             List<Edge> edges = Edges(map, w, h);
+            int lampsPlaced = 0;
             foreach (Edge e in edges)
             {
                 if (e.Crate) { CrateDressing(metal, e); continue; }
                 double roll = rng.NextDouble();
-                if (e.Height >= 2.9f && e.Len >= 4f && roll < 0.45 * density) Pipe(metal, e, rng);
-                if (e.Height >= 2.6f && e.Len >= 2.5f && rng.NextDouble() < 0.3 * density) Vent(metal, e, rng);
-                if (e.Height >= 2.6f && e.Len >= 3f)
+                bool piped = e.Height >= 2.9f && e.Len >= 4f && roll < 0.4 * density;
+                if (piped) Pipe(metal, e, rng);
+                if (e.Height >= 2.6f && e.Len >= 2.5f && rng.NextDouble() < 0.25 * density) Vent(metal, e, rng);
+                if (!piped && e.Height >= 3.6f && e.Len >= 3f && rng.NextDouble() < 0.2 * density) AirCon(metal, e, rng);
+                if (e.Height >= 2.8f && e.Len >= 3f && rng.NextDouble() < 0.32 * density)
                 {
-                    Vector2 mid = (e.A + e.B) * 0.5f;
-                    Color c = new Color(0.72f, 0.88f, 1f);
-                    bool near = false;
-                    foreach (KeyValuePair<string, Vector2> s in sites)
-                    {
-                        if ((s.Value - mid).magnitude < 15f)
-                        {
-                            c = Palette.Site(s.Key);
-                            near = true;
-                            break;
-                        }
-                    }
-                    double p = near ? 0.85 * density : 0.22 * density;
-                    if (rng.NextDouble() < p)
-                    {
-                        if (!strips.TryGetValue(c, out MeshKit sk)) strips[c] = sk = new MeshKit(1);
-                        LightStrip(sk, metal, halo, e, c);
-                    }
+                    WallLamp(metal, lamps, halo, e, rng);
+                    lampsPlaced++;
                 }
+                if (e.Height >= 3f && e.Len >= 2.5f && rng.NextDouble() < 0.14 * density) SignPlate(metal, e, rng);
             }
             // Crate corners: a dark metal cap on every corner of every low box.
             foreach (WallDef wall in map.walls)
@@ -103,21 +99,22 @@ namespace Saltworks
                     metal.Box(0, MeshKit.At(new Vector3(cur.x, wall.height * 0.5f, cur.y), new Vector3(0f, yaw, 0f)), new Vector3(0.1f, wall.height + 0.02f, 0.1f), 0.012f, new Color(0.2f, 0.21f, 0.23f, 1f));
                 }
             }
+            CornerProps(metal, wood, map, edges, keepOut, density, rng);
 
             Chokes(hazard, map, density);
             PlantZones(plant, map);
             Skyline(sky, w, h, density, rng);
 
             Add(root, "Props metal", metal, metalMat, true);
+            Add(root, "Props wood", wood, woodMat, true);
             Add(root, "Light halos", halo, haloMat, false);
             Add(root, "Hazard markings", hazard, hazardMat, false);
             Add(root, "Plant zones", plant, plantMat, false);
             Add(root, "Skyline", sky, skyMat, false);
-            foreach (KeyValuePair<Color, MeshKit> kv in strips)
+            if (lampsPlaced > 0)
             {
-                Material m = StripMat(kv.Key);
-                WorldLook.RegisterGlow(m, kv.Key, 2.2f);
-                Add(root, "Light strips", kv.Value, m, false);
+                WorldLook.RegisterGlow(lampMat, LampColor, 1.4f);
+                Add(root, "Lamp lenses", lamps, lampMat, false);
             }
             return root;
         }
@@ -254,36 +251,191 @@ namespace Saltworks
                 k.Box(0, MeshKit.At(W(mid + dir * 0f + e.N * 0.004f, e.Height * 0.72f), new Vector3(0f, yaw, 0f)), new Vector3(Mathf.Min(0.5f, e.Len * 0.3f), 0.16f, 0.006f), 0f, plateC);
         }
 
-        /// <summary>An emissive strip in a dark housing, with a soft additive halo quad on the wall around it.</summary>
-        static void LightStrip(MeshKit strip, MeshKit housing, MeshKit halo, Edge e, Color c)
+        /// <summary>
+        /// A wall lamp above head height: a dark housing on a bracket, a downward shade with a warm lens, and a faint
+        /// warm halo on the wall and on the floor below. Restrained: practical light, not neon.
+        /// </summary>
+        static void WallLamp(MeshKit housing, MeshKit lens, MeshKit halo, Edge e, System.Random rng)
         {
             Vector2 dir = (e.B - e.A) / e.Len;
-            float y = Mathf.Min(2.45f, e.Height - 0.3f);
-            float len = e.Len - 0.8f;
-            Vector2 mid = (e.A + e.B) * 0.5f;
+            float along = Mathf.Lerp(0.8f, e.Len - 0.8f, 0.3f + (float)rng.NextDouble() * 0.4f);
+            float y = Mathf.Min(2.6f, e.Height - 0.35f);
+            Vector2 at = e.A + dir * along;
             float yaw = YawOf(e.N);
-            housing.Box(0, MeshKit.At(W(mid + e.N * 0.015f, y), new Vector3(0f, yaw, 0f)), new Vector3(len + 0.06f, 0.07f, 0.03f), 0.008f, new Color(0.14f, 0.15f, 0.16f, 1f));
-            strip.Box(0, MeshKit.At(W(mid + e.N * 0.032f, y), new Vector3(0f, yaw, 0f)), new Vector3(len, 0.03f, 0.012f), 0.004f, Color.white);
-            Vector2 a = mid - dir * (len * 0.5f + 0.15f) + e.N * 0.05f, b = mid + dir * (len * 0.5f + 0.15f) + e.N * 0.05f;
-            float hh = 0.22f;
-            var col = new Color(c.r, c.g, c.b, 0.55f);
+            Color dark = new Color(0.13f, 0.135f, 0.14f, 1f);
+            Matrix4x4 m = MeshKit.At(W(at, y), new Vector3(0f, yaw, 0f));
+            housing.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0.08f, 0.03f), Quaternion.identity, Vector3.one), new Vector3(0.14f, 0.2f, 0.05f), 0.01f, dark);
+            housing.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0.1f, 0.15f), Quaternion.identity, Vector3.one), new Vector3(0.03f, 0.03f, 0.22f), 0.006f, dark);
+            housing.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0.04f, 0.27f), Quaternion.Euler(18f, 0f, 0f), Vector3.one), new Vector3(0.26f, 0.06f, 0.2f), 0.012f, new Color(0.24f, 0.26f, 0.24f, 0.6f));
+            Vector3 lc = m.MultiplyPoint3x4(new Vector3(0f, 0.005f, 0.27f));
+            Vector3 lx = m.MultiplyVector(Vector3.right) * 0.1f, lz = m.MultiplyVector(Vector3.forward) * 0.075f;
+            lens.Quad(0, lc - lx - lz, lc + lx - lz, lc + lx + lz, lc - lx + lz, Vector3.down, Color.white);
+            var col = new Color(LampColor.r, LampColor.g, LampColor.b, 0.22f);
             Vector3 n3 = W(e.N, 0f);
-            halo.QuadUv(0, W(a, y - hh), W(b, y - hh), W(b, y + hh), W(a, y + hh), n3, col,
-                        new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f));
-            // A faint pool of light on the floor below.
-            Vector2 fa = mid - dir * len * 0.5f, fb = mid + dir * len * 0.5f;
-            var fc = new Color(c.r, c.g, c.b, 0.22f);
-            halo.QuadUv(0, W(fa, 0.015f), W(fb, 0.015f), W(fb + e.N * 1.1f, 0.015f), W(fa + e.N * 1.1f, 0.015f), Vector3.up, fc,
+            Vector2 a = at - dir * 0.8f + e.N * 0.03f, b = at + dir * 0.8f + e.N * 0.03f;
+            halo.QuadUv(0, W(a, y - 0.9f), W(b, y - 0.9f), W(b, y + 0.15f), W(a, y + 0.15f), n3, col,
+                        new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0.55f), new Vector2(0f, 0.55f));
+            var fc = new Color(LampColor.r, LampColor.g, LampColor.b, 0.1f);
+            Vector2 fa = at - dir * 0.9f, fb = at + dir * 0.9f;
+            halo.QuadUv(0, W(fa, 0.016f), W(fb, 0.016f), W(fb + e.N * 1.2f, 0.016f), W(fa + e.N * 1.2f, 0.016f), Vector3.up, fc,
                         new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 1f), new Vector2(0f, 1f));
         }
 
-        // ---- chokes ----------------------------------------------------------------------------------
-        struct Gap
+        /// <summary>An air-conditioning unit on brackets high on a tall wall: casing, front grille, a fan disc and a drain pipe.</summary>
+        static void AirCon(MeshKit k, Edge e, System.Random rng)
         {
-            public Vector2 A, B;
-            public float D;
+            Vector2 dir = (e.B - e.A) / e.Len;
+            float along = Mathf.Lerp(0.8f, e.Len - 0.8f, (float)rng.NextDouble());
+            float y = Mathf.Min(e.Height - 0.55f, 2.85f + (float)rng.NextDouble() * 0.4f);
+            Vector2 at = e.A + dir * along;
+            Matrix4x4 m = MeshKit.At(W(at, y), new Vector3(0f, YawOf(e.N), 0f));
+            float v = 0.72f + (float)rng.NextDouble() * 0.1f;
+            Color casing = new Color(v, v * 0.99f, v * 0.95f, 0f);
+            Color dark = new Color(0.12f, 0.12f, 0.13f, 1f);
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0f, 0.28f), Quaternion.identity, Vector3.one), new Vector3(0.86f, 0.58f, 0.48f), 0.025f, casing);
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(-0.18f, 0f, 0.525f), Quaternion.identity, Vector3.one), new Vector3(0.44f, 0.44f, 0.02f), 0.006f, dark);
+            k.Cylinder(0, m * Matrix4x4.TRS(new Vector3(-0.18f, 0f, 0.535f), Quaternion.identity, Vector3.one), 0.19f, 0.01f, 18, new Color(0.3f, 0.31f, 0.32f, 1f));
+            for (int i = 0; i < 5; i++)
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(0.24f, -0.18f + i * 0.09f, 0.525f), Quaternion.identity, Vector3.one), new Vector3(0.3f, 0.025f, 0.02f), 0.003f, dark);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.34f, -0.33f, 0.26f), Quaternion.identity, Vector3.one), new Vector3(0.04f, 0.04f, 0.52f), 0.006f, dark);
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.34f, -0.15f, 0.03f), Quaternion.Euler(-45f, 0f, 0f), Vector3.one), new Vector3(0.035f, 0.035f, 0.5f), 0.006f, dark);
+            }
+            Vector3 drainTop = m.MultiplyPoint3x4(new Vector3(0.38f, -0.29f, 0.1f));
+            Vector3 drainBot = new Vector3(drainTop.x, 0.4f, drainTop.z);
+            if (drainTop.y - drainBot.y > 0.1f)
+                k.Cylinder(0, MeshKit.Along((drainTop + drainBot) * 0.5f, Vector3.up), 0.018f, drainTop.y - drainBot.y, 8, new Color(0.5f, 0.5f, 0.48f, 0f));
         }
 
+        static readonly Color[] SignColors =
+        {
+            new Color(0.82f, 0.62f, 0.16f, 0f),
+            new Color(0.2f, 0.32f, 0.46f, 0f),
+            new Color(0.62f, 0.62f, 0.6f, 0f),
+            new Color(0.5f, 0.18f, 0.14f, 0f),
+        };
+
+        /// <summary>A painted metal sign plate flush on the wall (warning, info or plain), with two bolts and stencil bands.</summary>
+        static void SignPlate(MeshKit k, Edge e, System.Random rng)
+        {
+            Vector2 dir = (e.B - e.A) / e.Len;
+            float along = Mathf.Lerp(0.6f, e.Len - 0.6f, (float)rng.NextDouble());
+            float y = 1.9f + (float)rng.NextDouble() * 0.5f;
+            Matrix4x4 m = MeshKit.At(W(e.A + dir * along, y), new Vector3(0f, YawOf(e.N), 0f));
+            Color c = SignColors[rng.Next(SignColors.Length)];
+            Color stripe = new Color(c.r * 0.35f, c.g * 0.35f, c.b * 0.35f, 0f);
+            float sw = 0.55f + (float)rng.NextDouble() * 0.35f, sh = 0.32f + (float)rng.NextDouble() * 0.15f;
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0f, 0.012f), Quaternion.identity, Vector3.one), new Vector3(sw, sh, 0.012f), 0.004f, c);
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, -sh * 0.18f, 0.02f), Quaternion.identity, Vector3.one), new Vector3(sw * 0.8f, sh * 0.16f, 0.004f), 0f, stripe);
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, sh * 0.2f, 0.02f), Quaternion.identity, Vector3.one), new Vector3(sw * 0.5f, sh * 0.1f, 0.004f), 0f, stripe);
+            for (int s = -1; s <= 1; s += 2)
+                k.Cylinder(0, m * Matrix4x4.TRS(new Vector3(s * (sw * 0.5f - 0.04f), sh * 0.5f - 0.04f, 0.02f), Quaternion.identity, Vector3.one), 0.012f, 0.01f, 8, new Color(0.3f, 0.3f, 0.3f, 1f));
+        }
+
+        // ---- floor props in inside corners -------------------------------------------------------------
+        static readonly Color[] BarrelColors =
+        {
+            new Color(0.2f, 0.3f, 0.42f, 0f),
+            new Color(0.48f, 0.16f, 0.12f, 0f),
+            new Color(0.3f, 0.34f, 0.22f, 0f),
+            new Color(0.56f, 0.5f, 0.4f, 0f),
+        };
+
+        /// <summary>
+        /// Small prop groups tucked into inside corners where two wall faces meet: barrels, a crate with a smaller
+        /// one on top, or a pallet with sacks. Kept within ~0.9 m of both faces and away from spawns, choke mouths and
+        /// the site letters, so they dress the space without changing where people stand or look.
+        /// </summary>
+        static void CornerProps(MeshKit metal, MeshKit wood, MapDef map, List<Edge> edges, List<Vector2> keepOut, float density, System.Random rng)
+        {
+            var used = new List<Vector2>();
+            foreach (Edge e in edges)
+            {
+                if (e.Crate || e.Height < 2.4f) continue;
+                Vector2 dir = (e.B - e.A) / e.Len;
+                for (int end = 0; end < 2; end++)
+                {
+                    Vector2 corner = end == 0 ? e.A : e.B;
+                    Vector2 inward = end == 0 ? dir : -dir;
+                    // Another wall continues past this end on the open side: an inside corner.
+                    Vector2 probe = corner + e.N * 0.5f - inward * 0.35f;
+                    if (MapBuilder.IsClear(probe, map, 0f)) continue;
+                    Vector2 spot = corner + e.N * 0.5f + inward * 0.5f;
+                    if (!MapBuilder.IsClear(spot, map, 0.3f)) continue;
+                    if (rng.NextDouble() > 0.4 * density) continue;
+                    bool near = false;
+                    foreach (Vector2 q in keepOut) if ((q - spot).sqrMagnitude < 16f) { near = true; break; }
+                    foreach (Vector2 q in used) if ((q - spot).sqrMagnitude < 36f) { near = true; break; }
+                    if (near) continue;
+                    used.Add(spot);
+                    float yaw = YawOf(e.N);
+                    int kind = rng.Next(3);
+                    if (kind == 0)
+                    {
+                        int count = 1 + rng.Next(2);
+                        for (int i = 0; i < count; i++)
+                        {
+                            Vector2 p = corner + e.N * (0.36f + i * 0.08f) + inward * (0.36f + i * 0.6f);
+                            Barrel(metal, p, BarrelColors[rng.Next(BarrelColors.Length)], (float)rng.NextDouble() * 360f);
+                        }
+                    }
+                    else if (kind == 1)
+                    {
+                        Vector2 p = corner + e.N * 0.45f + inward * 0.45f;
+                        float tone = 0.72f + (float)rng.NextDouble() * 0.15f;
+                        var c = new Color(tone, tone * 0.86f, tone * 0.66f, 0f);
+                        var c2 = new Color(c.r * 0.92f, c.g * 0.92f, c.b * 0.92f, 0f);
+                        wood.Box(0, MeshKit.At(W(p, 0.38f), new Vector3(0f, yaw, 0f)), new Vector3(0.76f, 0.76f, 0.76f), 0.02f, c);
+                        WoodCrateTrim(metal, p, 0.76f, yaw);
+                        if (rng.NextDouble() < 0.6)
+                            wood.Box(0, MeshKit.At(W(p + inward * 0.04f, 0.97f), new Vector3(0f, yaw + 20f + (float)rng.NextDouble() * 20f, 0f)), new Vector3(0.44f, 0.42f, 0.44f), 0.015f, c2);
+                    }
+                    else
+                    {
+                        Vector2 p = corner + e.N * 0.5f + inward * 0.62f;
+                        Matrix4x4 pm = MeshKit.At(W(p, 0f), new Vector3(0f, yaw, 0f));
+                        var slat = new Color(0.66f, 0.55f, 0.4f, 0f);
+                        var runner = new Color(0.53f, 0.44f, 0.32f, 0f);
+                        for (int i = -1; i <= 1; i++)
+                            wood.Box(0, pm * Matrix4x4.TRS(new Vector3(i * 0.36f, 0.05f, 0f), Quaternion.identity, Vector3.one), new Vector3(0.1f, 0.09f, 0.8f), 0.008f, runner);
+                        for (int i = 0; i < 5; i++)
+                            wood.Box(0, pm * Matrix4x4.TRS(new Vector3(0f, 0.115f, -0.34f + i * 0.17f), Quaternion.identity, Vector3.one), new Vector3(1.1f, 0.03f, 0.12f), 0.004f, slat);
+                        var sack = new Color(0.62f, 0.56f, 0.44f, 0f);
+                        int sacks = 1 + rng.Next(3);
+                        for (int i = 0; i < sacks; i++)
+                        {
+                            Vector3 sp = pm.MultiplyPoint3x4(new Vector3(-0.27f + i * 0.27f, 0.22f, (i % 2) * 0.12f - 0.06f));
+                            Loft.Blob(wood, Matrix4x4.identity, sp, new Vector3(0.14f, 0.09f, 0.28f), sack, new Vector3(0f, yaw + i * 12f, 0f), 12, 6, 3f);
+                        }
+                    }
+                }
+            }
+        }
+
+        static void Barrel(MeshKit k, Vector2 p, Color c, float yaw)
+        {
+            const float r = 0.29f, hgt = 0.88f;
+            Color rim = new Color(c.r * 0.7f, c.g * 0.7f, c.b * 0.7f, 0.7f);
+            k.Cylinder(0, MeshKit.Along(W(p, hgt * 0.5f), Vector3.up), r, hgt, 18, c);
+            k.Cylinder(0, MeshKit.Along(W(p, hgt * 0.33f), Vector3.up), r + 0.012f, 0.035f, 18, rim, false, false);
+            k.Cylinder(0, MeshKit.Along(W(p, hgt * 0.67f), Vector3.up), r + 0.012f, 0.035f, 18, rim, false, false);
+            k.Cylinder(0, MeshKit.Along(W(p, hgt), Vector3.up), r + 0.008f, 0.03f, 18, rim);
+            Vector2 cap = p + new Vector2(Mathf.Cos(yaw * Mathf.Deg2Rad), Mathf.Sin(yaw * Mathf.Deg2Rad)) * 0.15f;
+            k.Cylinder(0, MeshKit.Along(W(cap, hgt + 0.02f), Vector3.up), 0.035f, 0.02f, 10, rim);
+        }
+
+        static void WoodCrateTrim(MeshKit k, Vector2 p, float size, float yaw)
+        {
+            Color strap = new Color(0.22f, 0.23f, 0.24f, 1f);
+            Matrix4x4 m = MeshKit.At(W(p, size * 0.5f), new Vector3(0f, yaw, 0f));
+            float hs = size * 0.5f;
+            for (int sx = -1; sx <= 1; sx += 2)
+            for (int sz = -1; sz <= 1; sz += 2)
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(sx * hs, 0f, sz * hs), Quaternion.identity, Vector3.one), new Vector3(0.06f, size + 0.01f, 0.06f), 0.008f, strap);
+        }
+
+        // ---- chokes ----------------------------------------------------------------------------------
         static void ClosestOnSegments(Vector2 p1, Vector2 q1, Vector2 p2, Vector2 q2, out Vector2 c1, out Vector2 c2)
         {
             Vector2 d1 = q1 - p1, d2 = q2 - p2, r = p1 - p2;
@@ -309,23 +461,42 @@ namespace Saltworks
             c2 = p2 + d2 * t;
         }
 
-        /// <summary>Hazard stripes across the narrowest openings between walls (doors and chokes, 2.2 to 6.5 m wide).</summary>
-        static void Chokes(MeshKit k, MapDef map, float density)
+        /// <summary>A narrow opening between two walls (a door or a choke): the closest points on each side, the width and the lower wall height.</summary>
+        public struct Choke
         {
+            public Vector2 A, B;
+            public float Width;
+            public float MinHeight;
+        }
+
+        static List<Choke> chokeCache;
+        static MapDef chokeMap;
+
+        /// <summary>
+        /// The openings between pairs of walls 2.2 to 6.5 m apart with clear floor between them, narrowest first, at
+        /// least 7 m apart from each other (cached per map).
+        /// </summary>
+        public static List<Choke> FindChokes(MapDef map)
+        {
+            if (map == null || map.walls == null) return new List<Choke>();
+            if (chokeCache != null && ReferenceEquals(chokeMap, map)) return chokeCache;
             var polys = new List<List<Vector2>>();
+            var heights = new List<float>();
             var mins = new List<Vector2>();
             var maxs = new List<Vector2>();
             foreach (WallDef wall in map.walls)
             {
-                if (wall.points == null || wall.points.Count < 3 || wall.height < 1f) continue;
+                if (wall == null || wall.points == null || wall.points.Count < 3 || wall.height < 1f) continue;
                 List<Vector2> p = MapBuilder.ToCounterClockwise(wall.points);
+                if (p.Count < 3) continue;
                 Vector2 mn = new Vector2(float.MaxValue, float.MaxValue), mx = new Vector2(float.MinValue, float.MinValue);
                 foreach (Vector2 v in p) { mn = Vector2.Min(mn, v); mx = Vector2.Max(mx, v); }
                 polys.Add(p);
+                heights.Add(wall.height);
                 mins.Add(mn);
                 maxs.Add(mx);
             }
-            var gaps = new List<Gap>();
+            var gaps = new List<Choke>();
             const float minGap = 2.2f, maxGap = 6.5f;
             for (int i = 0; i < polys.Count; i++)
             {
@@ -350,26 +521,37 @@ namespace Saltworks
                     bool blocked = false;
                     for (float t = 0.2f; t < 0.85f && !blocked; t += 0.2f) blocked = !MapBuilder.IsClear(Vector2.Lerp(ba, bb, t), map, 0f);
                     if (blocked) continue;
-                    gaps.Add(new Gap { A = ba, B = bb, D = best });
+                    gaps.Add(new Choke { A = ba, B = bb, Width = best, MinHeight = Mathf.Min(heights[i], heights[j]) });
                 }
             }
-            gaps.Sort((x, y) => x.D.CompareTo(y.D));
-            int limit = Mathf.RoundToInt(14f * density);
-            var placed = new List<Vector2>();
-            foreach (Gap g in gaps)
+            gaps.Sort((x, y) => x.Width.CompareTo(y.Width));
+            var placed = new List<Choke>();
+            foreach (Choke g in gaps)
             {
-                if (placed.Count >= limit) break;
                 Vector2 mid = (g.A + g.B) * 0.5f;
                 bool close = false;
-                foreach (Vector2 p in placed) if ((p - mid).magnitude < 7f) { close = true; break; }
-                if (close) continue;
-                placed.Add(mid);
+                foreach (Choke p in placed) if (((p.A + p.B) * 0.5f - mid).magnitude < 7f) { close = true; break; }
+                if (!close) placed.Add(g);
+            }
+            chokeCache = placed;
+            chokeMap = map;
+            return placed;
+        }
+
+        /// <summary>Hazard stripes across the narrowest openings between walls (doors and chokes, 2.2 to 6.5 m wide).</summary>
+        static void Chokes(MeshKit k, MapDef map, float density)
+        {
+            int limit = Mathf.RoundToInt(14f * density);
+            int count = 0;
+            foreach (Choke g in FindChokes(map))
+            {
+                if (count++ >= limit) break;
                 Vector2 dir = (g.B - g.A).normalized;
                 Vector2 side = new Vector2(-dir.y, dir.x) * 0.2f;
                 Vector2 a = g.A + dir * 0.12f, b = g.B - dir * 0.12f;
                 float len = (b - a).magnitude;
                 float u = len / 0.8f;
-                var white = new Color(1f, 1f, 1f, 0.85f);
+                var white = new Color(1f, 1f, 1f, 0.7f);
                 k.QuadUv(0, W(a - side, 0.012f), W(b - side, 0.012f), W(b + side, 0.012f), W(a + side, 0.012f), Vector3.up, white,
                          new Vector2(0f, 0f), new Vector2(u, 0f), new Vector2(u, 1f), new Vector2(0f, 1f));
             }
@@ -395,12 +577,16 @@ namespace Saltworks
             }
         }
 
-        /// <summary>Blocky buildings in a ring well outside the map, softened by the fog into a skyline.</summary>
+        /// <summary>
+        /// Buildings in a ring well outside the map, softened by the fog into a skyline: each a block with floor
+        /// bands (slab edges and window rows), a setback upper storey on some, and rooftop water tanks, plant rooms or
+        /// masts, so the horizon reads as a city and not as boxes.
+        /// </summary>
         static void Skyline(MeshKit k, float w, float h, float density, System.Random rng)
         {
             var c = new Vector2(w * 0.5f, h * 0.5f);
             float r0 = Mathf.Max(w, h) * 0.5f + 70f;
-            int n = Mathf.Clamp(Mathf.RoundToInt(40f * density), 12, 56);
+            int n = Mathf.Clamp(Mathf.RoundToInt(40f * density), 14, 56);
             for (int i = 0; i < n; i++)
             {
                 float a = (i + (float)rng.NextDouble() * 0.7f) / n * Mathf.PI * 2f;
@@ -410,13 +596,39 @@ namespace Saltworks
                 float bh = 12f + (float)rng.NextDouble() * (float)rng.NextDouble() * 50f;
                 float yaw = (float)rng.NextDouble() * 90f;
                 float v = 0.5f + (float)rng.NextDouble() * 0.15f;
-                var col = new Color(v * 0.92f, v * 0.95f, v, 0f);
-                k.Box(0, MeshKit.At(new Vector3(p.x, bh * 0.5f - 0.1f, p.y), new Vector3(0f, yaw, 0f)), new Vector3(bw, bh, bd), 0f, col);
-                if (rng.NextDouble() < 0.5)
+                var col = new Color(v * 0.95f, v * 0.94f, v * 0.92f, 0f);
+                var band = new Color(v * 0.62f, v * 0.66f, v * 0.72f, 0f);
+                var slab = new Color(v * 1.08f, v * 1.06f, v * 1.02f, 0f);
+                Matrix4x4 m = MeshKit.At(new Vector3(p.x, 0f, p.y), new Vector3(0f, yaw, 0f));
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, bh * 0.5f - 0.1f, 0f), Quaternion.identity, Vector3.one), new Vector3(bw, bh, bd), 0f, col);
+                // Window rows (recessed-looking dark bands) and slab edges every storey.
+                float storey = 3.4f + (float)rng.NextDouble() * 0.6f;
+                for (float y = storey; y < bh - 1.5f; y += storey)
                 {
-                    float th = 2f + (float)rng.NextDouble() * 6f;
-                    var col2 = new Color(v * 0.85f, v * 0.88f, v * 0.94f, 0f);
-                    k.Box(0, MeshKit.At(new Vector3(p.x, bh + th * 0.5f, p.y), new Vector3(0f, yaw, 0f)), new Vector3(bw * 0.4f, th, bd * 0.4f), 0f, col2);
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, y - storey * 0.45f, 0f), Quaternion.identity, Vector3.one), new Vector3(bw + 0.08f, storey * 0.42f, bd + 0.08f), 0f, band);
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, y, 0f), Quaternion.identity, Vector3.one), new Vector3(bw + 0.3f, 0.25f, bd + 0.3f), 0f, slab);
+                }
+                // Parapet.
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, bh + 0.4f, 0f), Quaternion.identity, Vector3.one), new Vector3(bw + 0.2f, 0.8f, bd + 0.2f), 0f, slab);
+                double roof = rng.NextDouble();
+                if (roof < 0.35)
+                {
+                    float th = 3f + (float)rng.NextDouble() * 6f;
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(bw * 0.1f, bh + th * 0.5f, 0f), Quaternion.identity, Vector3.one), new Vector3(bw * 0.55f, th, bd * 0.55f), 0f, col);
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(bw * 0.1f, bh + th * 0.5f, 0f), Quaternion.identity, Vector3.one), new Vector3(bw * 0.55f + 0.06f, th * 0.35f, bd * 0.55f + 0.06f), 0f, band);
+                }
+                else if (roof < 0.7)
+                {
+                    // A water tank on legs.
+                    Vector3 tp = m.MultiplyPoint3x4(new Vector3(-bw * 0.2f, bh + 3.2f, bd * 0.15f));
+                    k.Cylinder(0, MeshKit.Along(tp, Vector3.up), 1.6f, 2.6f, 10, band);
+                    k.Box(0, MeshKit.At(tp + Vector3.down * 2.1f, new Vector3(0f, yaw, 0f)), new Vector3(2.4f, 1.8f, 2.4f), 0f, new Color(v * 0.5f, v * 0.5f, v * 0.52f, 0f));
+                }
+                else if (roof < 0.85)
+                {
+                    Vector3 mp = m.MultiplyPoint3x4(new Vector3(bw * 0.25f, bh, -bd * 0.2f));
+                    float mh = 6f + (float)rng.NextDouble() * 8f;
+                    k.Cylinder(0, MeshKit.Along(mp + Vector3.up * mh * 0.5f, Vector3.up), 0.25f, mh, 6, band, true, false);
                 }
             }
         }

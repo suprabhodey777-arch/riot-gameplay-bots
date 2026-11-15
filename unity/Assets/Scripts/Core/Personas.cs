@@ -11,7 +11,23 @@ namespace Saltworks
     public class Persona
     {
         public string Id;
-        public string Name;
+        /// <summary>The persona's own name (the built-in table's, or the bridge's).</summary>
+        public string DefaultName;
+
+        /// <summary>
+        /// The name shown everywhere in the client: the player's custom name for this persona when one is set
+        /// (Personas.SetCustomName), else the default. Setting it sets the default.
+        /// </summary>
+        public string Name
+        {
+            get
+            {
+                string custom = Personas.CustomName(Id);
+                return string.IsNullOrEmpty(custom) ? DefaultName : custom;
+            }
+            set => DefaultName = value;
+        }
+
         public string Style;
         public string Tagline;
         /// <summary>The agent whose kit the persona plays (its figure carries that agent's pack).</summary>
@@ -67,6 +83,121 @@ namespace Saltworks
                 Primary = new Color(0.4f, 1f, 0.6f), Secondary = new Color(1f, 1f, 1f),
             },
         };
+
+        // ---- custom display names (PlayerPrefs "sw.persona.name.<id>") ------------------------------
+        public const int MaxNameLength = 18;
+        const string NamePref = "sw.persona.name.";
+        static readonly Dictionary<string, string> customNames = new Dictionary<string, string>();
+        static readonly HashSet<string> namesLoaded = new HashSet<string>();
+
+        /// <summary>The player's name for persona `id`, or null when none is set.</summary>
+        public static string CustomName(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            if (!namesLoaded.Contains(id))
+            {
+                namesLoaded.Add(id);
+                string saved = Clean(PlayerPrefs.GetString(NamePref + id, ""));
+                if (saved.Length > 0) customNames[id] = saved;
+            }
+            return customNames.TryGetValue(id, out string n) ? n : null;
+        }
+
+        /// <summary>Sets (or with an empty name clears) the player's name for persona `id`; `flush` writes PlayerPrefs to disk.</summary>
+        public static void SetCustomName(string id, string name, bool flush = true)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            namesLoaded.Add(id);
+            string clean = Clean(name);
+            Persona p = Get(id);
+            if (clean.Length == 0 || (p != null && clean == p.DefaultName))
+            {
+                customNames.Remove(id);
+                PlayerPrefs.DeleteKey(NamePref + id);
+            }
+            else
+            {
+                customNames[id] = clean;
+                PlayerPrefs.SetString(NamePref + id, clean);
+            }
+            if (flush) PlayerPrefs.Save();
+        }
+
+        /// <summary>What a name field keeps while the player types: no control characters or brackets, capped (spaces kept).</summary>
+        public static string FilterTyped(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char ch in s)
+            {
+                if (char.IsControl(ch) || ch == '<' || ch == '>') continue;
+                if (sb.Length >= MaxNameLength) break;
+                sb.Append(ch);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>A typed name made safe to show: printable characters only, no rich-text brackets, trimmed, capped.</summary>
+        public static string Clean(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char ch in s)
+            {
+                if (char.IsControl(ch) || ch == '<' || ch == '>') continue;
+                sb.Append(ch);
+                if (sb.Length >= MaxNameLength) break;
+            }
+            return sb.ToString().Trim();
+        }
+
+        /// <summary>
+        /// Text from the bridge with every persona's default name (whole words, any case) replaced by the player's
+        /// custom name, so chat and callouts use the names the player chose. Unchanged when no custom name is set.
+        /// </summary>
+        public static string Rename(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            foreach (Persona p in All)
+            {
+                string custom = CustomName(p.Id);
+                if (string.IsNullOrEmpty(custom) || string.IsNullOrEmpty(p.DefaultName)) continue;
+                text = ReplaceWord(text, p.DefaultName, custom);
+                if (!string.Equals(p.Id, p.DefaultName, System.StringComparison.OrdinalIgnoreCase)) text = ReplaceWord(text, p.Id, custom);
+            }
+            return text;
+        }
+
+        static string ReplaceWord(string text, string word, string with)
+        {
+            int at = 0;
+            while (at < text.Length)
+            {
+                int i = text.IndexOf(word, at, System.StringComparison.OrdinalIgnoreCase);
+                if (i < 0) break;
+                int end = i + word.Length;
+                bool startOk = i == 0 || !char.IsLetterOrDigit(text[i - 1]);
+                bool endOk = end >= text.Length || !char.IsLetterOrDigit(text[end]);
+                if (startOk && endOk)
+                {
+                    text = text.Substring(0, i) + with + text.Substring(end);
+                    at = i + with.Length;
+                }
+                else at = i + 1;
+            }
+            return text;
+        }
+
+        /// <summary>The persona a chat user name or id refers to (id or default name, any case), or null.</summary>
+        public static Persona Match(string nameOrId)
+        {
+            if (string.IsNullOrEmpty(nameOrId)) return null;
+            string s = nameOrId.Trim();
+            foreach (Persona p in All)
+                if (string.Equals(p.Id, s, System.StringComparison.OrdinalIgnoreCase) || string.Equals(p.DefaultName, s, System.StringComparison.OrdinalIgnoreCase))
+                    return p;
+            return null;
+        }
 
         public static Persona Get(string id)
         {

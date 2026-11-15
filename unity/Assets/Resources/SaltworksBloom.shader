@@ -17,6 +17,10 @@ Shader "Hidden/Saltworks/Bloom"
     sampler2D _BloomTex;
     // x threshold, y soft knee, z intensity
     float4 _Params;
+    // Colour grading globals (Saltworks.WorldLook): x saturation, y contrast, z vignette, w on.
+    float4 _SaltGrade;
+    float4 _SaltGradeLift;
+    float4 _SaltGradeGain;
 
     struct v2f
     {
@@ -63,6 +67,19 @@ Shader "Hidden/Saltworks/Bloom"
         if (_MainTex_TexelSize.y < 0) uvb.y = 1 - uvb.y;
         #endif
         c.rgb += tex2D(_BloomTex, uvb).rgb * _Params.z;
+        // Per-palette colour grading (WorldLook sets the globals; w = 0 leaves the image untouched):
+        // lift tints the shadows, gain the highlights, then saturation, a gentle contrast and a soft vignette.
+        if (_SaltGrade.w > 0.5)
+        {
+            half3 col = max(c.rgb, 0);
+            col = col * _SaltGradeGain.rgb + _SaltGradeLift.rgb * (1 - saturate(col));
+            half l = dot(col, half3(0.2126, 0.7152, 0.0722));
+            col = lerp(l.xxx, col, _SaltGrade.x);
+            col = max((col - 0.4) * _SaltGrade.y + 0.4, 0);
+            float2 d = i.uv - 0.5;
+            col *= 1 - _SaltGrade.z * dot(d, d) * 1.6;
+            c.rgb = col;
+        }
         return c;
     }
     ENDCG

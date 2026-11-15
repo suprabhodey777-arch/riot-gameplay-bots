@@ -613,6 +613,7 @@ namespace Saltworks
                     b.SetPose(InterpPos(b.Id), InterpHeading(b.Id));
                     b.SetCrouch(st.crouch);
                     b.SetWeapon(st.WeaponInHand);
+                    b.Rig?.SetReloading(st.reloadingUntilTick > Curr.tick);
                 }
                 b.Animate();
                 // Only enemies revealed for the player's team are drawn through walls.

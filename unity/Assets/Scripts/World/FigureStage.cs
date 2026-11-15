@@ -94,6 +94,14 @@ namespace Saltworks
             rimLight.intensity = 2.2f;
             rimLight.color = new Color(0.45f, 0.8f, 1f);
             rimLight.shadows = LightShadows.None;
+            var fill = new GameObject("Fill light").AddComponent<Light>();
+            fill.transform.SetParent(transform, false);
+            fill.transform.localPosition = new Vector3(2.4f, 1.3f, -2.6f);
+            fill.type = LightType.Point;
+            fill.range = 10f;
+            fill.intensity = 0.55f;
+            fill.color = new Color(1f, 0.9f, 0.8f);
+            fill.shadows = LightShadows.None;
         }
 
         void OnDestroy()
@@ -163,7 +171,7 @@ namespace Saltworks
                 rk.Cylinder(0, MeshKit.At(new Vector3(0f, 0.005f, 0f), new Vector3(90f, 0f, 0f)), 0.58f, 0.02f, 32, Color.white, false, false);
                 Mesh ring = rk.ToMesh("Turntable ring");
                 owned.Add(ring);
-                Material ringMat = Mats.Glow(sp.Accent, 2.2f);
+                Material ringMat = Mats.Glow(sp.Accent, 1.1f);
                 owned.Add(ringMat);
                 var rgo = new GameObject("Ring");
                 rgo.transform.SetParent(holder, false);
@@ -212,7 +220,7 @@ namespace Saltworks
                 float sc = Mathf.Lerp(s.Spin.localScale.x, target, 1f - Mathf.Exp(-dt * 8f));
                 s.Spin.localScale = new Vector3(sc, sc, sc);
                 s.Rig.Animate(dt, Vector3.zero, 0f, false, true);
-                if (s.Ring != null && s.Ring.HasProperty("_EmissionColor")) s.Ring.SetColor("_EmissionColor", s.Accent * (hero ? 3.2f : 1.6f + 0.3f * Mathf.Sin(Time.unscaledTime * 2f + i)));
+                if (s.Ring != null && s.Ring.HasProperty("_EmissionColor")) s.Ring.SetColor("_EmissionColor", s.Accent * (hero ? 1.8f : 0.8f + 0.15f * Mathf.Sin(Time.unscaledTime * 2f + i)));
             }
             frame++;
             if (inRound && frame % 3 != 0) return;
