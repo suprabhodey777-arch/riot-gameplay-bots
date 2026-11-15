@@ -15,6 +15,7 @@ export type ClientMessage =
   | { type: 'pick_map'; map: string }
   | { type: 'pick_agent'; agent: AgentId }
   | { type: 'next_drill' }
+  | { type: 'retry' }
   | { type: 'rehearse'; index: number }
   | { type: 'versus'; archetype: ArchetypeId; skill: Skill }
   | { type: 'input'; input: BridgeInput }

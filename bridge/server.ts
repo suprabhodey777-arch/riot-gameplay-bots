@@ -77,6 +77,11 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   let played: MatchLog[] = [];
   let session = CoachingSession.fromHistory([], 'player', options);
   let active: { run: DrillRun; initial: SimState; versus: boolean } | null = null;
+  /** The last drill started, so `retry` can play the same situation again (same seed, same bots). */
+  let lastDrill: { drill: DrillSpec; versus: boolean } | null = null;
+  /** The map the client last received, so a drill on another map (a rehearsal) brings its own. */
+  // A client that skipped hello still has the default map in hand (the one hello would send).
+  let clientMap: string = session.toJSON().mapId;
   let sequence = 0;
   let fullMatch: MatchGame | null = null;
   let buyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -118,11 +123,16 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
     report();
   };
   const begin = (drill: DrillSpec, versus = false): void => {
+    lastDrill = { drill, versus };
     const selected = withPlayerAgent(drill, pickedAgent);
     const spec = { ...selected, player: { ...selected.player, id: session.playerId } };
     if (!versus) {
       const state = session.toJSON();
       session = CoachingSession.fromJSON({ ...state, current: spec }, options);
+    }
+    if (spec.mapId !== clientMap) {
+      clientMap = spec.mapId;
+      send({ type: 'map', map: loadMap(spec.mapId) });
     }
     const run = startDrill(spec);
     active = { run, initial: run.state(), versus };
@@ -132,14 +142,15 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   const handle = async (raw: unknown): Promise<void> => {
     if (!object(raw) || typeof raw.type !== 'string') throw new Error('Expected an object with a type');
     const msg = raw as unknown as ClientMessage;
-    if (fullMatch && ['match', 'load_history', 'next_drill', 'rehearse', 'versus', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('Abandon the match before changing mode');
+    if (fullMatch && ['match', 'load_history', 'next_drill', 'retry', 'rehearse', 'versus', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('Abandon the match before changing mode');
     if (protocol === 'bots-wire.1' && ['maps', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('This command requires bots-wire.2');
     switch (msg.type) {
       case 'hello':
         if (fullMatch && msg.protocol !== PROTOCOL) throw new Error('Match mode requires bots-wire.3');
         if (msg.protocol !== PROTOCOL && msg.protocol !== 'bots-wire.1' && msg.protocol !== 'bots-wire.2') throw new Error(`Expected protocol ${PROTOCOL}`);
         protocol = msg.protocol;
-        send({ type: 'hello', protocol, map: loadMap(session.toJSON().mapId), rules: RULES });
+        clientMap = session.toJSON().mapId;
+        send({ type: 'hello', protocol, map: loadMap(clientMap), rules: RULES });
         break;
       case 'maps':
         send({ type: 'maps', maps: PLAYABLE_MAPS.map(id => ({ id, name: loadMap(id).name })) });
@@ -148,6 +159,7 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         const map = loadMap(msg.map);
         pickedMap = map.id;
         session = CoachingSession.fromJSON({ ...session.toJSON(), mapId: map.id }, options);
+        clientMap = map.id;
         send({ type: 'map', map });
         break;
       }
@@ -177,6 +189,13 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         played = [];
         session = CoachingSession.fromJSON({ ...replacement.toJSON(), playerAgent: pickedAgent }, options);
         report();
+        break;
+      }
+      case 'retry': {
+        if (!lastDrill) throw new Error('No drill to retry');
+        const again = lastDrill;
+        if (active) await finish(true);
+        begin(again.drill, again.versus);
         break;
       }
       case 'next_drill':

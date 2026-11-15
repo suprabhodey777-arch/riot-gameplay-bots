@@ -148,14 +148,18 @@ export class CoachingSession {
    * moment rebuilt with the same side, positions, enemies, clock and spike. Practice seeds only.
    */
   rehearsals(): DrillSpec[] {
-    const map = loadMap(this.s.mapId);
     const finding = this.s.report.findings[0];
     // Only a credible weakness has mistakes to rehearse; a severity of 0 means the evidence is not there.
     if (!finding || finding.sampleSize === 0 || finding.severity <= 0) return [];
+    // Each moment is rebuilt on the map it happened on, whatever map new drills use: picking a
+    // different map used to drop every mistake from the history and leave nothing to rehearse.
     return finding.evidence
-      .filter((e) => e.situation && (this.s.historyMaps?.[e.matchId] ?? this.s.historyMapId ?? this.s.mapId) === this.s.mapId)
+      .filter((e) => e.situation)
       .slice(0, 5)
-      .map((e, i) => withPlayerAgent(rehearsalDrill(e, finding, map, 1 + ((this.s.seed * 7919 + (i + 1) * 104729) % (EXAM_SEED_BASE - 1))), this.s.playerAgent));
+      .map((e, i) => {
+        const map = loadMap(this.s.historyMaps?.[e.matchId] ?? this.s.historyMapId ?? this.s.mapId);
+        return withPlayerAgent(rehearsalDrill(e, finding, map, 1 + ((this.s.seed * 7919 + (i + 1) * 104729) % (EXAM_SEED_BASE - 1))), this.s.playerAgent);
+      });
   }
 
   /**

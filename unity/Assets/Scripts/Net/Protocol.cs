@@ -51,6 +51,12 @@ namespace Saltworks
             return new JObject { ["type"] = "next_drill" };
         }
 
+        /// <summary>Play the last drill again: same situation, same seed, same bots.</summary>
+        public static JObject Retry()
+        {
+            return new JObject { ["type"] = "retry" };
+        }
+
         public static JObject Rehearse(int index)
         {
             return new JObject { ["type"] = "rehearse", ["index"] = index };
@@ -312,9 +318,27 @@ namespace Saltworks
         public string secondary;
         /// <summary>"primary" or "secondary".</summary>
         public string slot;
-        public int? ammo;
-        public int? reserve;
+        /// <summary>Contract v5 sends a count per weapon ({ "lancer": 25, "pin": 12 }); a number is also accepted.</summary>
+        public JToken ammo;
+        public JToken reserve;
         public int reloadingUntilTick;
+
+        /// <summary>Rounds in the magazine of the weapon in hand, or null when the bridge does not say.</summary>
+        public int? AmmoInHand => CountFor(ammo, WeaponInHand);
+        /// <summary>Reserve rounds for the weapon in hand, or null when the bridge does not say.</summary>
+        public int? ReserveInHand => CountFor(reserve, WeaponInHand);
+
+        static int? CountFor(JToken t, string weapon)
+        {
+            if (t == null) return null;
+            if (t.Type == JTokenType.Integer || t.Type == JTokenType.Float) return (int)(double)t;
+            if (t is JObject o && !string.IsNullOrEmpty(weapon))
+            {
+                JToken v = o[weapon];
+                if (v != null && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float)) return (int)(double)v;
+            }
+            return null;
+        }
         public bool scoped;
         /// <summary>Not in the contract; read if a bridge sends it, for the bots' crouch pose.</summary>
         public bool crouch;

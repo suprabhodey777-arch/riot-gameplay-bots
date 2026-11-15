@@ -306,6 +306,11 @@ namespace Saltworks
             Send(Wire.NextDrill(), "drill");
         }
 
+        public void RequestRetry()
+        {
+            Send(Wire.Retry(), "drill");
+        }
+
         public void RequestRehearsal(int index)
         {
             Send(Wire.Rehearse(index), "drill");

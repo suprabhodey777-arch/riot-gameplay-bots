@@ -122,16 +122,25 @@ describe('wire v2 additions', () => {
     expect(await c.next('agent')).toMatchObject({ agent: 'pike', kit: { smoke: 1, recon: 2 } });
     c.send(load);
     const report = await c.next('report');
-    expect(report.rehearsals).toEqual([]);
+    // The history was played on Saltworks: its mistakes are rehearsed there, whatever map is picked.
+    expect(report.rehearsals.length).toBeGreaterThan(0);
     c.send({ type: 'next_drill' });
+    expect((await c.next('map')).map.id).toBe('saltworks');
     const drill = await c.next('drill');
-    expect(drill.spec.mapId).toBe('ironvale');
+    expect(drill.spec.mapId).toBe('saltworks');
     expect(drill.playerAgent).toBe('pike');
     expect(drill.spec.player.agent).toBe('pike');
     expect(drill.bots.every(b => b.agent)).toBe(true);
     expect(drill.state.agents.find(a => a.id === drill.playerId)?.abilities).toEqual({ smoke: 1, flash: 0, dash: 0, recon: 2 });
     c.send({ type: 'input', input: { ...idleInput('ignored'), reconAt: drill.state.agents.find(a => a.id === drill.playerId)!.pos } });
     expect((await c.next('step')).events.some(e => e.type === 'recon')).toBe(true);
+    // New drills (here a versus round) are generated on the picked map, and the client is sent it back.
+    c.send({ type: 'versus', archetype: 'entry-duelist', skill: 'entry' });
+    await c.next('result');
+    await c.next('debrief');
+    await c.next('report');
+    expect((await c.next('map')).map.id).toBe('ironvale');
+    expect((await c.next('drill')).spec.mapId).toBe('ironvale');
   }, 60000);
 
   it('wire v1 strips all v4 fields and new events, including nested result events', async () => {

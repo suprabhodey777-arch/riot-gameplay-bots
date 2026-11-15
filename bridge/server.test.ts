@@ -142,6 +142,45 @@ describe('Unity bridge TCP', () => {
     expect((await c.next('drill')).spec.id).not.toBe(expected.id);
   }, 60000);
 
+  it('rehearses mistakes on the map they happened on, even after picking another map', async () => {
+    const c = await client();
+    c.send({ type: 'hello', protocol: PROTOCOL });
+    await c.next('hello');
+    c.send({ type: 'pick_map', map: 'ironvale' });
+    await c.next('map');
+    c.send(load);
+    const report = await c.next('report');
+    expect(report.rehearsals.length).toBeGreaterThan(0);
+    c.send({ type: 'rehearse', index: 0 });
+    const map = await c.next('map');
+    expect(map.map.id).toBe('saltworks');
+    const drill = await c.next('drill');
+    expect(drill.spec.mapId).toBe('saltworks');
+    c.send({ type: 'abandon' });
+    await c.next('result');
+    await c.next('debrief');
+    await c.next('report');
+  }, 60000);
+
+  it('retry plays the same drill again, and refuses with nothing to retry', async () => {
+    const c = await client();
+    c.send({ type: 'retry' });
+    expect((await c.next('error')).message).toMatch(/retry/);
+    c.send(load);
+    await c.next('report');
+    c.send({ type: 'next_drill' });
+    const first = await c.next('drill');
+    c.send({ type: 'abandon' });
+    await c.next('result');
+    await c.next('debrief');
+    await c.next('report');
+    c.send({ type: 'retry' });
+    const again = await c.next('drill');
+    expect(again.spec.id).toBe(first.spec.id);
+    expect(again.spec.seed).toBe(first.spec.seed);
+    expect(again.state).toEqual(first.state);
+  }, 60000);
+
   it('abandons an existing drill before starting another and serializes pipelined commands', async () => {
     const c = await client();
     c.send(load);

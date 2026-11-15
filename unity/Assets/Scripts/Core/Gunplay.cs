@@ -148,9 +148,11 @@ namespace Saltworks
                 bool p = me.slot != "secondary" && Primary != null;
                 if (p != OnPrimary) BeginSwitch(p, now, false);
             }
-            if (me.reserve.HasValue) Reserve = me.reserve.Value;
-            if (me.ammo.HasValue && now - lastLocalAmmoChange > 0.4f && now - lastLocalSwitch > 0.5f && !reloadActive)
-                Ammo = Mathf.Max(0, me.ammo.Value);
+            int? reserveNow = me.ReserveInHand;
+            int? ammoNow = me.AmmoInHand;
+            if (reserveNow.HasValue) Reserve = reserveNow.Value;
+            if (ammoNow.HasValue && now - lastLocalAmmoChange > 0.4f && now - lastLocalSwitch > 0.5f && !reloadActive)
+                Ammo = Mathf.Max(0, ammoNow.Value);
             if (s != null && me.reloadingUntilTick > s.tick && !reloadActive)
             {
                 float left = (me.reloadingUntilTick - s.tick) / Mathf.Max(1f, tickRate);

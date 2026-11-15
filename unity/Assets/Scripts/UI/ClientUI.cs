@@ -1292,6 +1292,7 @@ namespace Saltworks
             // Like the 2D client, wait for the debrief before the next drill (with a timeout in case it never comes).
             GUI.enabled = Idle && (db != null || Time.unscaledTime - Game.ResultAt > 15f);
             if (Btn("Next drill", primary, GUILayout.Height(48f))) Game.Do(Game.RequestNextDrill);
+            if (Btn("Retry this drill", button, GUILayout.Height(48f))) Game.Do(Game.RequestRetry);
             GUI.enabled = true;
             if (Btn("Back to report", button, GUILayout.Height(48f))) Game.Do(Game.BackToReport);
             GUILayout.EndHorizontal();
