@@ -30,12 +30,12 @@ namespace Saltworks
 
         static void EnsureMaterials()
         {
-            if (metalMat == null) metalMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.35f, 0.8f, 0.6f, 1f);
+            if (metalMat == null) metalMat = Mats.Weathered(Mats.World(Color.white, Textures.Grain(), null, 0f, 0.35f, 0.8f, 0.6f, 1f), 0.5f);
             if (skyMat == null) skyMat = Mats.World(Color.white, Texture2D.whiteTexture, null, 0f, 0.1f, 0f, 0.1f, 1f);
             if (woodMat == null)
             {
                 Textures.Pair cr = Textures.Crate();
-                woodMat = Mats.World(Color.white, cr.Albedo, cr.Normal, 0.8f, 0.18f, 0f, 0.18f, 1f);
+                woodMat = Mats.Weathered(Mats.World(Color.white, cr.Albedo, cr.Normal, 0.8f, 0.18f, 0f, 0.18f, 1f), 0.7f);
             }
             if (lampMat == null) lampMat = Mats.Glow(LampColor, 1.4f);
             if (hazardMat == null) hazardMat = Mats.Decal(Textures.Hazard(), Color.white, 2455);
@@ -761,10 +761,10 @@ namespace Saltworks
                 float bw = 10f + (float)rng.NextDouble() * 20f, bd = 10f + (float)rng.NextDouble() * 20f;
                 float bh = 12f + (float)rng.NextDouble() * (float)rng.NextDouble() * 50f;
                 float yaw = (float)rng.NextDouble() * 90f;
-                float v = 0.5f + (float)rng.NextDouble() * 0.15f;
-                var col = new Color(v * 0.95f, v * 0.94f, v * 0.92f, 0f);
+                float v = 0.34f + (float)rng.NextDouble() * 0.12f; // dark against the bright horizon, so the skyline reads as a silhouette
+                var col = new Color(v * 0.98f, v * 0.92f, v * 0.88f, 0f);
                 var band = new Color(v * 0.62f, v * 0.66f, v * 0.72f, 0f);
-                var slab = new Color(v * 1.08f, v * 1.06f, v * 1.02f, 0f);
+                var slab = new Color(v * 1.1f, v * 1.04f, v * 0.98f, 0f);
                 Matrix4x4 m = MeshKit.At(new Vector3(p.x, 0f, p.y), new Vector3(0f, yaw, 0f));
                 k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, bh * 0.5f - 0.1f, 0f), Quaternion.identity, Vector3.one), new Vector3(bw, bh, bd), 0f, col);
                 // Window rows (recessed-looking dark bands) and slab edges every storey.

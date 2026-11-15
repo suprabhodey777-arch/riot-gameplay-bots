@@ -11,7 +11,7 @@ namespace Saltworks
 {
     public partial class ClientUI
     {
-        GUIStyle plateStroke, displayXL, displayL, displayM, displayLC, displayMC, titleDisplay, btnText, btnTextL, btnTextDark, kickerStyle, stingTitle, tinyCaps;
+        GUIStyle navItem, plateStroke, displayXL, displayL, displayM, displayLC, displayMC, titleDisplay, btnText, btnTextL, btnTextDark, kickerStyle, stingTitle, tinyCaps;
         GUIStyle segText, sectionStyle, subStyle, chipStyle, fieldStyle, sliderBare, titleSmall, bodyBoldMid, cardTitleL, smallMid, siteLetter, calloutStyle, bodyMid, valueStyle;
         AudioSource uiAudio;
         readonly Dictionary<int, float> hoverAnim = new Dictionary<int, float>();
@@ -25,21 +25,22 @@ namespace Saltworks
         void EnsureBroadcastStyles()
         {
             GUIStyle lbl = GUI.skin.label;
-            plateStroke = new GUIStyle { border = Theme.Border(Theme.Cut) };
-            plateStroke.normal.background = Own(Theme.Chamfer(new Color(1f, 1f, 1f, 0f), Theme.Cut, Color.white, 1.4f));
+            plateStroke = new GUIStyle { border = Theme.Border(Theme.PrimaryCut) };
+            plateStroke.normal.background = Own(Theme.Chamfer(new Color(1f, 1f, 1f, 0f), Theme.PrimaryCut, Color.white, 1.2f, false));
             displayXL = Text(lbl, 96, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             displayL = Text(lbl, 54, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             displayM = Text(lbl, 32, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             displayLC = Text(lbl, 54, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             displayMC = Text(lbl, 32, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             titleDisplay = Text(lbl, 40, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
-            btnText = Text(lbl, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
-            btnTextL = Text(lbl, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
-            btnTextDark = Text(lbl, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
+            navItem = DisplayText(lbl, 20, TextAnchor.MiddleLeft);
+            btnText = DisplayText(lbl, 18, TextAnchor.MiddleCenter);
+            btnTextL = DisplayText(lbl, 18, TextAnchor.MiddleLeft);
+            btnTextDark = DisplayText(lbl, 18, TextAnchor.MiddleCenter);
             kickerStyle = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             stingTitle = Text(lbl, 110, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             tinyCaps = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
-            segText = Text(lbl, 14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
+            segText = DisplayText(lbl, 15, TextAnchor.MiddleCenter);
             sectionStyle = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             subStyle = Text(lbl, Theme.Body, FontStyle.Normal, Color.white, TextAnchor.UpperLeft, true);
             chipStyle = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
@@ -55,6 +56,7 @@ namespace Saltworks
             fieldStyle = new GUIStyle(GUI.skin.textField)
             {
                 fontSize = 17,
+                font = Theme.BodyBoldFont,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleLeft,
                 wordWrap = false,
@@ -92,10 +94,12 @@ namespace Saltworks
             return u;
         }
 
-        /// <summary>Upper-case with tracking: a space between letters, three between words ("L I V E"). Cached.</summary>
+        /// <summary>Upper-case with tracking: a space between letters, three between words ("LIVE"). Cached.</summary>
         string Spaced(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
+            // The display and label faces carry their own spacing: tracking by inserted spaces read as a prototype.
+            if (s != null) return Upper(s);
             if (spacedCache.TryGetValue(s, out string r)) return r;
             var sb = new System.Text.StringBuilder(s.Length * 2);
             string u = s.ToUpperInvariant();
@@ -187,12 +191,19 @@ namespace Saltworks
         void PlateLine(Rect r, Color c)
         {
             if (Event.current.type != EventType.Repaint || plateStroke == null || c.a <= 0.001f) return;
+            Fill(new Rect(r.x, r.y, r.width, 1f), c);
+            Fill(new Rect(r.x, r.yMax - 1f, r.width, 1f), c);
+            Fill(new Rect(r.x, r.y + 1f, 1f, r.height - 2f), c);
+            Fill(new Rect(r.xMax - 1f, r.y + 1f, 1f, r.height - 2f), c);
+        }
+
+        /// <summary>The outline of the primary button's shape (one chamfer, bottom right).</summary>
+        void PrimaryLine(Rect r, Color c)
+        {
+            if (Event.current.type != EventType.Repaint || plateStroke == null || c.a <= 0.001f) return;
             if (Mathf.Min(r.width, r.height) < 26f)
             {
-                Fill(new Rect(r.x, r.y, r.width, 1f), c);
-                Fill(new Rect(r.x, r.yMax - 1f, r.width, 1f), c);
-                Fill(new Rect(r.x, r.y + 1f, 1f, r.height - 2f), c);
-                Fill(new Rect(r.xMax - 1f, r.y + 1f, 1f, r.height - 2f), c);
+                PlateLine(r, c);
                 return;
             }
             Color old = GUI.color;
@@ -205,8 +216,7 @@ namespace Saltworks
         void Glass(Rect r, float a = 1f)
         {
             Plate(r, new Color(Theme.PanelC.r, Theme.PanelC.g, Theme.PanelC.b, Theme.PanelC.a * a));
-            PlateLine(r, new Color(1f, 1f, 1f, 0.09f * a));
-            Fill(new Rect(r.x + Theme.Cut + 4f, r.y + 1f, Mathf.Max(0f, r.width * 0.4f), 1f), new Color(1f, 1f, 1f, 0.12f * a));
+            PlateLine(r, new Color(1f, 1f, 1f, 0.10f * a));
         }
 
         /// <summary>An accent rule that grows from the left as `k` goes 0 to 1, with a soft halo.</summary>
@@ -215,10 +225,6 @@ namespace Saltworks
             if (k <= 0.001f || Event.current.type != EventType.Repaint) return;
             float e = Theme.Ease(k);
             var g = new Rect(r.x, r.y, r.width * e, r.height);
-            Color old = GUI.color;
-            GUI.color = new Color(c.r, c.g, c.b, 0.3f * c.a * old.a);
-            GUI.DrawTexture(new Rect(g.x - 3f, g.center.y - 6f, g.width + 6f, 12f), UiTex.NeonHalo, ScaleMode.StretchToFill, true);
-            GUI.color = old;
             Fill(g, c);
         }
 
@@ -254,8 +260,7 @@ namespace Saltworks
         /// <summary>Letter-spaced small caps with a short accent bar in front.</summary>
         void Kicker(Rect r, string text, Color c)
         {
-            Fill(new Rect(r.x, r.center.y - 5f, 3f, 10f), c);
-            Lbl(new Rect(r.x + 10f, r.y, r.width - 10f, r.height), Spaced(text), kickerStyle, c);
+            Lbl(r, Upper(text), kickerStyle, c);
         }
 
         /// <summary>
@@ -265,6 +270,14 @@ namespace Saltworks
         void Condensed(Rect r, string text, GUIStyle s, Color c, float k = 0.84f, bool shadow = false)
         {
             if (string.IsNullOrEmpty(text)) return;
+            // The display face is condensed already: squeeze only as far as a long string needs to fit.
+            k = Mathf.Clamp(r.width / Mathf.Max(1f, TextW(text, s)), 0.6f, 1f);
+            if (k > 0.985f)
+            {
+                if (shadow) Shadowed(r, text, s, c);
+                else Lbl(r, text, s, c);
+                return;
+            }
             TextAnchor a = s.alignment;
             bool centre = a == TextAnchor.UpperCenter || a == TextAnchor.MiddleCenter || a == TextAnchor.LowerCenter;
             bool right = a == TextAnchor.UpperRight || a == TextAnchor.MiddleRight || a == TextAnchor.LowerRight;
@@ -295,10 +308,14 @@ namespace Saltworks
             if (Event.current.type != EventType.Repaint) return;
             var full = new Rect(0f, 0f, W, H);
             Color old = GUI.color;
-            GUI.color = new Color(0.01f, 0.014f, 0.03f, 0.35f * strength * old.a);
+            Color b = Theme.Base;
+            // A calm grade over the orbiting map, then a dark gradient from the left for text and one from the bottom.
+            GUI.color = new Color(b.r, b.g, b.b, 0.66f * strength * old.a);
             GUI.DrawTexture(full, Texture2D.whiteTexture);
-            GUI.color = new Color(0.01f, 0.014f, 0.03f, 0.9f * strength * old.a);
-            GUI.DrawTexture(full, UiTex.Vignette, ScaleMode.StretchToFill, true);
+            GUI.color = new Color(1f, 1f, 1f, old.a);
+            if (fadeLeft != null) GUI.DrawTexture(new Rect(0f, 0f, W * 0.78f, H), fadeLeft, ScaleMode.StretchToFill, true);
+            GUI.color = new Color(1f, 1f, 1f, 0.85f * old.a);
+            if (fadeDown != null) GUI.DrawTexture(new Rect(0f, H * 0.55f, W, H * 0.45f), fadeDown, ScaleMode.StretchToFill, true);
             GUI.color = old;
         }
 
@@ -308,9 +325,8 @@ namespace Saltworks
             if (Event.current.type != EventType.Repaint) return;
             float k = Intro01;
             Color ac = Settings.Accent;
-            Shadow(r, 40f, 0.55f);
-            Neon(new Rect(r.x + Theme.Cut + 6f, r.y - 4f, Mathf.Min(220f, r.width * 0.3f), 2f), ac, k);
-            if (!string.IsNullOrEmpty(kick)) Kicker(new Rect(r.x + 4f, r.y - 28f, r.width, 18f), kick, new Color(ac.r, ac.g, ac.b, k));
+            Shadow(r, 48f, 0.5f);
+            if (!string.IsNullOrEmpty(kick)) Kicker(new Rect(r.x, r.y - 26f, r.width, 18f), kick, new Color(Theme.Muted.r, Theme.Muted.g, Theme.Muted.b, k));
         }
 
         /// <summary>The screen transition: the new screen fades up from dark over 0.25 s (its content also rises, see Centered).</summary>
@@ -320,7 +336,7 @@ namespace Saltworks
             const float Dur = 0.25f;
             if (t < 0f || t > Dur || Event.current.type != EventType.Repaint) return;
             float k = 1f - Theme.Ease(t / Dur);
-            Fill(new Rect(0f, 0f, W, H), new Color(0.01f, 0.012f, 0.02f, 0.55f * k));
+            Fill(new Rect(0f, 0f, W, H), new Color(Theme.Base.r, Theme.Base.g, Theme.Base.b, 0.55f * k));
         }
 
         /// <summary>True while the launch sting is on screen.</summary>
@@ -362,7 +378,7 @@ namespace Saltworks
                 return;
             }
             float a = 1f - fade;
-            Fill(new Rect(0f, 0f, W, H), new Color(0.01f, 0.012f, 0.02f, a));
+            Fill(new Rect(0f, 0f, W, H), new Color(Theme.Base.r, Theme.Base.g, Theme.Base.b, a));
             if (!stingHit && t >= 0.45f)
             {
                 stingHit = true;
@@ -373,9 +389,9 @@ namespace Saltworks
             float lk = Theme.Ease(Mathf.Clamp01((t - 0.1f) / 0.6f));
             Fill(new Rect(cx - 260f * lk, cy + 62f, 520f * lk, 2f), new Color(ac.r, ac.g, ac.b, a));
             float wk = Theme.Ease(Mathf.Clamp01((t - 0.35f) / 0.5f));
-            if (wk > 0f) Condensed(new Rect(0f, cy - 64f + (1f - wk) * 18f, W, 120f), Spaced("Saltworks"), stingTitle, new Color(1f, 1f, 1f, a * wk), 0.8f);
+            if (wk > 0f) Condensed(new Rect(0f, cy - 64f + (1f - wk) * 18f, W, 120f), Spaced("ValoDrill"), stingTitle, new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, a * wk), 0.8f);
             float ck = Mathf.Clamp01((t - 0.9f) / 0.5f);
-            if (ck > 0f) Lbl(new Rect(0f, cy + 80f, W, 24f), Spaced("Gameplay Coach"), centerSmall, new Color(Theme.Muted.r, Theme.Muted.g, Theme.Muted.b, a * ck));
+            if (ck > 0f) Lbl(new Rect(0f, cy + 80f, W, 24f), Spaced("Tactical training"), centerSmall, new Color(Theme.Muted.r, Theme.Muted.g, Theme.Muted.b, a * ck));
             Lbl(new Rect(0f, H - 44f, W, 20f), "PRESS ANY KEY TO SKIP", centerSmall, new Color(1f, 1f, 1f, 0.3f * a));
         }
 

@@ -41,6 +41,49 @@ namespace Saltworks
             return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
         }
 
+        /// <summary>Value noise with its own period per axis (tiles exactly): long straight streaks for wood grain and drips.</summary>
+        static float Value2(float u, float v, int periodX, int periodY, int seed)
+        {
+            float x = u * periodX, y = v * periodY;
+            int x0 = Mathf.FloorToInt(x), y0 = Mathf.FloorToInt(y);
+            float fx = x - x0, fy = y - y0;
+            fx = fx * fx * (3f - 2f * fx);
+            fy = fy * fy * (3f - 2f * fy);
+            int xa = Wrap(x0, periodX), xb = Wrap(x0 + 1, periodX), ya = Wrap(y0, periodY), yb = Wrap(y0 + 1, periodY);
+            float a = Hash(xa, ya, seed), b = Hash(xb, ya, seed), c = Hash(xa, yb, seed), d = Hash(xb, yb, seed);
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
+        static Texture2D weather;
+
+        /// <summary>
+        /// The global noise Saltworks/WorldLit weathers surfaces with (_SaltNoise): R broad blotches, G vertical
+        /// streaks (drips), B finer mottling. Set once as a global texture.
+        /// </summary>
+        public static Texture2D WeatherNoise()
+        {
+            if (weather != null) return weather;
+            const int n = 256;
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    float broad = Fbm(u, v, 4, 5, 901);
+                    broad = Mathf.Clamp01((broad - 0.5f) * 2.2f + 0.5f);
+                    float streak = Value2(u, v, 48, 3, 902) * 0.65f + Value2(u, v, 96, 5, 903) * 0.35f;
+                    streak *= 0.6f + 0.8f * Fbm(u, v, 6, 2, 904);
+                    float fine = Fbm(u, v, 16, 4, 905);
+                    fine = Mathf.Clamp01((fine - 0.5f) * 2f + 0.5f);
+                    px[y * n + x] = new Color32(B(broad), B(streak), B(fine), 255);
+                }
+            }
+            weather = Finish(New("SaltworksWeather", n, n, true, true, TextureWrapMode.Repeat), px);
+            Shader.SetGlobalTexture("_SaltNoise", weather);
+            return weather;
+        }
+
         /// <summary>Fractal sum of `octaves` value-noise layers, 0..1, tileable.</summary>
         public static float Fbm(float u, float v, int period, int octaves, int seed)
         {
@@ -306,8 +349,10 @@ namespace Saltworks
                 for (int x = 0; x < n; x++)
                 {
                     float u = x / (float)n, v = y / (float)n;
-                    float grainN = Fbm(u * 1f, v, 4, 2, 52 + b) * 0.5f + Value(u, v, 64, 53) * 0.2f + Mathf.Sin((v * 8f + Fbm(u, v, 8, 2, 54) * 0.6f) * 40f) * 0.3f;
-                    float c = tone + (grainN - 0.3f) * 0.08f;
+                    // Straight sawn grain along the board: long streaks, no waves.
+                    float grainN = Value2(u, v, 3, 128, 52 + b) * 0.55f + Value2(u, v, 6, 256, 53 + b) * 0.3f + Fbm(u, v, 32, 2, 54) * 0.15f;
+                    float wear = Fbm(u, v, 4, 3, 55);
+                    float c = tone * (0.9f + (grainN - 0.5f) * 0.22f) - Mathf.Max(0f, wear - 0.55f) * 0.25f;
                     float height = grainN * 0.3f;
                     if (ly < 2)
                     {
@@ -547,9 +592,11 @@ namespace Saltworks
                     int dj = Mathf.Abs(y - joint);
                     dj = Mathf.Min(dj, n - dj);
                     float tone = 0.74f + (Hash(board, 1, 132) - 0.5f) * 0.18f;
-                    float grain = Mathf.Sin((u * 40f + Fbm(u, v, 4, 3, 133 + board) * 3f) * Mathf.PI * 2f) * 0.5f + 0.5f;
+                    // Straight grain along each plank (long streaks down v), a different pattern per board.
+                    float grain = Value2(u, v, 160, 2, 133 + board) * 0.6f + Value2(u, v, 320, 4, 233 + board) * 0.4f;
                     float fine = Fbm(u, v, 32, 3, 134);
-                    float c = tone * (0.9f + grain * 0.1f) + (fine - 0.5f) * 0.06f;
+                    float worn = Fbm(u, v, 3, 3, 137);
+                    float c = tone * (0.84f + grain * 0.2f) + (fine - 0.5f) * 0.05f - Mathf.Max(0f, worn - 0.55f) * 0.3f;
                     float height = grain * 0.25f + fine * 0.2f;
                     float smooth = 0.2f;
                     // A knot now and then.
@@ -563,7 +610,7 @@ namespace Saltworks
                         smooth = 0.05f;
                     }
                     else if (edgeX < 3f) c *= 0.9f;
-                    px[y * n + x] = new Color32(B(c), B(c * 0.86f), B(c * 0.68f), B(smooth));
+                    px[y * n + x] = new Color32(B(c), B(c * 0.9f), B(c * 0.78f), B(smooth));
                     h[y * n + x] = height;
                 }
             }

@@ -97,11 +97,12 @@ namespace Saltworks
 
         public static readonly NamedColor[] AccentColors =
         {
-            new NamedColor("Coral", new Color(1.00f, 0.42f, 0.33f)),
+            new NamedColor("Crimson", new Color(0.88f, 0.20f, 0.25f)),
             new NamedColor("Teal", new Color(0.18f, 0.78f, 0.72f)),
             new NamedColor("Violet", new Color(0.62f, 0.48f, 1.00f)),
             new NamedColor("Gold", new Color(1.00f, 0.76f, 0.25f)),
             new NamedColor("Blue", new Color(0.30f, 0.60f, 1.00f)),
+            new NamedColor("Coral", new Color(1.00f, 0.42f, 0.33f)),
         };
 
         public static readonly string[] PaletteNames = { "Day", "Dusk", "Night", "High contrast" };
@@ -157,7 +158,7 @@ namespace Saltworks
         public static int GfxPreset = 2;
         public static bool DamageNumbers = true;
         /// <summary>How well bots aim: 0 easy, 1 normal, 2 hard, 3 pro (the bridge's AIM_DIFFICULTY).</summary>
-        public static int BotDifficulty = 1;
+        public static int BotDifficulty = 0;
         public static readonly string[] DifficultyIds = { "easy", "normal", "hard", "pro" };
         public static readonly string[] DifficultyNames = { "Easy", "Normal", "Hard", "Pro" };
         /// <summary>Vertical field of view of the weapon camera, degrees.</summary>
@@ -237,7 +238,8 @@ namespace Saltworks
             World = (WorldPaletteId)Mathf.Clamp(PlayerPrefs.GetInt(P + "col.world", 0), 0, PaletteNames.Length - 1);
             GfxPreset = PlayerPrefs.GetInt(P + "gfx", GfxPreset);
             DamageNumbers = PlayerPrefs.GetInt(P + "dmgnum", 1) == 1;
-            BotDifficulty = Mathf.Clamp(PlayerPrefs.GetInt(P + "botdiff", 1), 0, 3);
+            // A new key, so players who had the old default (normal) start on easy.
+            BotDifficulty = Mathf.Clamp(PlayerPrefs.GetInt(P + "botdiff2", 0), 0, 3);
             ViewmodelFov = PlayerPrefs.GetFloat(P + "vm.fov", ViewmodelFov);
             ViewmodelX = PlayerPrefs.GetFloat(P + "vm.x", 0f);
             ViewmodelY = PlayerPrefs.GetFloat(P + "vm.y", 0f);
@@ -322,7 +324,7 @@ namespace Saltworks
             PlayerPrefs.SetInt(P + "col.world", (int)World);
             PlayerPrefs.SetInt(P + "gfx", GfxPreset);
             PlayerPrefs.SetInt(P + "dmgnum", DamageNumbers ? 1 : 0);
-            PlayerPrefs.SetInt(P + "botdiff", BotDifficulty);
+            PlayerPrefs.SetInt(P + "botdiff2", BotDifficulty);
             PlayerPrefs.SetFloat(P + "vm.fov", ViewmodelFov);
             PlayerPrefs.SetFloat(P + "vm.x", ViewmodelX);
             PlayerPrefs.SetFloat(P + "vm.y", ViewmodelY);

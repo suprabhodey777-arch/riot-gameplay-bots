@@ -80,7 +80,14 @@ const turnBetween = (a: number, b: number): number => Math.abs(Math.atan2(Math.s
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 /** Overall bot aim, from the player's difficulty setting (multiplies every hit chance). */
-export const AIM_DIFFICULTY = { easy: 0.5, normal: 0.85, hard: 1.2, pro: 1.45 } as const;
+export const AIM_DIFFICULTY = { easy: 0.35, normal: 0.85, hard: 1.2, pro: 1.45 } as const;
+
+/**
+ * Reaction time multiplier for a difficulty below normal: easier bots also react later
+ * (easy 0.35 -> x2.0). Normal and above react at their own traits' speed. Slower is still fair:
+ * the fairness rule only forbids firing before a bot's reactionMs.
+ */
+export const reactionScaleFor = (aimScale: number): number => (aimScale < AIM_DIFFICULTY.normal ? 1 + (AIM_DIFFICULTY.normal - aimScale) * 2 : 1);
 export type AimDifficulty = keyof typeof AIM_DIFFICULTY;
 
 /**
@@ -136,6 +143,7 @@ export function createBot(opts: BotOptions): Bot {
   /** The current target's aim state: how far we turned onto it, its last position, shots so far. */
   let aim: { id: string; since: number; turn: number; lastPos: Vec2; lastTick: number; speed: number; shots: number } | null = null;
   const aimScale = opts.aimScale ?? AIM_DIFFICULTY.normal;
+  const reactionScale = reactionScaleFor(aimScale);
   const investigated = new Set<string>();
   let smokesThrown = 0;
   let utilityUntil = -1;
@@ -214,7 +222,8 @@ export function createBot(opts: BotOptions): Bot {
       }
       const where = calloutAt(map, foe.pos);
       const ageS = (ageMs / 1000).toFixed(2);
-      if (ageMs < traits.reactionMs) {
+      const reactMs = traits.reactionMs * reactionScale;
+      if (ageMs < reactMs) {
         return {
           node: 'engage',
           target: `${foe.id}:react`,
@@ -231,10 +240,12 @@ export function createBot(opts: BotOptions): Bot {
         const id = equipped(me);
         const scale = id === 'lancer' ? 1 : id === 'longshot' ? (advance ? 0.25 : d > 15 ? 1.5 : 0.8) : id === 'wasp' ? (d <= 15 ? 1.15 : 0.7) : id === 'brick' ? (d <= 8 ? 1.2 : 0.45) : id === 'hammer' ? (d <= 15 ? 1 : 0.8) : id === 'pin' ? 0.85 : 1.05;
         aim.shots++;
-        const q = aimQuality({ turnRad: aim.turn, sinceReadyMs: ageMs - traits.reactionMs, reactionMs: traits.reactionMs, targetSpeed: aim.speed, distM: d, selfMoving: advance, shotsInRow: aim.shots }) * aimScale;
+        const q = aimQuality({ turnRad: aim.turn, sinceReadyMs: ageMs - reactMs, reactionMs: reactMs, targetSpeed: aim.speed, distM: d, selfMoving: advance, shotsInRow: aim.shots }) * aimScale;
         // A head shot needs precise aim, so it takes the full penalty; a body hit is more forgiving.
+        // Below normal, body hits drop too: without this a bot that could not aim still landed them.
+        const bodyEase = aimScale < AIM_DIFFICULTY.normal ? aimScale / AIM_DIFFICULTY.normal : 1;
         const r = rng.next();
-        const result: FireIntent['result'] = r < traits.headAccuracy * scale * q ? 'head' : rng.next() < traits.bodyAccuracy * scale * (0.4 + 0.6 * q) ? 'body' : 'miss';
+        const result: FireIntent['result'] = r < traits.headAccuracy * scale * q ? 'head' : rng.next() < traits.bodyAccuracy * scale * (0.4 + 0.6 * q) * bodyEase ? 'body' : 'miss';
         fire = { targetId: foe.id, result };
       }
       return {

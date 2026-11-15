@@ -21,7 +21,7 @@ namespace Saltworks
         struct Look
         {
             public Color Sky, Horizon, Fog, Sun, AmbSky, AmbEq, AmbGround, Wall, Floor, Ground;
-            public float FogDensity, SunIntensity, ShadowStrength, Exposure;
+            public float FogDensity, SunIntensity, ShadowStrength, Exposure, SunGlow, SunDisc;
             public Vector3 SunEuler;
             /// <summary>Grading: x saturation, y contrast, z vignette, w on; lift (shadow tint) and gain (highlight tint).</summary>
             public Vector4 Grade;
@@ -46,40 +46,48 @@ namespace Saltworks
             switch (id)
             {
                 case WorldPaletteId.Dusk:
+                    // The last light: the sun almost on the horizon, deep orange against violet shade.
                     return new Look
                     {
-                        Sky = new Color(0.5f, 0.5f, 0.66f), Horizon = new Color(0.96f, 0.7f, 0.52f), Fog = new Color(0.8f, 0.64f, 0.56f), FogDensity = 0.011f,
-                        Sun = new Color(1f, 0.68f, 0.42f), SunIntensity = 1.1f, SunEuler = new Vector3(17f, -62f, 0f), ShadowStrength = 0.82f,
-                        AmbSky = new Color(0.56f, 0.52f, 0.64f), AmbEq = new Color(0.68f, 0.56f, 0.5f), AmbGround = new Color(0.32f, 0.27f, 0.27f),
-                        Wall = new Color(1f, 0.93f, 0.87f), Floor = new Color(1f, 0.91f, 0.85f), Ground = new Color(0.88f, 0.78f, 0.72f), Exposure = 1.05f,
-                        Grade = new Vector4(0.9f, 1.07f, 0.26f, 1f), Lift = new Color(0.02f, 0.012f, 0.03f), Gain = new Color(1.04f, 0.99f, 0.93f),
+                        Sky = new Color(0.24f, 0.25f, 0.45f), Horizon = new Color(1f, 0.56f, 0.36f), Fog = new Color(0.66f, 0.46f, 0.42f), FogDensity = 0.004f,
+                        Sun = new Color(1f, 0.6f, 0.36f), SunIntensity = 1.4f, SunEuler = new Vector3(14f, -62f, 0f), ShadowStrength = 0.88f,
+                        AmbSky = new Color(0.46f, 0.46f, 0.66f), AmbEq = new Color(0.46f, 0.41f, 0.52f), AmbGround = new Color(0.27f, 0.22f, 0.24f),
+                        Wall = new Color(1f, 0.95f, 0.9f), Floor = new Color(1f, 0.93f, 0.88f), Ground = new Color(0.88f, 0.78f, 0.72f), Exposure = 1f,
+                        SunGlow = 1.1f, SunDisc = 3f,
+                        Grade = new Vector4(1.02f, 1.1f, 0.36f, 1f), Lift = new Color(0.016f, 0.008f, 0.034f), Gain = new Color(1.04f, 0.99f, 0.93f),
                     };
                 case WorldPaletteId.Night:
                     return new Look
                     {
-                        Sky = new Color(0.05f, 0.07f, 0.15f), Horizon = new Color(0.14f, 0.18f, 0.30f), Fog = new Color(0.1f, 0.13f, 0.21f), FogDensity = 0.013f,
-                        Sun = new Color(0.62f, 0.72f, 1f), SunIntensity = 0.6f, SunEuler = new Vector3(58f, 25f, 0f), ShadowStrength = 0.65f,
-                        AmbSky = new Color(0.32f, 0.37f, 0.55f), AmbEq = new Color(0.24f, 0.27f, 0.37f), AmbGround = new Color(0.12f, 0.13f, 0.18f),
-                        Wall = new Color(0.78f, 0.82f, 0.96f), Floor = new Color(0.70f, 0.74f, 0.88f), Ground = new Color(0.45f, 0.48f, 0.6f), Exposure = 0.35f,
-                        Grade = new Vector4(0.85f, 1.05f, 0.3f, 1f), Lift = new Color(0f, 0.008f, 0.025f), Gain = new Color(0.96f, 0.99f, 1.05f),
+                        Sky = new Color(0.02f, 0.03f, 0.08f), Horizon = new Color(0.08f, 0.11f, 0.2f), Fog = new Color(0.06f, 0.08f, 0.14f), FogDensity = 0.0062f,
+                        Sun = new Color(0.62f, 0.72f, 1f), SunIntensity = 0.8f, SunEuler = new Vector3(52f, 25f, 0f), ShadowStrength = 0.75f,
+                        AmbSky = new Color(0.27f, 0.32f, 0.5f), AmbEq = new Color(0.2f, 0.23f, 0.34f), AmbGround = new Color(0.1f, 0.11f, 0.16f),
+                        Wall = new Color(0.8f, 0.84f, 0.96f), Floor = new Color(0.74f, 0.78f, 0.9f), Ground = new Color(0.45f, 0.48f, 0.6f), Exposure = 1f,
+                        SunGlow = 0.25f, SunDisc = 1.6f,
+                        Grade = new Vector4(0.9f, 1.08f, 0.38f, 1f), Lift = new Color(0f, 0.008f, 0.028f), Gain = new Color(0.96f, 0.99f, 1.05f),
                     };
                 case WorldPaletteId.HighContrast:
+                    // Readability first: neutral light, weak shadows, no grade (the tonemap still stops clipping).
                     return new Look
                     {
-                        Sky = new Color(0.90f, 0.92f, 0.95f), Horizon = new Color(0.96f, 0.96f, 0.97f), Fog = new Color(0.94f, 0.95f, 0.96f), FogDensity = 0.004f,
-                        Sun = Color.white, SunIntensity = 1.2f, SunEuler = new Vector3(55f, -30f, 0f), ShadowStrength = 0.4f,
-                        AmbSky = new Color(0.92f, 0.92f, 0.94f), AmbEq = new Color(0.85f, 0.85f, 0.86f), AmbGround = new Color(0.6f, 0.6f, 0.6f),
-                        Wall = new Color(1.05f, 1.05f, 1.05f), Floor = new Color(0.50f, 0.51f, 0.54f), Ground = new Color(0.42f, 0.43f, 0.45f), Exposure = 1.2f,
+                        Sky = new Color(0.78f, 0.82f, 0.88f), Horizon = new Color(0.9f, 0.9f, 0.91f), Fog = new Color(0.88f, 0.89f, 0.9f), FogDensity = 0.003f,
+                        Sun = Color.white, SunIntensity = 1.15f, SunEuler = new Vector3(55f, -30f, 0f), ShadowStrength = 0.4f,
+                        AmbSky = new Color(0.8f, 0.8f, 0.82f), AmbEq = new Color(0.74f, 0.74f, 0.75f), AmbGround = new Color(0.55f, 0.55f, 0.55f),
+                        Wall = new Color(1.05f, 1.05f, 1.05f), Floor = new Color(0.6f, 0.61f, 0.64f), Ground = new Color(0.5f, 0.51f, 0.53f), Exposure = 1f,
+                        SunGlow = 0f, SunDisc = 0f,
                         Grade = Vector4.zero, Lift = Color.black, Gain = Color.white,
                     };
                 default:
+                    // Day is golden hour (docs/art-direction.md): a warm sun about 28 degrees up, long soft shadows,
+                    // cool blue shade, a warm horizon and a light warm haze far away.
                     return new Look
                     {
-                        Sky = new Color(0.5f, 0.66f, 0.88f), Horizon = new Color(0.82f, 0.86f, 0.9f), Fog = new Color(0.8f, 0.83f, 0.86f), FogDensity = 0.0085f,
-                        Sun = new Color(1f, 0.93f, 0.82f), SunIntensity = 1.25f, SunEuler = new Vector3(46f, -35f, 0f), ShadowStrength = 0.75f,
-                        AmbSky = new Color(0.68f, 0.76f, 0.9f), AmbEq = new Color(0.72f, 0.69f, 0.65f), AmbGround = new Color(0.42f, 0.39f, 0.36f),
-                        Wall = Color.white, Floor = Color.white, Ground = Color.white, Exposure = 1.25f,
-                        Grade = new Vector4(0.94f, 1.06f, 0.2f, 1f), Lift = new Color(0.008f, 0.012f, 0.022f), Gain = new Color(1.02f, 1f, 0.97f),
+                        Sky = new Color(0.27f, 0.41f, 0.66f), Horizon = new Color(0.99f, 0.78f, 0.55f), Fog = new Color(0.86f, 0.72f, 0.6f), FogDensity = 0.003f,
+                        Sun = new Color(1f, 0.79f, 0.56f), SunIntensity = 1.55f, SunEuler = new Vector3(28f, -38f, 0f), ShadowStrength = 0.92f,
+                        AmbSky = new Color(0.56f, 0.64f, 0.8f), AmbEq = new Color(0.5f, 0.55f, 0.66f), AmbGround = new Color(0.4f, 0.35f, 0.31f),
+                        Wall = Color.white, Floor = Color.white, Ground = Color.white, Exposure = 1f,
+                        SunGlow = 0.7f, SunDisc = 2.4f,
+                        Grade = new Vector4(1.06f, 1.06f, 0.3f, 1f), Lift = new Color(0.004f, 0.012f, 0.03f), Gain = new Color(1.03f, 1f, 0.95f),
                     };
             }
         }
@@ -94,18 +102,21 @@ namespace Saltworks
                 sun = sunGo.AddComponent<Light>();
                 sun.type = LightType.Directional;
                 sun.shadows = LightShadows.Soft;
-                sun.shadowBias = 0.04f;
-                sun.shadowNormalBias = 0.3f;
+                sun.shadowBias = 0.03f;
+                sun.shadowNormalBias = 0.25f;
                 RenderSettings.sun = sun;
             }
             if (sky == null)
             {
-                Shader s = Shader.Find("Skybox/Procedural");
+                // Our own gradient sky; Unity's procedural one if that shader is missing from a build.
+                Shader s = Shader.Find("Saltworks/Sky");
+                if (s == null || !s.isSupported) s = Shader.Find("Skybox/Procedural");
                 if (s != null) sky = new Material(s) { hideFlags = HideFlags.DontSave };
             }
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
+            Textures.WeatherNoise();
             ApplyQualityExtras();
             applied = (WorldPaletteId)(-1);
             Apply();
@@ -226,6 +237,17 @@ namespace Saltworks
             RenderSettings.fogDensity = l.FogDensity;
             if (sky != null)
             {
+                if (sky.HasProperty("_Zenith"))
+                {
+                    sky.SetColor("_Zenith", l.Sky);
+                    sky.SetColor("_Horizon", l.Horizon);
+                    sky.SetColor("_Ground", l.Fog);
+                    sky.SetColor("_SunColor", l.Sun);
+                    sky.SetFloat("_SunGlow", l.SunGlow);
+                    sky.SetFloat("_SunDisc", l.SunDisc);
+                    Vector3 toSun = -(Quaternion.Euler(l.SunEuler) * Vector3.forward);
+                    sky.SetVector("_SunDir", new Vector4(toSun.x, toSun.y, toSun.z, 0f));
+                }
                 if (sky.HasProperty("_SkyTint")) sky.SetColor("_SkyTint", l.Sky);
                 if (sky.HasProperty("_GroundColor")) sky.SetColor("_GroundColor", l.Fog);
                 if (sky.HasProperty("_Exposure")) sky.SetFloat("_Exposure", l.Exposure);
@@ -236,7 +258,7 @@ namespace Saltworks
             }
             Shader.SetGlobalVector("_SaltGrade", l.Grade);
             Shader.SetGlobalVector("_SaltGradeLift", new Vector4(l.Lift.r, l.Lift.g, l.Lift.b, 0f));
-            Shader.SetGlobalVector("_SaltGradeGain", new Vector4(l.Gain.r, l.Gain.g, l.Gain.b, 1f));
+            Shader.SetGlobalVector("_SaltGradeGain", new Vector4(l.Gain.r, l.Gain.g, l.Gain.b, l.Exposure > 0f ? l.Exposure : 1f));
             if (cam != null)
             {
                 cam.backgroundColor = l.Horizon;

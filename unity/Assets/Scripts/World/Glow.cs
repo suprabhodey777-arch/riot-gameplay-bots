@@ -1,8 +1,9 @@
 // Bloom on the main camera (OnRenderImage, Hidden/Saltworks/Bloom): a bright
 // pass at half resolution, four box-filtered levels down and back up, and a
 // composite. About 10 full-screen-equivalent texture fetches at half size and
-// below, so it stays well inside a 120 fps budget. Disabled (no blit at all)
-// on Low and Medium.
+// below, so it stays well inside a 120 fps budget. Its last pass also tonemaps
+// and grades. On Low and Medium there is no bloom: one full-screen pass with
+// one texture fetch does the tonemap, grade and vignette.
 //
 // Gfx: the graphics presets (Low / Medium / High / Ultra) applied to
 // QualitySettings and the cameras: shadows, MSAA, HDR, bloom, resolution scale
@@ -27,10 +28,13 @@ namespace Saltworks
             Shader s = Shader.Find("Hidden/Saltworks/Bloom");
             if (s != null && s.isSupported) mat = new Material(s) { hideFlags = HideFlags.HideAndDontSave };
             else Debug.LogWarning("Saltworks: the bloom shader is missing or unsupported; bloom is off.");
-            enabled = false;
+            // On from the start (tonemap and grade only), so the menu backdrop is graded too.
+            enabled = mat != null;
         }
 
         public bool Available => mat != null;
+        /// <summary>False: one tonemap-and-grade pass only (Low and Medium). True: bloom, then the same grade.</summary>
+        public bool BloomOn;
 
         void OnDestroy()
         {
@@ -42,6 +46,11 @@ namespace Saltworks
             if (mat == null)
             {
                 Graphics.Blit(src, dst);
+                return;
+            }
+            if (!BloomOn)
+            {
+                Graphics.Blit(src, dst, mat, 4);
                 return;
             }
             mat.SetVector("_Params", new Vector4(Threshold, Knee, Intensity, 0f));
@@ -119,11 +128,12 @@ namespace Saltworks
         public static void ApplyQuality()
         {
             int p = Preset;
-            ShadowQuality sq = p == 0 ? ShadowQuality.Disable : p == 1 ? ShadowQuality.HardOnly : ShadowQuality.All;
+            // Golden hour lives on its long shadows, so every preset keeps them: hard and short-range on Low.
+            ShadowQuality sq = p == 0 ? ShadowQuality.HardOnly : ShadowQuality.All;
             if (QualitySettings.shadows != sq) QualitySettings.shadows = sq;
-            QualitySettings.shadowResolution = p <= 1 ? ShadowResolution.Medium : p == 2 ? ShadowResolution.High : ShadowResolution.VeryHigh;
-            QualitySettings.shadowDistance = p <= 1 ? 45f : p == 2 ? 70f : 95f;
-            QualitySettings.shadowCascades = p <= 1 ? 1 : p == 2 ? 2 : 4;
+            QualitySettings.shadowResolution = p == 0 ? ShadowResolution.Medium : p == 1 ? ShadowResolution.High : ShadowResolution.VeryHigh;
+            QualitySettings.shadowDistance = p == 0 ? 45f : p == 1 ? 65f : p == 2 ? 90f : 120f;
+            QualitySettings.shadowCascades = p == 0 ? 2 : 4;
             QualitySettings.shadowProjection = ShadowProjection.StableFit;
             int aa = p == 0 ? 0 : p == 1 ? 2 : 4;
             if (QualitySettings.antiAliasing != aa) QualitySettings.antiAliasing = aa;
@@ -139,7 +149,8 @@ namespace Saltworks
             int p = Preset;
             if (main != null)
             {
-                main.allowHDR = p >= 2;
+                // HDR on every preset: the tonemap needs the values above 1 to roll them off instead of clipping.
+                main.allowHDR = true;
                 main.allowMSAA = p >= 1;
                 float s = ResolutionScale;
                 main.allowDynamicResolution = s < 0.999f;
@@ -148,7 +159,8 @@ namespace Saltworks
             }
             if (glow != null)
             {
-                glow.enabled = BloomOn && glow.Available;
+                glow.enabled = glow.Available;
+                glow.BloomOn = BloomOn;
                 glow.Levels = p >= 3 ? 5 : 4;
                 glow.Intensity = p >= 3 ? 0.65f : 0.55f;
                 // Without HDR the brightest pixels are 1.0, so the bright pass starts lower.

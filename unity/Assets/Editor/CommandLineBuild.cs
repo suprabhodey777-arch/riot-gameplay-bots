@@ -6,7 +6,7 @@ public static class CommandLineBuild
     public static void MacApp()
     {
         Saltworks.EditorTools.BuildMenu.SaveMainScene();
-        PlayerSettings.productName = "Gameplay Coach";
+        PlayerSettings.productName = "ValoDrill";
         PlayerSettings.companyName = "DevHacks";
         PlayerSettings.defaultIsNativeResolution = false;
         PlayerSettings.fullScreenMode = FullScreenMode.Windowed;

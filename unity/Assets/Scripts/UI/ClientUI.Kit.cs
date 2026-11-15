@@ -252,7 +252,7 @@ namespace Saltworks
 
         void FocusRing(Rect r)
         {
-            PlateLine(new Rect(r.x - 4f, r.y - 4f, r.width + 8f, r.height + 8f), new Color(1f, 1f, 1f, 0.85f));
+            PlateLine(new Rect(r.x - 3f, r.y - 3f, r.width + 6f, r.height + 6f), new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, 0.9f));
         }
 
         static int StableKey(string s)
@@ -288,37 +288,46 @@ namespace Saltworks
             switch (kind)
             {
                 case 1:
-                    bg = down ? Theme.Darken(ac, 0.18f) : Color.Lerp(ac, Theme.Lighten(ac, 0.18f), h);
-                    line = new Color(1f, 1f, 1f, 0.3f * h);
+                    bg = down ? Theme.Darken(ac, 0.18f) : Color.Lerp(ac, Theme.Lighten(ac, 0.16f), h);
+                    line = new Color(1f, 1f, 1f, 0.35f * h);
                     tc = Theme.OnAccent;
                     break;
                 case 2:
-                    bg = new Color(1f, 1f, 1f, down ? 0.1f : 0.015f + 0.06f * h);
+                    bg = new Color(1f, 1f, 1f, down ? 0.08f : 0.05f * h);
                     line = new Color(1f, 1f, 1f, 0.16f + 0.3f * h);
                     tc = Color.Lerp(Theme.Muted, Theme.Ink, h);
                     break;
                 default:
                     bg = down ? Theme.ButtonDownC : Color.Lerp(Theme.ButtonC, Theme.ButtonHoverC, h);
-                    line = Color.Lerp(new Color(1f, 1f, 1f, 0.1f), new Color(ac.r, ac.g, ac.b, 0.85f), h);
+                    line = new Color(1f, 1f, 1f, 0.10f + 0.22f * h);
                     tc = Theme.Ink;
                     break;
             }
             if (selected && kind != 1)
             {
-                bg = Color.Lerp(new Color(ac.r * 0.2f, ac.g * 0.2f, ac.b * 0.2f, 0.95f), new Color(ac.r * 0.3f, ac.g * 0.3f, ac.b * 0.3f, 1f), h);
-                line = ac;
-                tc = Color.white;
+                bg = Color.Lerp(Theme.ButtonHoverC, Theme.Lighten(Theme.ButtonHoverC, 0.08f), h);
+                line = new Color(1f, 1f, 1f, 0.22f);
+                tc = Theme.Ink;
             }
             if (!on)
             {
-                bg.a *= 0.4f;
-                line.a *= 0.35f;
-                tc = kind == 1 ? new Color(0.05f, 0.05f, 0.06f, 0.55f) : Theme.Faint;
+                // Disabled: a quiet neutral plate (a faded accent read as a muddy block).
+                bg = kind == 2 ? new Color(1f, 1f, 1f, 0f) : new Color(Theme.ButtonC.r, Theme.ButtonC.g, Theme.ButtonC.b, 0.55f);
+                line = new Color(1f, 1f, 1f, 0.07f);
+                tc = Theme.Faint;
             }
-            if (kind != 2 && on) Shadow(b, 10f, 0.35f);
-            Plate(b, bg);
-            PlateLine(b, line);
-            if (selected && kind != 1) Fill(new Rect(b.x + 2f, b.y + 8f, 3f, b.height - 16f), ac);
+            if (kind == 1)
+            {
+                PrimaryPlate(b, bg);
+                PrimaryLine(b, line);
+            }
+            else
+            {
+                Plate(b, bg);
+                PlateLine(b, line);
+            }
+            // Selected: a 2 px accent top edge.
+            if (selected && kind != 1) Fill(new Rect(b.x, b.y, b.width, 2f), ac);
 
             string text = Upper(label);
             float hintW = string.IsNullOrEmpty(hint) ? 0f : TextW(hint, keyCap) + 14f;
@@ -345,6 +354,21 @@ namespace Saltworks
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// A navigation item (tabs, side lists): plain display type, a thin accent marker at its left when selected.
+        /// Takes the mouse and the keyboard focus like a button.
+        /// </summary>
+        bool NavItem(Rect r, string label, bool selected, int key)
+        {
+            float h = CardHover(r, key, true);
+            float sel = Anim(key * 5 + 2, selected, 10f);
+            if (h > 0.01f && !selected) Fill(r, new Color(1f, 1f, 1f, 0.04f * h));
+            if (sel > 0.01f) Fill(new Rect(r.x, r.y + 8f, 2f, (r.height - 16f) * sel), Settings.Accent);
+            Color tc = Color.Lerp(Color.Lerp(Theme.Muted, Theme.Ink, h), Theme.Ink, sel);
+            FitLine(new Rect(r.x + 16f, r.y, r.width - 20f, r.height), Upper(label), navItem, tc, false);
+            return CardHit(r, key, true);
         }
 
         /// <summary>The hover amount of a clickable card (mouse over it, or the keyboard focus on it); ticks on hover.</summary>
@@ -381,7 +405,7 @@ namespace Saltworks
             Plate(r, track);
             float kw = r.height - 8f;
             var knob = new Rect(Mathf.Lerp(r.x + 4f, r.xMax - 4f - kw, k), r.y + 4f, kw, kw);
-            Plate(knob, new Color(1f, 1f, 1f, a));
+            Plate(knob, new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, a));
             if (focused) FocusRing(r);
             if (!enabled) return v;
             int adj = FocusAdjust(id);
@@ -411,11 +435,11 @@ namespace Saltworks
                 var inner = new Rect(cell.x + 3f, cell.y + 3f, cell.width - 6f, cell.height - 6f);
                 if (sel)
                 {
-                    Plate(inner, new Color(ac.r * 0.3f, ac.g * 0.3f, ac.b * 0.3f, enabled ? 1f : 0.5f));
-                    PlateLine(inner, new Color(ac.r, ac.g, ac.b, enabled ? 0.9f : 0.4f));
+                    Plate(inner, new Color(Theme.ButtonHoverC.r, Theme.ButtonHoverC.g, Theme.ButtonHoverC.b, enabled ? 1f : 0.5f));
+                    Fill(new Rect(inner.x, inner.y, inner.width, 2f), new Color(ac.r, ac.g, ac.b, enabled ? 1f : 0.4f));
                 }
                 else if (h > 0.01f) Plate(inner, new Color(1f, 1f, 1f, 0.06f * h));
-                Color tc = !enabled ? Theme.Faint : sel ? Color.white : Color.Lerp(Theme.Muted, Theme.Ink, h);
+                Color tc = !enabled ? Theme.Faint : sel ? Theme.Ink : Color.Lerp(Theme.Muted, Theme.Ink, h);
                 Lbl(inner, options[i], segText, tc);
                 if (i > 0 && !sel && i - 1 != v) Fill(new Rect(cell.x, cell.y + 10f, 1f, cell.height - 20f), Theme.Line);
                 if (enabled && GUI.Button(cell, GUIContent.none, GUIStyle.none) && v != i)
@@ -436,7 +460,7 @@ namespace Saltworks
         {
             bool focused = enabled && Focus(id, r, false, true);
             float t = Mathf.InverseLerp(min, max, v);
-            var track = new Rect(r.x, r.center.y - 3f, r.width, 6f);
+            var track = new Rect(r.x, r.center.y - 2f, r.width, 4f);
             Fill(track, new Color(1f, 1f, 1f, enabled ? 0.12f : 0.06f));
             Fill(new Rect(track.x, track.y, track.width * t, track.height), enabled ? Settings.Accent : Theme.Faint);
             if (focused) FocusRing(r);
@@ -504,7 +528,7 @@ namespace Saltworks
         {
             if (Event.current.type != EventType.Repaint) return;
             Color old = GUI.color;
-            GUI.color = new Color(0f, 0f, 0f, alpha * old.a);
+            GUI.color = new Color(0f, 0f, 0f, alpha * 0.6f * old.a);
             GUI.DrawTexture(new Rect(r.x - spread, r.y - spread * 0.4f, r.width + spread * 2f, r.height + spread * 1.8f), UiTex.Glow, ScaleMode.StretchToFill, true);
             GUI.color = old;
         }
@@ -512,17 +536,16 @@ namespace Saltworks
         /// <summary>A raised card: shadow, card fill, hairline and a top highlight; `accent` (alpha > 0) draws a top bar.</summary>
         void Card(Rect r, Color accent, float lift = 0f)
         {
-            Shadow(r, 16f + 10f * lift, 0.45f + 0.2f * lift);
-            Plate(r, Color.Lerp(Theme.CardC, Theme.ButtonHoverC, lift * 0.6f));
-            PlateLine(r, new Color(1f, 1f, 1f, 0.07f + 0.1f * lift));
-            if (accent.a > 0f) Fill(new Rect(r.x + Theme.Cut, r.y, r.width - Theme.Cut - 4f, 3f), accent);
+            Plate(r, Color.Lerp(Theme.CardC, Theme.ButtonHoverC, lift * 0.7f));
+            PlateLine(r, new Color(1f, 1f, 1f, 0.10f + 0.12f * lift));
+            // A coloured top edge only for a real state (selected, severity): faint decorative tints are dropped.
+            if (accent.a >= 0.75f) Fill(new Rect(r.x, r.y, r.width, 2f), accent);
         }
 
         /// <summary>A section label: small caps with an accent tick and a hairline; returns the y under it.</summary>
         float SectionLabel(float x, float y, float w, string text)
         {
-            Fill(new Rect(x, y + 3f, 3f, 12f), Settings.Accent);
-            Lbl(new Rect(x + 10f, y, w - 10f, 18f), Spaced(text), sectionStyle, Theme.Muted);
+            Lbl(new Rect(x, y, w, 18f), Upper(text), sectionStyle, Theme.Muted);
             Fill(new Rect(x, y + 24f, w, 1f), Theme.Line);
             return y + 34f;
         }
@@ -532,7 +555,7 @@ namespace Saltworks
         {
             if (!string.IsNullOrEmpty(kick))
             {
-                Kicker(new Rect(x, y, w, 18f), kick, Settings.Accent);
+                Kicker(new Rect(x, y, w, 18f), kick, Theme.Muted);
                 y += 24f;
             }
             FitTitle(new Rect(x, y, w, 48f), Upper(title), Theme.Ink);
@@ -550,14 +573,20 @@ namespace Saltworks
         void FitTitle(Rect r, string text, Color c)
         {
             float tw = TextW(text, titleDisplay);
-            float k = Mathf.Min(0.86f, r.width / Mathf.Max(1f, tw));
+            float k = Mathf.Min(1f, r.width / Mathf.Max(1f, tw));
             if (k >= 0.7f)
             {
                 Condensed(r, text, titleDisplay, c, k);
                 return;
             }
             float tw2 = TextW(text, titleSmall);
-            Condensed(r, text, titleSmall, c, Mathf.Clamp(r.width / Mathf.Max(1f, tw2), 0.6f, 0.86f));
+            Condensed(r, text, titleSmall, c, Mathf.Clamp(r.width / Mathf.Max(1f, tw2), 0.6f, 1f));
+        }
+
+        /// <summary>One line that always fits `r`: squeezed a little when long (never clipped, never wrapped).</summary>
+        void FitLine(Rect r, string text, GUIStyle st, Color c, bool shadow = true)
+        {
+            Condensed(r, text, st, c, 1f, shadow);
         }
 
         /// <summary>A wrapped paragraph; returns the y under it.</summary>
@@ -582,7 +611,7 @@ namespace Saltworks
         void KeyCapAt(Rect r, string key, Color bg, Color fg)
         {
             Plate(r, bg);
-            PlateLine(r, new Color(fg.r, fg.g, fg.b, 0.35f * fg.a));
+            PlateLine(r, new Color(fg.r, fg.g, fg.b, 0.3f * fg.a));
             Lbl(r, key, keyCap, fg);
         }
 

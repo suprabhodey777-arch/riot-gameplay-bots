@@ -60,6 +60,7 @@ namespace Saltworks
             new[] { "Tactical map / peek", "M / hold Tab" },
             new[] { "Frame rate readout", "F3" },
             new[] { "Pause, close menus", "Esc" },
+            new[] { "Jump", "Space" },
             new[] { "Confirm", "Enter / Space" },
             new[] { "Move focus in menus", "Arrow keys / Tab" },
         };
@@ -130,6 +131,7 @@ namespace Saltworks
             return false;
         }
 
+        public static bool JumpPressed => Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
         public static bool FireHeld => Mouse.current != null && Mouse.current.leftButton.isPressed;
         public static bool AimHeld => Mouse.current != null && Mouse.current.rightButton.isPressed;
         public static bool AimPressed => Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame;
@@ -192,6 +194,7 @@ namespace Saltworks
             return false;
         }
 
+        public static bool JumpPressed => Input.GetKeyDown(KeyCode.Space);
         public static bool FireHeld => Input.GetMouseButton(0);
         public static bool AimHeld => Input.GetMouseButton(1);
         public static bool AimPressed => Input.GetMouseButtonDown(1);

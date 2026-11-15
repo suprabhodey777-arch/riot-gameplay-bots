@@ -14,15 +14,15 @@ namespace Saltworks
             string mainPick = Game.AdviceMain, practice = Game.AdvicePractice;
             bool advice = mainPick != null || practice != null;
             string current = Game.PickedAgentId ?? practice ?? Game.RememberedAgent;
-            float x0 = 56f, top = 44f;
-            float cy = Header(x0, top, W - 2f * x0 - 200f, "Practice  //  agent select", "Select your agent", advice
+            float x0 = 80f, top = 56f;
+            float cy = Header(x0, top, W - 2f * x0 - 200f, "Practice", "Select your agent", advice
                 ? "The coach read your matches: one pick suits how you play, one trains what you avoid."
                 : "Your kit for every drill. A drill that trains a tool you lack lends you an agent who has it.");
 
             int n = Agents.All.Count;
             float gap = 16f;
             float cw = (W - 2f * x0 - gap * (n - 1)) / Mathf.Max(1, n);
-            float ch = H - cy - 104f;
+            float ch = H - cy - 112f;
             FigureSpec[] specs = Figures("agents" + n, n, i =>
             {
                 AgentInfo a = Agents.All[i];
@@ -43,65 +43,73 @@ namespace Saltworks
                 bool hot = idle && (keyNav ? focusId == btnKey : Hover(hit) || Hover(new Rect(hit.x, hit.y - 8f, hit.width, hit.height + 8f)));
                 float h = Anim(6000 + i, hot);
                 if (hot) hero = i;
-                var r = new Rect(hit.x, hit.y + (1f - ik) * 30f - h * 8f, hit.width, hit.height);
+                var r = new Rect(hit.x, hit.y + (1f - ik) * 16f - h * 4f, hit.width, hit.height);
                 Color oldC = GUI.color;
                 GUI.color = new Color(1f, 1f, 1f, oldC.a * ik);
-                Shadow(r, 20f + 12f * h, 0.5f + 0.2f * h);
-                Glass(r);
-                PlateLine(r, new Color(a.Color.r, a.Color.g, a.Color.b, sel ? 1f : 0.15f + 0.6f * h));
-                Fill(new Rect(r.x + Theme.Cut, r.y, r.width - Theme.Cut - 4f, sel ? 4f : 3f), a.Color);
+                // A flat card: hairline, the agent's colour as a 2 px top edge only when it is the pick.
+                Plate(r, Color.Lerp(Theme.PanelC, Theme.CardC, h));
+                PlateLine(r, new Color(1f, 1f, 1f, 0.10f + 0.14f * h));
+                if (sel) Fill(new Rect(r.x, r.y, r.width, 2f), a.Color);
 
-                var fr = new Rect(r.x + 10f, r.y + 12f, r.width - 20f, r.height * 0.5f);
-                Fill(fr, new Color(a.Color.r * 0.12f, a.Color.g * 0.12f, a.Color.b * 0.12f, 0.95f));
+                var fr = new Rect(r.x + 1f, r.y + (sel ? 2f : 1f), r.width - 2f, r.height * 0.5f);
+                Fill(fr, Theme.StageC);
                 DrawFigure(fr, i);
-                Tex(new Rect(fr.xMax - 36f, fr.y + 10f, 26f, 26f), UiTex.Role(a.Role), new Color(a.Color.r, a.Color.g, a.Color.b, 0.9f));
-                float by = fr.y + 10f;
+                Tex(new Rect(fr.xMax - 40f, fr.y + 14f, 24f, 24f), UiTex.Role(a.Role), new Color(a.Color.r, a.Color.g, a.Color.b, 0.9f));
+                float by = fr.y + 14f;
                 if (id == mainPick)
                 {
-                    Chip(fr.x + 10f, by, "YOUR MAIN", Theme.Darken(a.Color, 0.45f), Color.white);
+                    Chip(fr.x + 14f, by, "YOUR MAIN", Theme.Darken(a.Color, 0.45f), Theme.Ink);
                     by += 28f;
                 }
-                if (id == practice) Chip(fr.x + 10f, by, "PRACTISE YOUR WEAKNESS", Settings.Accent, Theme.OnAccent);
+                if (id == practice)
+                {
+                    Chip(fr.x + 14f, by, "PRACTISE YOUR WEAKNESS", new Color(1f, 1f, 1f, 0.12f), Theme.Ink);
+                    by += 28f;
+                }
                 if (sel)
                 {
-                    var lk = new Rect(fr.x, fr.yMax - 28f, fr.width, 28f);
-                    Fill(lk, new Color(a.Color.r, a.Color.g, a.Color.b, 0.9f));
-                    Lbl(lk, "L O C K E D   I N", centerSmall, Theme.OnAccent);
+                    Chip(fr.x + 14f, by, "LOCKED IN", a.Color, Theme.OnAccent);
                 }
 
-                float y = fr.yMax + 12f;
-                Condensed(new Rect(r.x + 16f, y, r.width - 32f, 46f), Upper(a.Name), personaName, a.Color, 0.8f, true);
-                y += 46f;
-                Lbl(new Rect(r.x + 16f, y, r.width - 32f, 18f), Spaced(a.Role ?? ""), tinyCaps, Theme.Muted);
-                y += 26f;
-                float ix = r.x + 16f;
+                float px = r.x + 20f, pw = r.width - 40f;
+                float y = fr.yMax + 16f;
+                Condensed(new Rect(px, y, pw, 44f), Upper(a.Name), personaName, Theme.Ink);
+                y += 44f;
+                Lbl(new Rect(px, y, pw, 18f), Upper(a.Role ?? ""), tinyCaps, a.Color);
+                y += 30f;
+                // The kit: icon and count, no boxes.
+                float ix = px;
                 foreach (Ability ab in Agents.AllAbilities)
                 {
                     int c = a.Kit != null ? a.Kit.Get(ab) : 0;
                     if (c <= 0) continue;
-                    if (ix + 110f > r.xMax - 8f)
+                    string label = Upper(Agents.AbilityName(ab)) + " \u00d7" + c;
+                    float lw = TextW(label, tinyCaps);
+                    if (ix + 30f + lw > r.xMax - 16f && ix > px)
                     {
-                        ix = r.x + 16f;
-                        y += 44f;
+                        ix = px;
+                        y += 30f;
                     }
-                    var slot = new Rect(ix, y, 36f, 36f);
-                    Plate(slot, new Color(0.02f, 0.025f, 0.04f, 0.85f));
-                    PlateLine(slot, new Color(1f, 1f, 1f, 0.12f));
-                    Icon(new Rect(slot.x + 6f, slot.y + 6f, 24f, 24f), ab, Agents.AbilityColor(ab));
-                    Lbl(new Rect(slot.xMax + 6f, slot.y, 72f, 18f), Upper(Agents.AbilityName(ab)), tinyCaps, Theme.Ink);
-                    Lbl(new Rect(slot.xMax + 6f, slot.y + 18f, 72f, 18f), "\u00d7" + c + "   " + Agents.KeyLabel(ab), tinyCaps, Theme.Muted);
-                    ix += 116f;
+                    Icon(new Rect(ix, y, 22f, 22f), ab, Agents.AbilityColor(ab));
+                    Lbl(new Rect(ix + 28f, y + 2f, lw + 4f, 18f), label, tinyCaps, Theme.Muted);
+                    ix += 28f + lw + 20f;
                 }
-                y += 48f;
-                float blurbH = r.yMax - 66f - y;
-                if (blurbH > 20f) Lbl(new Rect(r.x + 16f, y, r.width - 32f, blurbH), a.Blurb ?? "", tipStyle, Theme.Muted);
+                y += 38f;
+                Fill(new Rect(px, y - 6f, pw, 1f), Theme.Line);
+                float blurbH = r.yMax - 72f - y;
+                if (blurbH > 20f)
+                {
+                    BeginClip(new Rect(px, y + 4f, pw, blurbH));
+                    Lbl(new Rect(0f, 0f, pw, blurbH), a.Blurb ?? "", tipStyle, Theme.Muted);
+                    EndClip();
+                }
                 GUI.color = oldC;
-                if (GButton(new Rect(r.x + 14f, r.yMax - 56f, r.width - 28f, 44f), sel ? "Play " + a.Name : "Lock in " + a.Name, sel ? 1 : 0, idle, btnKey))
+                if (GButton(new Rect(r.x + 20f, r.yMax - 64f, r.width - 40f, 44f), sel ? "Play " + a.Name : "Lock in " + a.Name, sel ? 1 : 0, idle, btnKey))
                     Game.Do(() => Game.PickAgent(id));
             }
             if (Game.Stage != null) Game.Stage.Hero = hero;
 
-            float fy = H - 40f - Theme.ButtonH;
+            float fy = H - 48f - Theme.ButtonH;
             if (Game.V2 && GButton(new Rect(x0, fy, 200f, Theme.ButtonH), "Back to maps", 2, idle, 0, false, UiTex.Glyph("back"))) Game.Do(Game.OpenMapSelect);
             string keep = Game.PickedAgentId != null ? "Keep " + Agents.NameOf(Game.PickedAgentId) : "Let the drills decide";
             if (GButton(new Rect(x0 + 212f, fy, 260f, Theme.ButtonH), keep, 0, idle)) Game.Do(Game.SkipAgent);

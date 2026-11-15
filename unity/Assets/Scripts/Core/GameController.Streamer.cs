@@ -366,7 +366,7 @@ namespace Saltworks
             string label = Weapons.RoundTypeLabel(RoundType);
             RoundBannerText = "ROUND " + Round + (InDuel ? "  \u2014  DUEL" : label.Length > 0 ? "  \u2014  " + label : "");
             if (InDuel) RoundBannerSub = "F I R S T   T O   5   \u00b7   V S   " + DuelPersonaName.ToUpperInvariant();
-            else RoundBannerSub = (string.IsNullOrEmpty(MatchSide) ? "" : MatchSide.ToUpperInvariant() + "   \u00b7   ") + "F I R S T   T O   7";
+            else RoundBannerSub = (string.IsNullOrEmpty(MatchSide) ? "" : MatchSide.ToUpperInvariant() + "   \u00b7   ") + "FIRST TO 7";
             RoundBannerAt = Time.unscaledTime;
         }
 

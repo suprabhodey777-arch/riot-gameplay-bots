@@ -99,7 +99,7 @@ namespace Saltworks
         {
             get
             {
-                if (gunMat == null) gunMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.3f, 0.85f, 0.72f, 1f);
+                if (gunMat == null) gunMat = Mats.Gun(0.74f, 0.42f, 0.55f);
                 return gunMat;
             }
         }
@@ -345,10 +345,10 @@ namespace Saltworks
         {
             switch (m)
             {
-                case GunMat.Metal: return new Color(0.24f, 0.25f, 0.27f, 1f);
-                case GunMat.Polymer: return new Color(0.135f, 0.14f, 0.145f, 0f);
+                case GunMat.Metal: return new Color(0.2f, 0.21f, 0.235f, 1f);
+                case GunMat.Polymer: return new Color(0.085f, 0.088f, 0.095f, 0f);
                 case GunMat.Paint: return new Color(d.Paint.r, d.Paint.g, d.Paint.b, 0f);
-                case GunMat.Dark: return new Color(0.075f, 0.08f, 0.085f, 1f);
+                case GunMat.Dark: return new Color(0.06f, 0.063f, 0.07f, 1f);
                 case GunMat.Brass: return new Color(0.82f, 0.62f, 0.28f, 1f);
                 case GunMat.Light: return new Color(0.62f, 0.64f, 0.68f, 1f);
                 default: return Color.white;

@@ -43,7 +43,7 @@ namespace Saltworks
             Stat("Kill distance", p.meanKillDistanceM.ToString("0.0") + " m");
             Stat("Smokes / round", p.smokesPerRound.ToString("0.0"));
             Stat("On objective", Mathf.RoundToInt(p.objectiveShare * 100f) + "%");
-            Stat("K / D", p.kills + " / " + p.deaths);
+            Stat("K/D", p.kills + " / " + p.deaths);
         }
 
         // ---- the two picks ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ namespace Saltworks
 {
     public partial class ClientUI
     {
-        GUIStyle hero, kicker, menuTitle, menuDesc, cardTitle, cardSmall, priceStyle, statLabel, bigNumRight, timerStyle,
+        GUIStyle hero, kicker, navTitle, menuTitle, menuDesc, cardTitle, cardSmall, priceStyle, statLabel, bigNumRight, timerStyle,
             roundChip, ammoBig, ammoSmall, killName, dmgStyle, dmgHead, scoreNum, centerSmall, centerBody, rightSmall, menuNum, menuDescLine;
         Texture2D fadeLeft, fadeDown;
 
@@ -22,6 +22,7 @@ namespace Saltworks
             hero = Text(lbl, 64, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             // Lbl tints with GUI.contentColor, so these styles are white and take their colour from the call.
             kicker = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
+            navTitle = Text(lbl, 34, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             menuTitle = Text(lbl, 28, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             menuDesc = Text(lbl, 14, FontStyle.Normal, Color.white, TextAnchor.UpperLeft, true);
             // A menu card's one-line subtitle: never wraps (a wrapped second line would fall out of the card).
@@ -31,12 +32,12 @@ namespace Saltworks
             cardSmall = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             priceStyle = Text(lbl, 16, FontStyle.Bold, Color.white, TextAnchor.UpperRight, false);
             statLabel = Text(lbl, 11, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
-            bigNumRight = Text(lbl, 40, FontStyle.Bold, Color.white, TextAnchor.MiddleRight, false);
+            bigNumRight = Text(lbl, 30, FontStyle.Bold, Color.white, TextAnchor.MiddleRight, false);
             timerStyle = Text(lbl, 30, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             roundChip = Text(lbl, 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
-            ammoBig = Text(lbl, 50, FontStyle.Bold, Color.white, TextAnchor.LowerRight, false);
+            ammoBig = Text(lbl, 60, FontStyle.Bold, Color.white, TextAnchor.LowerRight, false);
             ammoSmall = Text(lbl, 18, FontStyle.Bold, Color.white, TextAnchor.LowerLeft, false);
-            killName = Text(lbl, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
+            killName = Text(lbl, 13, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             dmgStyle = Text(lbl, 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             dmgHead = Text(lbl, 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             scoreNum = Text(lbl, 30, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
@@ -70,7 +71,7 @@ namespace Saltworks
                 float k = horizontal ? x / (float)(w - 1) : y / (float)(h - 1);
                 float a = (1f - k);
                 a = a * a * (3f - 2f * a);
-                px[y * w + x] = new Color32(4, 6, 12, (byte)Mathf.RoundToInt(a * 245f));
+                px[y * w + x] = new Color32(13, 16, 20, (byte)Mathf.RoundToInt(a * 240f));
             }
             t.SetPixels32(px);
             t.Apply(false);
@@ -98,11 +99,9 @@ namespace Saltworks
         /// <summary>A selected card: card fill with a bright outline, an inner line and a top bar.</summary>
         void Outline(Rect r, Color c, float w)
         {
-            Shadow(r, 16f, 0.5f);
-            Plate(r, Theme.CardC);
-            PlateLine(r, c);
-            if (w > 1.5f) PlateLine(new Rect(r.x + 1f, r.y + 1f, r.width - 2f, r.height - 2f), new Color(c.r, c.g, c.b, 0.5f));
-            Fill(new Rect(r.x + Theme.Cut, r.y, r.width - Theme.Cut - 4f, 3f), c);
+            Plate(r, Color.Lerp(Theme.CardC, new Color(c.r, c.g, c.b, 1f), 0.07f));
+            PlateLine(r, new Color(1f, 1f, 1f, 0.2f));
+            Fill(new Rect(r.x, r.y, r.width, 2f), c);
         }
 
         bool Hover(Rect r)
@@ -143,65 +142,55 @@ namespace Saltworks
                 : MenuDescs[i];
         }
 
+        int menuSel;
+
         void DrawMenu()
         {
             float now = Time.unscaledTime;
-            if (Event.current.type == EventType.Repaint)
-            {
-                GUI.DrawTexture(new Rect(0f, 0f, Mathf.Min(W, 1000f), H), fadeLeft, ScaleMode.StretchToFill, true);
-                GUI.DrawTexture(new Rect(0f, H - 260f, W, 260f), fadeDown, ScaleMode.StretchToFill, true);
-            }
             float k = Intro01;
-            float x = 80f, y = Mathf.Max(56f, H * 0.09f) + (1f - k) * 14f;
+            const float x = 80f;
+            float y = 68f + (1f - k) * 10f;
             Color ac = Settings.Accent;
 
-            // The wordmark, an accent rule and the tagline.
-            Kicker(new Rect(x, y, 700f, 18f), "Season 01  //  Tactical training", ac);
+            // The wordmark and one line of what the game is. No rule, no badge: the type carries it.
+            Lbl(new Rect(x, y, 600f, 18f), "TACTICAL TRAINING", kickerStyle, Theme.Muted);
             GUIStyle word = W > 1150f ? displayXL : displayL;
-            float wh = W > 1150f ? 112f : 70f;
-            Condensed(new Rect(x - 6f, y + 18f, Mathf.Min(980f, W - x - 20f), wh), Spaced("Saltworks"), word, Theme.Ink, 0.78f);
-            float ry = y + 18f + wh + 4f;
-            Neon(new Rect(x, ry, 160f, 3f), ac, Mathf.Clamp01((now - screenAt) / 0.6f));
-            Lbl(new Rect(x, ry + 16f, 600f, 44f), "Find what you lose, practise it against bots that play like people, then take it into a full match.", subStyle, Theme.Muted);
+            float wh = W > 1150f ? 104f : 64f;
+            Condensed(new Rect(x - 3f, y + 20f, Mathf.Min(760f, W - x - 20f), wh), "VALODRILL", word, Theme.Ink);
+            float ty = y + 20f + wh + 6f;
+            float tagW = Mathf.Min(440f, W - x - 40f);
+            float tagH = TextH("Find what you lose, practise it against bots that play like people, then take it into a full match.", subStyle, tagW);
+            Lbl(new Rect(x, ty, tagW, tagH), "Find what you lose, practise it against bots that play like people, then take it into a full match.", subStyle, Theme.Muted);
 
-            // The modes: one card each, staggered in.
-            float by = ry + 80f;
+            // Navigation: plain large type. The item under the pointer (or the keyboard focus) carries the one
+            // accent in the view, a thin marker at its left.
+            float by = ty + tagH + 44f;
             bool idle = Idle;
-            // Every subtitle stays on one line: the cards are as wide as the widest one needs (desc from x+72 to xMax-48).
-            float descMax = 0f;
-            for (int i = 0; i < MenuTitles.Length; i++) descMax = Mathf.Max(descMax, TextW(MenuDesc(i), menuDescLine));
-            float slatW = Mathf.Clamp(descMax + 72f + 48f + 8f, 560f, Mathf.Min(720f, W - x - 460f));
-            const float slatH = 76f, slatGap = 10f;
+            const float rowH = 68f;
+            float rowW = Mathf.Min(620f, W - x - 40f);
+            // Short windows: tighten the rows so the list always clears the footer.
+            float fit = Mathf.Min(1f, (H - 96f - by) / (rowH * MenuTitles.Length));
+            float rh = rowH * Mathf.Max(0.72f, fit);
             for (int i = 0; i < MenuTitles.Length; i++)
             {
-                float ik = Theme.Ease((now - screenAt - 0.06f - i * 0.04f) / 0.3f);
+                float ik = Theme.Ease((now - screenAt - 0.04f - i * 0.03f) / 0.26f);
                 if (ik <= 0f) continue;
                 bool enabled = i == 4 || (idle && (i != 0 || Game.V3));
-                var r = new Rect(x - (1f - ik) * 24f, by + i * (slatH + slatGap), slatW, slatH);
+                var r = new Rect(x, by + i * rh, rowW, rh - 4f);
                 int key = 1000 + i;
-                // The hover covers the resting slot and the lifted card, so the click rect never misses what is drawn.
-                float h = CardHover(new Rect(r.x - 8f, r.y, r.width + 8f, r.height), key, enabled);
+                float h = CardHover(r, key, enabled);
+                if (h > 0.5f) menuSel = i;
+                float sel = Anim(key * 5 + 2, menuSel == i && enabled, 9f);
                 Color oldC = GUI.color;
                 GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * ik);
-                var b = new Rect(r.x + h * 8f, r.y, r.width, r.height);
-                Shadow(b, 14f, 0.4f);
-                Plate(b, Color.Lerp(new Color(0.035f, 0.045f, 0.07f, 0.84f), new Color(ac.r * 0.2f, ac.g * 0.2f, ac.b * 0.2f, 0.96f), h));
-                PlateLine(b, Color.Lerp(new Color(1f, 1f, 1f, 0.07f), new Color(ac.r, ac.g, ac.b, 0.75f), h));
-                Fill(new Rect(b.x + 2f, b.y + 12f, 3f, b.height - 24f), enabled ? ac : Theme.Faint);
-                Color tc = enabled ? Theme.Ink : Theme.Faint;
-                Tex(new Rect(b.x + 22f, b.y + 22f, 32f, 32f), UiTex.Glyph(MenuIcons[i]), enabled ? Color.Lerp(Theme.Muted, ac, 0.3f + 0.7f * h) : Theme.Faint);
-                Lbl(new Rect(b.x + 72f, b.y + 8f, 30f, 30f), MenuNums[i], menuNum, enabled ? ac : Theme.Faint);
-                Condensed(new Rect(b.x + 102f, b.y + 6f, b.width - 160f, 34f), Upper(MenuTitles[i]), menuTitle, tc, 0.86f);
-                string desc = MenuDesc(i);
-                var dr = new Rect(b.x + 72f, b.y + 42f, b.width - 120f, 24f);
-                Color dc = enabled ? Theme.Muted : Theme.Faint;
-                float dw = TextW(desc, menuDescLine);
-                // A subtitle still too wide for the narrowest window is condensed rather than cut.
-                if (dw > dr.width) Condensed(dr, desc, menuDescLine, dc, Mathf.Max(0.75f, dr.width / dw));
-                else Lbl(dr, desc, menuDescLine, dc);
-                Lbl(new Rect(b.xMax - 40f, b.y, 28f, b.height), "\u203a", menuTitle, new Color(ac.r, ac.g, ac.b, 0.25f + 0.75f * h));
+                float sx = r.x + sel * 18f;
+                if (sel > 0.01f) Fill(new Rect(r.x, r.y + 8f, 2f, (r.height - 16f) * sel), ac);
+                Color tc = !enabled ? Theme.Faint : Color.Lerp(new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, 0.78f), Theme.Ink, sel);
+                Condensed(new Rect(sx, r.y + 2f, r.width - 24f, 38f), Upper(MenuTitles[i]), navTitle, tc);
+                Color dc = !enabled ? Theme.Faint : Color.Lerp(new Color(Theme.Muted.r, Theme.Muted.g, Theme.Muted.b, 0.8f), Theme.Muted, sel);
+                Condensed(new Rect(sx, r.y + 38f, r.width - 24f, 20f), MenuDesc(i), menuDescLine, dc);
                 GUI.color = oldC;
-                if (CardHit(b, key, enabled))
+                if (CardHit(r, key, enabled))
                 {
                     switch (i)
                     {
@@ -215,37 +204,28 @@ namespace Saltworks
             }
 
             // Top right: streamer mode switch, the LIVE pill, About.
-            DrawStreamerSwitch(new Rect(W - 432f, 24f, 248f, 40f));
-            if (GButton(new Rect(W - 172f, 24f, 148f, 40f), "About", 2)) Game.Do(() => { settingsTab = AboutTab; Game.OpenSettings(); });
+            DrawStreamerSwitch(new Rect(W - 80f - 132f - 16f - 244f, 32f, 244f, 40f));
+            if (GButton(new Rect(W - 80f - 132f, 32f, 132f, 40f), "About", 2)) Game.Do(() => { settingsTab = AboutTab; Game.OpenSettings(); });
 
-            // Bottom right: the session card.
-            var sr = new Rect(W - 424f, H - 192f, 392f, 152f);
-            Card(sr, ac);
-            float sy = sr.y + 18f;
-            Lbl(new Rect(sr.x + 20f, sy, 340f, 18f), Spaced("Session"), tinyCaps, Theme.Muted);
-            Plate(new Rect(sr.x + 20f, sy + 30f, 9f, 9f), Game.Connected ? Palette.Ok : Palette.Bad);
-            Lbl(new Rect(sr.x + 36f, sy + 24f, 340f, 22f), Game.Connected ? "Online" : "Offline", smallMid, Game.Connected ? Palette.Ok : Palette.Bad);
-            Lbl(new Rect(sr.x + 20f, sy + 58f, 160f, 18f), Spaced("Map"), tinyCaps, Theme.Muted);
-            Lbl(new Rect(sr.x + 20f, sy + 78f, 170f, 26f), Upper(string.IsNullOrEmpty(Game.MapName) ? "?" : Game.MapName), cardTitle, Theme.Ink);
-            Lbl(new Rect(sr.x + 200f, sy + 58f, 160f, 18f), Spaced("Agent"), tinyCaps, Theme.Muted);
+            // Bottom right: the session, as two quiet lines (no card).
             string ag = Game.PickedAgentId ?? Game.RememberedAgent;
-            Lbl(new Rect(sr.x + 200f, sy + 78f, 170f, 26f), Upper(string.IsNullOrEmpty(ag) ? "not picked" : Agents.NameOf(ag)), cardTitle, string.IsNullOrEmpty(ag) ? Theme.Muted : Agents.ColorOf(ag));
+            string status = Game.Connected ? "ONLINE" : "OFFLINE";
+            float sw = TextW(status, rightSmall);
+            float fy = H - 64f;
+            Lbl(new Rect(W - 80f - 420f, fy, 420f, 18f), status, rightSmall, Theme.Muted);
+            Fill(new Rect(W - 80f - sw - 14f, fy + 6f, 6f, 6f), Game.Connected ? Palette.Ok : Palette.Bad);
+            string sess = Upper(string.IsNullOrEmpty(Game.MapName) ? "No map" : Game.MapName) + "   \u00b7   " + Upper(string.IsNullOrEmpty(ag) ? "No agent picked" : Agents.NameOf(ag));
+            Lbl(new Rect(W - 80f - 420f, fy + 20f, 420f, 18f), sess, rightSmall, Theme.Ink);
 
-            // Bottom left: the credit and the keys.
-            DrawCredit(new Vector2(x, H - 48f));
-            Lbl(new Rect(x + 270f, H - 48f, 560f, 20f), "Arrow keys and Enter work in every menu   \u00b7   Esc closes menus   \u00b7   F3 frame rate", smallMid, Theme.Faint);
+            // Bottom left: the keys and the credit.
+            Lbl(new Rect(x, fy, 640f, 18f), "ARROWS AND ENTER NAVIGATE   \u00b7   ESC CLOSES MENUS   \u00b7   F3 FRAME RATE", kickerStyle, Theme.Faint);
+            DrawCredit(new Vector2(x, fy + 20f));
         }
 
-        /// <summary>The event credit with a small spinning star mark.</summary>
+        /// <summary>The event credit.</summary>
         void DrawCredit(Vector2 at)
         {
-            Color ac = Settings.Accent;
-            Matrix4x4 m = GUI.matrix;
-            var star = new Rect(at.x, at.y, 20f, 20f);
-            GUIUtility.RotateAroundPivot(Time.unscaledTime * 40f, star.center * scale);
-            Tex(star, UiTex.Glyph("persona"), ac);
-            GUI.matrix = m;
-            Lbl(new Rect(at.x + 28f, at.y, 240f, 20f), Spaced("DevHacks 2026"), kickerStyle, Theme.Ink);
+            Lbl(new Rect(at.x, at.y, 240f, 18f), "DEVHACKS 2026", kickerStyle, Theme.Muted);
         }
 
         /// <summary>The streamer mode switch (menu): label, a sliding knob, and the LIVE pill when on.</summary>
@@ -254,13 +234,13 @@ namespace Saltworks
             bool on = Settings.StreamerMode;
             const int key = 4242;
             float h = CardHover(r, key, true);
-            Plate(r, new Color(0.04f, 0.05f, 0.08f, 0.82f + 0.14f * h));
-            PlateLine(r, new Color(1f, 1f, 1f, 0.1f + 0.25f * h));
-            Lbl(new Rect(r.x + 16f, r.y, r.width - 84f, r.height), Spaced("Streamer mode"), kickerStyle, on ? Theme.Ink : Theme.Muted);
+            PlateLine(r, new Color(1f, 1f, 1f, 0.16f + 0.3f * h));
+            if (h > 0.01f) Fill(r, new Color(1f, 1f, 1f, 0.05f * h));
+            FitLine(new Rect(r.x + 16f, r.y, r.width - 86f, r.height), "STREAMER MODE", btnTextL, Color.Lerp(Theme.Muted, Theme.Ink, Mathf.Max(h, on ? 1f : 0f)), false);
             float kk = Anim(key * 3 + 1, on, 9f);
-            var track = new Rect(r.xMax - 62f, r.center.y - 11f, 46f, 22f);
-            Plate(track, Color.Lerp(new Color(1f, 1f, 1f, 0.15f), Palette.Spike, kk));
-            Plate(new Rect(Mathf.Lerp(track.x + 3f, track.xMax - 19f, kk), track.y + 3f, 16f, 16f), Color.white);
+            var track = new Rect(r.xMax - 54f, r.center.y - 9f, 38f, 18f);
+            Fill(track, Color.Lerp(new Color(1f, 1f, 1f, 0.16f), Palette.Spike, kk));
+            Fill(new Rect(Mathf.Lerp(track.x + 3f, track.xMax - 15f, kk), track.y + 3f, 12f, 12f), Theme.Ink);
             if (on) DrawLivePill(new Vector2(r.x - 86f, r.y + 7f), false);
             if (CardHit(r, key, true)) Game.Do(() => Game.SetStreamer(!Settings.StreamerMode));
         }
@@ -387,7 +367,7 @@ namespace Saltworks
         void DrawBuy(bool overlay)
         {
             BuyPhaseMsg bp = Game.BuyPhase;
-            Fill(new Rect(0f, 0f, W, H), new Color(0.01f, 0.015f, 0.03f, overlay ? 0.66f : 0.55f));
+            Fill(new Rect(0f, 0f, W, H), new Color(Theme.Base.r, Theme.Base.g, Theme.Base.b, overlay ? 0.7f : 0.72f));
             float pw = Mathf.Min(1260f, W - 40f), ph = Mathf.Min(720f, H - 40f);
             var area = new Rect(Mathf.Round((W - pw) / 2f), Mathf.Round((H - ph) / 2f), pw, ph);
             Frame(area, overlay ? null : "Buy phase");
@@ -400,9 +380,9 @@ namespace Saltworks
             if (rt.Length > 0)
             {
                 float cw = TextW(rt, roundChip) + 32f;
-                var chip = new Rect(x, y, cw, 42f);
-                Plate(chip, rc);
-                Lbl(chip, rt, roundChip, Theme.OnAccent);
+                var chip = new Rect(x, y + 2f, cw, 38f);
+                PlateLine(chip, new Color(rc.r, rc.g, rc.b, 0.8f));
+                Lbl(chip, rt, roundChip, rc);
                 x = chip.xMax + 16f;
             }
             int rk = Game.Round * 10 + (Game.MatchSide == "defense" ? 1 : 0);
@@ -412,10 +392,7 @@ namespace Saltworks
                 roundStr = "ROUND " + Game.Round + (string.IsNullOrEmpty(Game.MatchSide) ? "" : "   " + Game.MatchSide.ToUpperInvariant());
             }
             Lbl(new Rect(x, y, 300f, 22f), roundStr, cardTitle, Theme.Ink);
-            float adviceW = Mathf.Max(200f, area.center.x - 130f - x);
-            string advice = Weapons.RoundTypeAdvice(Game.RoundType);
-            float adviceH = Mathf.Min(46f, TextH(advice, small, adviceW));
-            Lbl(new Rect(x, y + 22f, adviceW, adviceH), advice, small, Theme.Muted);
+            FitLine(new Rect(x, y + 23f, Mathf.Max(120f, area.center.x - 150f - x), 20f), Weapons.RoundTypeAdvice(Game.RoundType), smallMid, Theme.Muted, false);
 
             ScoreInfo sc = Game.Score;
             int sk = sc == null ? -1 : sc.player * 100 + sc.enemy;
@@ -435,7 +412,7 @@ namespace Saltworks
                 buyTimerStr = tk + " s";
             }
             var timerR = new Rect(area.xMax - 24f - 390f, y, 116f, 44f);
-            Plate(timerR, new Color(1f, 1f, 1f, 0.06f));
+            Plate(timerR, new Color(1f, 1f, 1f, 0.05f));
             Lbl(timerR, Game.Readied ? "READY" : buyTimerStr, timerStyle, left < 5f && !Game.Readied ? Palette.Warn : Theme.Ink);
             float total = bp != null && bp.timeS > 0f ? bp.timeS : 20f;
             Fill(new Rect(timerR.x + 8f, timerR.yMax - 3f, (timerR.width - 16f) * Mathf.Clamp01(left / total), 2f), Settings.Accent);
@@ -446,7 +423,7 @@ namespace Saltworks
                 creditStr = Credits(ck);
             }
             Lbl(new Rect(area.xMax - 24f - 250f, y - 4f, 250f, 16f), Spaced("Credits"), rightSmall, Theme.Muted);
-            Lbl(new Rect(area.xMax - 24f - 250f, y + 8f, 250f, 40f), creditStr, bigNumRight, Settings.Accent);
+            Lbl(new Rect(area.xMax - 24f - 250f, y + 14f, 250f, 36f), creditStr, bigNumRight, Theme.Ink);
 
             float top = area.y + 90f;
             Fill(new Rect(area.x + 24f, top - 12f, area.width - 48f, 1f), Theme.Line);
@@ -458,7 +435,7 @@ namespace Saltworks
             for (int c = 0; c < BuyColumns.Length; c++)
             {
                 float cx = area.x + 24f + c * (colW + 12f);
-                Kicker(new Rect(cx, top, colW, 18f), BuyColumnNames[c], Theme.Muted);
+                Lbl(new Rect(cx, top, colW, 18f), Upper(BuyColumnNames[c]), kickerStyle, Theme.Muted);
                 for (int i = 0; i < BuyColumns[c].Length; i++)
                 {
                     WeaponInfo wi = Weapons.Find(BuyColumns[c][i]);
@@ -468,7 +445,7 @@ namespace Saltworks
             }
 
             float ay = top + 24f + 2f * (cardH + 10f) + 4f;
-            Kicker(new Rect(area.x + 24f, ay, 200f, 18f), "Armour", Theme.Muted);
+            Lbl(new Rect(area.x + 24f, ay, 200f, 18f), "ARMOUR", kickerStyle, Theme.Muted);
             float armW = (gridW - 12f) / 2f;
             ArmorCard(new Rect(area.x + 24f, ay + 22f, armW, 74f), "light");
             ArmorCard(new Rect(area.x + 24f + armW + 12f, ay + 22f, armW, 74f), "heavy");
@@ -534,24 +511,23 @@ namespace Saltworks
             else
             {
                 Card(r, new Color(0f, 0f, 0f, 0f), h);
-                PlateLine(r, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, 0.08f + 0.6f * h));
             }
             Color oldC = GUI.color;
             GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * a);
             Condensed(new Rect(r.x + 12f, r.y + 8f, r.width - 100f, 24f), Upper(w.Name), cardTitle, Theme.Ink, 0.9f);
             Lbl(new Rect(r.x + 12f, r.y + 30f, r.width - 24f, 16f), Spaced(w.ClassName), tinyCaps, Theme.Muted);
             string price = w.Price <= 0 ? "FREE" : Credits(w.Price);
-            Lbl(new Rect(r.xMax - 90f, r.y + 10f, 78f, 22f), price, priceStyle, afford || owned ? Theme.Ink : Palette.Bad);
+            Lbl(new Rect(r.xMax - 90f, r.y + 10f, 78f, 22f), price, priceStyle, afford || owned ? Theme.Ink : Theme.Muted);
             float iconH = Mathf.Clamp(r.height - 116f, 26f, 56f);
-            Tex(new Rect(r.x + 12f + h * 4f, r.y + 48f, r.width - 24f, iconH), GunModels.Icon(w.Id), owned ? Settings.Accent : Color.white);
+            Tex(new Rect(r.x + 12f, r.y + 48f, r.width - 24f, iconH), GunModels.Icon(w.Id), Theme.Ink);
             float sy = r.y + 52f + iconH;
             float sw = r.width - 24f;
-            Color bc = owned ? Settings.Accent : Theme.Lighten(Settings.Accent, 0.2f);
+            Color bc = new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, 0.8f);
             StatBar(new Rect(r.x + 12f, sy, sw, 13f), "DMG", w.BodyPerShot / 150f, bc);
             StatBar(new Rect(r.x + 12f, sy + 15f, sw, 13f), "RATE", (1f / Mathf.Max(0.05f, w.FireIntervalS)) / 13.4f, bc);
             StatBar(new Rect(r.x + 12f, sy + 30f, sw, 13f), "MOB", w.Mobility, bc);
             if (owned) Lbl(new Rect(r.x + 12f, r.yMax - 20f, r.width - 24f, 16f), w.Price > 0 && active ? "OWNED  \u00b7  CLICK TO SELL" : "OWNED", cardSmall, Settings.Accent);
-            else if (!afford) Lbl(new Rect(r.x + 12f, r.yMax - 20f, r.width - 24f, 16f), "NOT ENOUGH CREDITS", cardSmall, Palette.Bad);
+            else if (!afford) Lbl(new Rect(r.x + 12f, r.yMax - 20f, r.width - 24f, 16f), "NOT ENOUGH CREDITS", cardSmall, Theme.Muted);
             GUI.color = oldC;
             string id = w.Id;
             if (CardHit(r, key, clickable))
@@ -573,15 +549,14 @@ namespace Saltworks
             else
             {
                 Card(r, new Color(0f, 0f, 0f, 0f), h);
-                PlateLine(r, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, 0.08f + 0.6f * h));
             }
             float a = owned || afford ? 1f : 0.45f;
             Color oldC = GUI.color;
             GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * a);
-            Tex(new Rect(r.x + 14f, r.y + 14f, 44f, 46f), UiTex.Glyph("sentinel"), owned ? Settings.Accent : new Color(0.75f, 0.85f, 1f));
+            Tex(new Rect(r.x + 16f, r.y + 16f, 40f, 42f), UiTex.Glyph("sentinel"), Theme.Ink);
             Condensed(new Rect(r.x + 68f, r.y + 10f, r.width - 170f, 26f), Upper(Weapons.ArmorName(kind)), cardTitle, Theme.Ink, 0.9f);
             Lbl(new Rect(r.x + 68f, r.y + 36f, r.width - 170f, 34f), Weapons.ArmorPointsOf(kind) + " points, absorbs 66% of each hit" + (owned ? (active ? "   OWNED \u00b7 CLICK TO SELL" : "   OWNED") : ""), menuDesc, owned ? Settings.Accent : Theme.Muted);
-            Lbl(new Rect(r.xMax - 96f, r.y + 12f, 82f, 22f), Credits(Weapons.ArmorPrice(kind)), priceStyle, afford || owned ? Theme.Ink : Palette.Bad);
+            Lbl(new Rect(r.xMax - 96f, r.y + 12f, 82f, 22f), Credits(Weapons.ArmorPrice(kind)), priceStyle, afford || owned ? Theme.Ink : Theme.Muted);
             GUI.color = oldC;
             string id = kind;
             if (CardHit(r, key, clickable))
@@ -621,7 +596,7 @@ namespace Saltworks
                 Fill(new Rect(W / 2f - W * 0.32f * k, br.yMax + 1f, W * 0.64f * k, 3f), c);
                 c.a = k;
                 Condensed(new Rect(0f, br.y + 10f, W, 64f), won ? "ROUND WON" : "ROUND LOST", displayLC, c, 0.82f, true);
-                Shadowed(new Rect(40f, br.y + 78f, W - 80f, 30f), resultSub, bannerSub, new Color(1f, 1f, 1f, k));
+                FitLine(new Rect(40f, br.y + 78f, W - 80f, 30f), resultSub, bannerSub, new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, k));
             }
             float sw = now - Game.SideSwapAt;
             if (sw >= 0f && sw < 4f)
@@ -640,7 +615,7 @@ namespace Saltworks
         void DrawMatchEnd()
         {
             MatchEndMsg me = Game.MatchEnd;
-            Fill(new Rect(0f, 0f, W, H), new Color(0.01f, 0.015f, 0.03f, 0.6f));
+            Fill(new Rect(0f, 0f, W, H), new Color(Theme.Base.r, Theme.Base.g, Theme.Base.b, 0.5f));
             Rect area = Centered(860f, 600f);
             bool won = me != null && me.won;
             Color c = won ? Palette.Ok : Palette.Bad;
@@ -668,7 +643,7 @@ namespace Saltworks
             int deaths = st != null ? st.deaths : Game.MatchDeaths;
             float hs = st != null ? st.headshotPct : (Game.MatchKills > 0 ? Game.MatchHeadKills / (float)Game.MatchKills : 0f);
             if (hs > 1f) hs /= 100f;
-            string[] labels = { "Kills", "Deaths", "K / D", "Headshot kills" };
+            string[] labels = { "Kills", "Deaths", "K/D", "Headshot kills" };
             string[] values = { kills.ToString(), deaths.ToString(), (deaths > 0 ? kills / (float)deaths : kills).ToString("0.00"), Mathf.RoundToInt(hs * 100f) + "%" };
             float cw = (area.width - 2f * Pad - 36f) / 4f;
             for (int i = 0; i < 4; i++)

@@ -12,14 +12,14 @@ namespace Saltworks
         public static readonly Color Defense = new Color(0.16f, 0.70f, 0.66f);
         public static readonly Color Sky = new Color(0.80f, 0.86f, 0.91f);
         public static readonly Color Fog = new Color(0.84f, 0.87f, 0.90f);
-        public static readonly Color Floor = new Color(0.86f, 0.84f, 0.80f);
-        public static readonly Color Ground = new Color(0.72f, 0.70f, 0.66f);
-        public static readonly Color Wall = new Color(0.93f, 0.90f, 0.85f);
-        public static readonly Color WallTop = new Color(0.64f, 0.62f, 0.59f); // was near-white: clipped to white in sun
-        public static readonly Color Outer = new Color(0.78f, 0.80f, 0.84f);
+        public static readonly Color Floor = new Color(0.76f, 0.73f, 0.68f);
+        public static readonly Color Ground = new Color(0.52f, 0.48f, 0.43f);
+        public static readonly Color Wall = new Color(0.8f, 0.77f, 0.72f);
+        public static readonly Color WallTop = new Color(0.5f, 0.49f, 0.47f); // was near-white: clipped to white in sun
+        public static readonly Color Outer = new Color(0.6f, 0.6f, 0.6f);
         public static readonly Color Pillar = new Color(0.84f, 0.85f, 0.92f);
-        public static readonly Color Crate = new Color(0.66f, 0.54f, 0.41f);
-        public static readonly Color CrateTop = new Color(0.6f, 0.5f, 0.38f); // was near-white: clipped to white in sun
+        public static readonly Color Crate = new Color(0.58f, 0.46f, 0.34f);
+        public static readonly Color CrateTop = new Color(0.5f, 0.4f, 0.3f); // was near-white: clipped to white in sun
         public static readonly Color Smoke = new Color(0.86f, 0.84f, 0.93f);
         public static readonly Color Spike = new Color(1.00f, 0.25f, 0.35f);
         public static readonly Color Gun = new Color(0.22f, 0.24f, 0.29f);
@@ -159,6 +159,8 @@ namespace Saltworks
                 m.SetFloat("_Glossiness", metalGloss);
                 m.SetFloat("_VertexAO", vertexWeight);
                 m.SetColor("_EmissionColor", Color.black);
+                m.SetFloat("_Weather", 0f);
+                Textures.WeatherNoise();
             }
             else
             {
@@ -167,6 +169,38 @@ namespace Saltworks
                 if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", Mathf.Lerp(gloss, metalGloss, metallic > 0.01f && vertexWeight < 0.5f ? 1f : 0f));
                 if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", vertexWeight < 0.5f ? metallic : 0f);
             }
+            return m;
+        }
+
+        /// <summary>Turns on world-space weathering (tone variation, grime, stains) for a static map surface.</summary>
+        public static Material Weathered(Material m, float amount = 1f)
+        {
+            if (m != null && m.HasProperty("_Weather")) m.SetFloat("_Weather", amount);
+            return m;
+        }
+
+        static Shader gunShader;
+        static bool gunShaderLooked;
+
+        /// <summary>
+        /// Guns and gloves (Saltworks/Gun: gunmetal and polymer with highlights and a rim); falls back to the world
+        /// surface when that shader is not in the build.
+        /// </summary>
+        public static Material Gun(float metalGloss, float polyGloss, float rim)
+        {
+            if (!gunShaderLooked)
+            {
+                gunShaderLooked = true;
+                gunShader = Shader.Find("Saltworks/Gun");
+                if (gunShader != null && !gunShader.isSupported) gunShader = null;
+                if (gunShader == null) Debug.LogWarning("Saltworks: Saltworks/Gun not found, using the world surface for guns.");
+            }
+            if (gunShader == null) return World(Color.white, Textures.Grain(), null, 0f, polyGloss, 0.85f, metalGloss, 1f);
+            var m = new Material(gunShader) { color = Color.white };
+            m.SetTexture("_MainTex", Textures.Grain());
+            m.SetFloat("_MetalGloss", metalGloss);
+            m.SetFloat("_PolyGloss", polyGloss);
+            m.SetFloat("_Rim", rim);
             return m;
         }
 

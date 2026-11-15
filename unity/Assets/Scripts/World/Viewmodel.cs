@@ -110,7 +110,7 @@ namespace Saltworks
             shellClip = SoundBank.Get("reload.shell");
             drawClip = SoundBank.Get("weapon.draw");
             dryFireClip = SoundBank.Get("reload.dryfire");
-            armsMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.3f, 0.6f, 0.5f, 1f);
+            armsMat = Mats.Gun(0.5f, 0.3f, 0.45f);
         }
 
         void FlashQuad(Vector3 pos, Quaternion rot, float w, float h)

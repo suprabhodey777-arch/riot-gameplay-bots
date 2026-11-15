@@ -308,8 +308,8 @@ namespace Saltworks
             if (s == null) return;
             shaftMat = Own(new Material(s) { hideFlags = HideFlags.DontSave });
             shaftMat.SetTexture("_MainTex", FxTex.Shaft());
-            shaftMat.SetColor("_Color", new Color(1f, 0.93f, 0.78f, 1f));
-            shaftMat.SetFloat("_Intensity", 0.55f);
+            shaftMat.SetColor("_Color", new Color(1f, 0.82f, 0.58f, 1f));
+            shaftMat.SetFloat("_Intensity", 0.22f);
             List<Vector3> feet = Entrances(map);
             if (feet.Count == 0) return;
             // Slanted along the sun, a little steeper so they stay inside the lanes.
@@ -538,7 +538,9 @@ namespace Saltworks
                 {
                     WorldPaletteId p = Settings.World;
                     Color sky = RenderSettings.ambientSkyColor;
-                    Color lit = Color.Lerp(sky, Color.white, p == WorldPaletteId.Night ? 0.1f : 0.65f);
+                    // Lit by the low sun: warm tops, the cool ambient underneath.
+                    Color sunCol = RenderSettings.sun != null ? RenderSettings.sun.color : Color.white;
+                    Color lit = p == WorldPaletteId.Night ? Color.Lerp(sky, Color.white, 0.1f) : Color.Lerp(sunCol, Color.white, 0.35f);
                     lit.a = p == WorldPaletteId.Night ? 0.55f : 0.9f;
                     cloudMat.SetColor("_Color", lit);
                     cloudMat.SetColor("_Shade", RenderSettings.ambientEquatorColor * (p == WorldPaletteId.Night ? 0.5f : 0.85f));
@@ -548,7 +550,7 @@ namespace Saltworks
             if (shaftMat != null)
             {
                 float night = Settings.World == WorldPaletteId.Night ? 0.45f : Settings.World == WorldPaletteId.HighContrast ? 0.3f : 1f;
-                shaftMat.SetFloat("_Intensity", (0.5f + 0.06f * Mathf.Sin(t * 0.7f) + 0.03f * Mathf.Sin(t * 2.3f)) * night);
+                shaftMat.SetFloat("_Intensity", (0.2f + 0.02f * Mathf.Sin(t * 0.7f) + 0.03f * Mathf.Sin(t * 2.3f)) * night);
             }
             if (chevronMat != null) chevronMat.mainTextureOffset = new Vector2(-Mathf.Repeat(t * 0.6f, 1f), 0f);
             foreach (Sign s in signs)
