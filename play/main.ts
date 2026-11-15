@@ -1,3 +1,4 @@
+import { playMatch } from './match.ts';
 /** Screens: start (pick a history, see the weakness report), drill (play), result (debrief). */
 import type { DrillResult, DrillSpec, Skill, WeaknessReport } from '../shared/coaching.ts';
 import type { MatchLog } from '../shared/contract.ts';
@@ -109,7 +110,7 @@ function showStart(): void {
       <h2>Weakness report</h2>
       <div id="report"></div>
       <div class="row">
-        <button class="primary" id="go">Start practice</button>
+        <button class="primary" id="go">Start practice</button><button id="match">Play match</button>
         <button id="rehearse" hidden>Rehearse my mistakes</button>
         <button id="reanalyze" hidden>Re-analyze my play</button>
         <button id="clear" hidden>Clear my rounds</button>
@@ -131,6 +132,10 @@ function showStart(): void {
     session = makeSession(source);
     queue = [];
     refresh();
+  };
+  $('match').onclick = () => {
+    game?.destroy(); game = null;
+    playMatch($app, log => { if (log.rounds.length) { ownLogs.push(log); saveOwn(); source = SOURCES.find(s => s.id === 'own') ?? source; session = makeSession(source); } showStart(); });
   };
   $('go').onclick = () => {
     queue = [];
@@ -173,13 +178,15 @@ function reanalyze(): void {
 const KEYS: [string, string][] = [
   ['W A S D', 'Move (W is up on screen)'],
   ['Mouse', 'Aim'],
-  ['Left click', 'Fire (5 shots a second at most)'],
+  ['Left click', 'Fire (weapon rate)'],
   ['Shift', 'Walk (quiet, accurate)'],
   ['Ctrl', 'Crouch'],
   ['C / Q / E / X', 'Smoke / flash / dash / recon'],
   ['Hold F', 'Plant (attack, on a site) or defuse (defense, at the spike)'],
   ['Esc', 'Pause'],
-  ['R', 'Restart this drill'],
+  ['R / Shift+R', 'Reload / restart this drill'],
+  ['1 / 2', 'Primary / secondary'],
+  ['Right click', 'Scope'],
 ];
 
 function playSpec(spec: DrillSpec): void {
@@ -197,6 +204,7 @@ function playSpec(spec: DrillSpec): void {
         <span class="muted">Health</span><b id="hpn"></b>
         <span class="muted">Round clock</span><b id="clock"></b>
         <span class="muted">Spike</span><b id="spike"></b>
+        <span class="muted">Weapon / armour</span><b id="weapon"></b>
         <span class="muted">Kit charges</span><b id="smokes"></b>
       </div>
       <h2>The bot's mind</h2>
@@ -242,6 +250,7 @@ function paintHud(h: HudInfo): void {
   el('hpn')!.textContent = h.alive ? `${h.hp} / 100` : 'down';
   el('clock')!.textContent = `${Math.max(0, h.clockS).toFixed(1)} s (${h.phase.replace('_', ' ')})`;
   el('spike')!.textContent = h.spike;
+  el('weapon')!.textContent = h.weapon;
   el('smokes')!.textContent = `${h.agent}: C ${h.abilities.smoke} · Q ${h.abilities.flash} · E ${h.abilities.dash} · X ${h.abilities.recon}`;
   if (!h.paused || h.started) el('pause')!.textContent = h.paused ? 'Resume' : 'Pause';
   el('mind')!.innerHTML = h.mind.length

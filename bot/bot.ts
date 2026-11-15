@@ -1,3 +1,4 @@
+import { WEAPONS, equipped } from '../shared/weapons.ts';
 import type { BotTraits } from '../shared/coaching.ts';
 import type { FireIntent, MapDef, PlayerInput, SimState, SimEvent, SiteId, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { lineOfSight, pointInPolygon, siteAt, siteIds, sitePoly } from '../sim/geometry.ts';
@@ -6,8 +7,8 @@ import { RUN_HEARING_M, SMOKE_RADIUS, TICK_RATE } from '../sim/sim.ts';
 import { calloutAt, centroid, clearSegment, hashStr, pathBetween, type Spot, spotsFor, navFor, minWallDist } from './nav.ts';
 import { type BotView, botView, createMemory } from './view.ts';
 
-/** Ticks between shots while engaging (0.2 s). */
-export const FIRE_INTERVAL_TICKS = 4;
+/** Lancer fire interval at 20 Hz; other weapons use their own interval. */
+export const FIRE_INTERVAL_TICKS = 3;
 const MS_PER_TICK = 1000 / TICK_RATE;
 
 export interface BotOptions {
@@ -173,15 +174,17 @@ export function createBot(opts: BotOptions): Bot {
           holding: true,
         };
       }
-      let fire: FireIntent | null = null;
-      if (tick - lastFireTick >= FIRE_INTERVAL_TICKS) {
-        lastFireTick = tick;
-        const r = rng.next();
-        const result: FireIntent['result'] = r < traits.headAccuracy ? 'head' : rng.next() < traits.bodyAccuracy ? 'body' : 'miss';
-        fire = { targetId: foe.id, result };
-      }
       const d = dist(me.pos, foe.pos);
       const advance = traits.aggression > 0.7 && d > 6 && (!team || view.spike?.status !== 'planted');
+      let fire: FireIntent | null = null;
+      if (tick - lastFireTick >= Math.ceil(WEAPONS[equipped(me)].fireIntervalS * TICK_RATE - 1e-9)) {
+        lastFireTick = tick;
+        const id = equipped(me);
+        const scale = id === 'lancer' ? 1 : id === 'longshot' ? (advance ? 0.25 : d > 15 ? 1.5 : 0.8) : id === 'wasp' ? (d <= 15 ? 1.15 : 0.7) : id === 'brick' ? (d <= 8 ? 1.2 : 0.45) : id === 'hammer' ? (d <= 15 ? 1 : 0.8) : id === 'pin' ? 0.85 : 1.05;
+        const r = rng.next();
+        const result: FireIntent['result'] = r < traits.headAccuracy * scale ? 'head' : rng.next() < traits.bodyAccuracy * scale ? 'body' : 'miss';
+        fire = { targetId: foe.id, result };
+      }
       return {
         node: 'engage',
         target: `${foe.id}:fire`,
@@ -411,9 +414,10 @@ export function createBot(opts: BotOptions): Bot {
     const heardEvents = team ? events : [];
     const view = botView(state, id, map, memory, heardEvents);
     const me = view.self;
-    const idle: PlayerInput = { agentId: id, move: { x: 0, y: 0 }, yaw: me.yaw, walk: false, crouch: false, fire: null, smokeAt: null, plantHeld: false, defuseHeld: false };
+    const idle: PlayerInput = { scoped: equipped(me) === 'longshot', agentId: id, move: { x: 0, y: 0 }, yaw: me.yaw, walk: false, crouch: false, fire: null, smokeAt: null, plantHeld: false, defuseHeld: false };
     if (!me.alive) return { input: idle, trace: [], node: 'dead', holding: true };
     if (me.blindUntilTick > view.tick) return { input: idle, trace: [], node: 'blinded', holding: true };
+    if (me.ammo[equipped(me)] === 0 || me.reloadingUntilTick > state.tick) return { input: { ...idle, reload: true, slot: me.slot === 'primary' && me.reserve[equipped(me)] === 0 ? 'secondary' : undefined }, trace: [], node: 'reload', holding: true };
     const act = decideAction(view, state);
     const threat = [...view.visible, ...view.remembered].find(e => dist(me.pos, e.pos) <= 25);
     const lurker = opts.archetypeId === 'patient-lurker' || (!opts.archetypeId && traits.patience > 0.8);
@@ -449,6 +453,7 @@ export function createBot(opts: BotOptions): Bot {
     }
     const input: PlayerInput = {
       agentId: id,
+      scoped: equipped(me) === 'longshot' && !act.move?.x && !act.move?.y,
       move: act.move ?? { x: 0, y: 0 },
       yaw: act.yaw ?? me.yaw,
       walk: act.walk ?? false,

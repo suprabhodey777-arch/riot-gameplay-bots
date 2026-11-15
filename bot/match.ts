@@ -1,3 +1,4 @@
+import type { Loadout } from '../shared/weapons.ts';
 import { agentForArchetype, type AgentId } from '../shared/contract.ts';
 import type { BotTraits } from '../shared/coaching.ts';
 import type { MapDef, PlayerInput, SimEvent, SimState, StepResult, Team, TraceEntry, Vec2 } from '../shared/contract.ts';
@@ -15,6 +16,7 @@ export interface MatchAgent {
   team: Team;
   isBot: boolean;
   agent?: AgentId;
+  loadout?: Loadout;
   /** Explicit traits; win over `archetypeId`. */
   traits?: BotTraits;
   /** A named archetype from `traits.ts`, used when `traits` is not given. */
@@ -59,7 +61,7 @@ export function createMatch(opts: { map: MapDef; seed: number; agents: MatchAgen
   const sim = createSim({
     map: opts.map,
     seed: opts.seed,
-    agents: agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot, agent: a.agent ?? (a.archetypeId ? agentForArchetype(a.archetypeId) : undefined) })),
+    agents: agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot, loadout: a.loadout, agent: a.agent ?? (a.archetypeId ? agentForArchetype(a.archetypeId) : undefined) })),
     scenario: opts.scenario,
   });
   const bots = new Map<string, Bot>();

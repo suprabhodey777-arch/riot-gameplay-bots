@@ -1,3 +1,5 @@
+import { WEAPONS, equipped } from '../shared/weapons.ts';
+import { WeaponAim } from './weapon-aim.ts';
 /**
  * One playable drill: fixed 20 Hz sim steps driven from requestAnimationFrame,
  * the mouse and keyboard turned into PlayerInput, drawn with interpolation.
@@ -11,7 +13,7 @@ import { lineOfSight, pointInPolygon } from '../sim/geometry.ts';
 import { DEFUSE_TIME_S, PLANT_TIME_S, TICK_RATE } from '../sim/sim.ts';
 import { startDrill, type DrillRun } from '../session/drill-run.ts';
 import { draw, makeView, toWorld, type DrawAgent, type MarkerSeen, type Tracer, type View } from './draw.ts';
-import { GAME_KEYS, SHOT_GAP_TICKS, buildInput, yawTo } from './input.ts';
+import { GAME_KEYS, buildInput, yawTo } from './input.ts';
 import { classifyShot } from './ray.ts';
 
 const TICK_MS = 1000 / TICK_RATE;
@@ -19,6 +21,7 @@ const TICK_MS = 1000 / TICK_RATE;
 export interface HudInfo {
   agent: AgentId;
   abilities: AbilityCharges;
+  weapon: string;
   hp: number;
   alive: boolean;
   clockS: number;
@@ -64,6 +67,8 @@ export class Game {
   private dashQueued = false;
   private reconQueued = false;
   private lastShotTick = -100;
+  private weaponAim = new WeaponAim();
+  private scoped = false;
   private plantTicks = 0;
   private aimYaw = 0;
   private tracers: Tracer[] = [];
@@ -139,7 +144,7 @@ export class Game {
         e.preventDefault();
         return;
       }
-      if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
+      if (e.code === 'KeyR' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         this.cb.onRestart();
         return;
@@ -169,6 +174,7 @@ export class Game {
     this.on('mousemove', (e) => this.setMouse(e));
     this.on('mousedown', (e) => {
       this.setMouse(e);
+      if (e.button === 2) this.scoped = true;
       if (e.button !== 0 || this.paused) return;
       if (e.target !== this.canvas) return;
       this.mouseDown = true;
@@ -176,6 +182,7 @@ export class Game {
     });
     this.on('mouseup', () => {
       this.mouseDown = false;
+      this.scoped = false;
     });
     this.on('contextmenu', (e) => e.preventDefault(), this.canvas);
   }
@@ -239,9 +246,10 @@ export class Game {
 
     let fire: PlayerInput['fire'] = null;
     const now = performance.now();
-    if (me?.alive && (this.fireQueued || this.mouseDown) && state.tick - this.lastShotTick >= SHOT_GAP_TICKS) {
+    if (me?.alive && (this.fireQueued || this.mouseDown) && state.tick - this.lastShotTick >= Math.ceil(WEAPONS[equipped(me)].fireIntervalS * TICK_RATE - 1e-9) && !me.reloadingUntilTick && me.ammo[equipped(me)] > 0) {
       const enemies = state.agents.filter((a) => a.alive && a.team !== spec.player.team).map((a) => ({ id: a.id, pos: a.pos }));
-      const shot = classifyShot(me.pos, this.aimYaw, enemies, walls, state.smokes);
+      const shotYaw = this.weaponAim.shot(this.aimYaw, equipped(me), state.tick / TICK_RATE, ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(k => this.keys.has(k)), this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.keys.has('ControlLeft') || this.keys.has('ControlRight'), this.dashQueued, this.scoped);
+      const shot = classifyShot(me.pos, shotYaw, enemies, walls, state.smokes);
       fire = shot.fire;
       this.lastShotTick = state.tick;
       this.fireQueued = false;
@@ -264,6 +272,7 @@ export class Game {
       }
     }
     const input = buildInput({ agentId: spec.player.id, team: spec.player.team, keys: this.keys, yaw: this.aimYaw, fire, smokeAt, flashAt: this.flashQueued ? this.mouse : null, dash: this.dashQueued, reconAt: this.reconQueued ? this.mouse : null });
+    input.scoped = this.scoped;
     this.flashQueued = this.dashQueued = this.reconQueued = false;
     const r = this.run.step(input);
     this.prev = state;
@@ -348,7 +357,8 @@ export class Game {
     if (sp.status === 'planted') {
       if (sp.defuseProgressS > 0) hold = { progress: Math.min(1, sp.defuseProgressS / DEFUSE_TIME_S), kind: 'defuse' };
     } else if (this.plantTicks > 0) hold = { progress: Math.min(1, this.plantTicks / (PLANT_TIME_S * TICK_RATE)), kind: 'plant' };
-    draw(this.ctx, this.view, {
+    const kick = this.weaponAim.cameraKick(this.curr.tick / TICK_RATE + a / TICK_RATE);
+    draw(this.ctx, { ...this.view, ox: this.view.ox + kick.x * 3, oy: this.view.oy + kick.y * 3 }, {
       map: this.map,
       state: this.curr,
       agents,
@@ -379,6 +389,7 @@ export class Game {
     this.cb.onHud({
       agent: me?.agent ?? 'rook',
       abilities: me?.abilities ?? { smoke: 0, flash: 0, dash: 0, recon: 0 },
+      weapon: me ? `${equipped(me)} ${me.ammo[equipped(me)]}/${me.reserve[equipped(me)]} · armour ${Math.round(me.armor)}${me.reloadingUntilTick ? ' · reloading' : ''}` : '',
       hp: me ? Math.round(me.hp) : 0,
       alive: !!me?.alive,
       clockS: s.roundTimeLeftS,

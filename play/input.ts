@@ -3,7 +3,7 @@ import type { FireIntent, PlayerInput, Team, Vec2 } from '../shared/contract.ts'
 
 /** Keys the page claims, so the browser does not scroll or search on them. */
 export const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'KeyR', 'KeyX', 'KeyF',
+  'Digit1', 'Digit2', 'KeyB', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'KeyR', 'KeyX', 'KeyF',
   'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'Space', 'Escape',
 ]);
 
@@ -47,6 +47,8 @@ export function buildInput(f: InputFrame): PlayerInput {
     walk: isWalk(f.keys),
     crouch: isCrouch(f.keys),
     fire: f.fire,
+    reload: f.keys.has('KeyR'),
+    slot: f.keys.has('Digit1') ? 'primary' : f.keys.has('Digit2') ? 'secondary' : undefined,
     smokeAt: f.smokeAt,
     flashAt: f.flashAt, reconAt: f.reconAt, dash: f.dash,
     plantHeld: held && f.team === 'attack',

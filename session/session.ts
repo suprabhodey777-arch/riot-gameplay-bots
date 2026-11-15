@@ -109,7 +109,7 @@ export class CoachingSession {
 
   static fromHistory(logs: MatchLog[], playerId: string, opts: SessionOptions & { seed?: number; mapId?: string } = {}): CoachingSession {
     let report = analyze(logs, playerId);
-    if (report.findings.length === 0) report = { ...emptyReport(playerId), matchesRead: report.matchesRead };
+    if (report.findings.length === 0) report = { ...emptyReport(playerId), matchesRead: report.matchesRead, ...(report.ecoLosses ? { ecoLosses: report.ecoLosses } : {}) };
     const mapId = opts.mapId ?? logs.find((l) => l.playerId === playerId)?.mapId ?? DEFAULT_MAP_ID;
     return new CoachingSession(
       { version: 1, seed: opts.seed ?? 1, mapId, historyMaps: Object.fromEntries(logs.map(l => [l.matchId, l.mapId])), historyMapId: logs.find(l => l.playerId === playerId)?.mapId ?? mapId, playerId, report, staircases: {}, history: [], current: null, practice: [], examBefore: null, examAfter: null },

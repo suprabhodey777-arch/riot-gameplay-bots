@@ -15,7 +15,7 @@ type Role = Round['playerRole'];
 
 export interface Recorder {
   /** Starts a round from the sim's state at tick 0. */
-  beginRound(initial: SimState, role?: Role): void;
+  beginRound(initial: SimState, role?: Role, economy?: Pick<Round, 'roundType' | 'loadout'>): void;
   /** Adds one step's events; a `round_end` event closes the round. */
   push(events: SimEvent[]): void;
   /** Closes the open round (needs a winner: from a round_end event or `winner`). */
@@ -28,7 +28,7 @@ export interface Recorder {
 
 export function createRecorder(opts: { matchId: string; mapId: string; playerId: string; role?: Role }): Recorder {
   const rounds: Round[] = [];
-  let open: { teams: Record<string, Team>; playerTeam: Team; role: Role; events: SimEvent[] } | null = null;
+  let open: { teams: Record<string, Team>; playerTeam: Team; role: Role; events: SimEvent[]; economy?: Pick<Round, 'roundType' | 'loadout'> } | null = null;
 
   const close = (winner?: Team): void => {
     if (!open) return;
@@ -37,6 +37,7 @@ export function createRecorder(opts: { matchId: string; mapId: string; playerId:
     if (w) {
       rounds.push({
         index: rounds.length,
+        ...open.economy,
         playerTeam: open.playerTeam,
         playerRole: open.role,
         teams: open.teams,
@@ -48,13 +49,13 @@ export function createRecorder(opts: { matchId: string; mapId: string; playerId:
   };
 
   return {
-    beginRound(initial, role) {
+    beginRound(initial, role, economy) {
       close();
       const me = initial.agents.find((a) => a.id === opts.playerId);
       if (!me) throw new Error(`recorder: no agent ${opts.playerId} in the state`);
       const teams: Record<string, Team> = {};
       for (const a of initial.agents) teams[a.id] = a.team;
-      open = { teams, playerTeam: me.team, role: role ?? opts.role ?? 'duelist', events: [] };
+      open = { teams, playerTeam: me.team, economy, role: role ?? opts.role ?? 'duelist', events: [] };
     },
     push(events) {
       if (!open) return;

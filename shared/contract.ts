@@ -5,7 +5,10 @@
  * Yaw is in radians, 0 = +x, counter-clockwise.
  */
 
-export const CONTRACT_VERSION = 'v4';
+import type { ArmorId, Loadout, Slot, WeaponId, RoundType } from './weapons.ts';
+export { WEAPONS, ARMOR, DEFAULT_LOADOUT } from './weapons.ts';
+export type { WeaponId, Weapon, ArmorId, Loadout, Slot, RoundType } from './weapons.ts';
+export const CONTRACT_VERSION = 'v5';
 
 /** A point or vector on the floor plan, in metres. */
 export interface Vec2 {
@@ -62,6 +65,15 @@ export interface AgentState {
   revealedUntilTick: number;
   smokesLeft: number;
   carryingSpike: boolean;
+  credits: number;
+  armor: number;
+  primary: WeaponId | null;
+  secondary: WeaponId;
+  slot: Slot;
+  ammo: Record<WeaponId, number>;
+  reserve: Record<WeaponId, number>;
+  reloadingUntilTick: number;
+  scoped: boolean;
 }
 
 /** A smoke cloud that blocks line of sight until `endsAtTick`. */
@@ -120,6 +132,9 @@ export interface PlayerInput {
   smokeAt: Vec2 | null;
   flashAt?: Vec2 | null;
   dash?: boolean;
+  reload?: boolean;
+  slot?: Slot;
+  scoped?: boolean;
   reconAt?: Vec2 | null;
   plantHeld: boolean;
   defuseHeld: boolean;
@@ -127,6 +142,9 @@ export interface PlayerInput {
 
 /** Something that happened during a step. */
 export type SimEvent =
+  | { type: 'reload'; tick: number; agent: string; weapon: WeaponId }
+  | { type: 'switch'; tick: number; agent: string; slot: Slot }
+  | { type: 'buy'; tick: number; agent: string; item: WeaponId | ArmorId; price: number }
   | { type: 'spotted'; tick: number; observer: string; target: string }
   | {
       type: 'damage';
@@ -191,6 +209,8 @@ export interface MatchLog {
   playerId: string;
   rounds: {
     index: number;
+    roundType?: RoundType;
+    loadout?: Loadout;
     playerTeam: Team;
     playerRole: 'duelist' | 'initiator' | 'controller' | 'sentinel';
     /** Every agent id that appears in this round's events, mapped to its team. */

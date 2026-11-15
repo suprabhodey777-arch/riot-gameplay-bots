@@ -1,3 +1,6 @@
+import { setTimeout, clearTimeout } from 'node:timers';
+import { WEAPONS } from '../shared/weapons.ts';
+import { MatchGame } from '../session/match-game.ts';
 import { AGENTS, agentForArchetype, type AgentId } from '../shared/contract.ts';
 import process from 'node:process';
 import { createServer, type Server, type Socket } from 'node:net';
@@ -19,6 +22,7 @@ import { DEFUSE_TIME_S, PLANT_TIME_S, RUN_SPEED, TICK_RATE, FLASH_MAX_RANGE_M, F
 import { PROTOCOL, type BridgeInput, type ClientMessage, type Rules, type ServerMessage } from './protocol.ts';
 
 export const RULES: Rules = {
+  weapons: WEAPONS,
   flashMaxRangeM: FLASH_MAX_RANGE_M, flashFuseS: FLASH_FUSE_S, flashBlindS: FLASH_BLIND_S,
   dashDistanceM: DASH_DISTANCE_M, reconMaxRangeM: RECON_MAX_RANGE_M, reconRadiusM: RECON_RADIUS_M, reconRevealS: RECON_REVEAL_S,
   runHearingM: RUN_HEARING_M, walkSpeedMps: WALK_SPEED, crouchSpeedMps: CROUCH_SPEED, agents: AGENTS,
@@ -26,10 +30,16 @@ export const RULES: Rules = {
   plantTimeS: PLANT_TIME_S, defuseTimeS: DEFUSE_TIME_S, moveSpeedMps: RUN_SPEED,
 };
 
-const NEW_EVENTS = new Set(['flash', 'blinded', 'dash', 'recon', 'revealed', 'footstep']);
+const NEW_EVENTS = new Set(['flash', 'blinded', 'dash', 'recon', 'revealed', 'footstep', 'reload', 'buy', 'switch']);
+const WEAPON_FIELDS = new Set(['weapons', 'credits', 'armor', 'primary', 'secondary', 'slot', 'ammo', 'reserve', 'reloadingUntilTick', 'scoped']);
 const NEW_FIELDS = new Set(['agent', 'playerAgent', 'abilities', 'blindUntilTick', 'revealedUntilTick',
   'flashMaxRangeM', 'flashFuseS', 'flashBlindS', 'dashDistanceM', 'reconMaxRangeM', 'reconRadiusM', 'reconRevealS',
   'runHearingM', 'walkSpeedMps', 'crouchSpeedMps', 'agents']);
+function weaponLegacy(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter(v => !(v && ['reload', 'buy', 'switch'].includes(v.type))).map(weaponLegacy);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([k]) => !WEAPON_FIELDS.has(k)).map(([k, v]) => [k, weaponLegacy(v)]));
+}
 function legacyMessage(value: unknown): unknown {
   if (Array.isArray(value)) return value.filter(v => !(v && NEW_EVENTS.has(v.type))).map(legacyMessage);
   if (!value || typeof value !== 'object') return value;
@@ -42,7 +52,8 @@ function validateInput(v: unknown): asserts v is BridgeInput {
   if (!object(v) || !vec(v.move) || !Number.isFinite(v.yaw)
     || !['walk', 'crouch', 'plantHeld', 'defuseHeld'].every((k) => typeof v[k] === 'boolean')
     || !['flashAt', 'reconAt'].every(k => v[k] === undefined || v[k] === null || vec(v[k]))
-    || !(v.dash === undefined || typeof v.dash === 'boolean')
+    || !['dash', 'reload', 'scoped'].every(k => v[k] === undefined || typeof v[k] === 'boolean')
+    || !(v.slot === undefined || v.slot === 'primary' || v.slot === 'secondary')
     || !(v.smokeAt === null || vec(v.smokeAt))
     || !(v.fire === null || (object(v.fire) && typeof v.fire.targetId === 'string' && ['head', 'body', 'miss'].includes(String(v.fire.result))))) {
     throw new Error('Invalid player input');
@@ -59,7 +70,7 @@ export function createBridgeServer(options: SessionOptions = {}): Server {
 
 /** Handle one ordered NDJSON stream; exported for transport-independent verification. */
 export function serveBridgeConnection(socket: Socket, options: SessionOptions = {}): void {
-  let protocol: 'bots-wire.1' | typeof PROTOCOL = PROTOCOL;
+  let protocol: 'bots-wire.1' | 'bots-wire.2' | typeof PROTOCOL = PROTOCOL;
   let pickedMap: string | undefined;
   let pickedAgent: AgentId | undefined;
   let logs: MatchLog[] = [];
@@ -67,7 +78,18 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   let session = CoachingSession.fromHistory([], 'player', options);
   let active: { run: DrillRun; initial: SimState; versus: boolean } | null = null;
   let sequence = 0;
-  const send = (msg: ServerMessage): void => { if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(msg) : msg) + '\n'); };
+  let fullMatch: MatchGame | null = null;
+  let buyTimer: ReturnType<typeof setTimeout> | undefined;
+  const clearBuyTimer = () => { if (buyTimer) clearTimeout(buyTimer); buyTimer = undefined; };
+  socket.on('close', clearBuyTimer);
+  const startMatchRound = () => {
+    if (!fullMatch || fullMatch.phase !== 'buy') return;
+    clearBuyTimer(); fullMatch.ready();
+    const state = fullMatch.state();
+    send({ type: 'step', state, events: [], thoughts: {}, done: false });
+  };
+  const scheduleBuy = () => { clearBuyTimer(); buyTimer = setTimeout(startMatchRound, 20000); buyTimer.unref(); };
+  const send = (msg: ServerMessage): void => { if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(weaponLegacy(msg)) : protocol === 'bots-wire.2' ? weaponLegacy(msg) : msg) + '\n'); };
   const report = (): void => {
     const staircases = Object.fromEntries(SKILLS.map((s) => [s, { difficulty: session.staircase(s).difficulty }])) as Record<Skill, { difficulty: number }>;
     send({ type: 'report', report: session.report, rehearsals: session.rehearsals().map((d, index) => ({ index, title: d.title, brief: d.goal, skill: d.skill })), staircases, played: played.length, agentAdvice: recommendAgents([...logs, ...played], session.report) });
@@ -110,10 +132,12 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   const handle = async (raw: unknown): Promise<void> => {
     if (!object(raw) || typeof raw.type !== 'string') throw new Error('Expected an object with a type');
     const msg = raw as unknown as ClientMessage;
+    if (fullMatch && ['match', 'load_history', 'next_drill', 'rehearse', 'versus', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('Abandon the match before changing mode');
     if (protocol === 'bots-wire.1' && ['maps', 'pick_map', 'pick_agent'].includes(msg.type)) throw new Error('This command requires bots-wire.2');
     switch (msg.type) {
       case 'hello':
-        if (msg.protocol !== PROTOCOL && msg.protocol !== 'bots-wire.1') throw new Error(`Expected protocol ${PROTOCOL}`);
+        if (fullMatch && msg.protocol !== PROTOCOL) throw new Error('Match mode requires bots-wire.3');
+        if (msg.protocol !== PROTOCOL && msg.protocol !== 'bots-wire.1' && msg.protocol !== 'bots-wire.2') throw new Error(`Expected protocol ${PROTOCOL}`);
         protocol = msg.protocol;
         send({ type: 'hello', protocol, map: loadMap(session.toJSON().mapId), rules: RULES });
         break;
@@ -177,7 +201,37 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         begin({ ...spec, id: `versus-${spec.id}`, bots: spec.bots.map((b) => ({ ...b, archetypeId: archetype.id, traits: { ...archetype.traits } })) }, true);
         break;
       }
+      case 'match': {
+        if (protocol !== PROTOCOL) throw new Error('Match mode requires bots-wire.3');
+        loadMap(msg.map);
+        if (!Object.hasOwn(AGENTS, msg.agent)) throw new Error('Unknown agent');
+        if (active) await finish(true);
+        clearBuyTimer();
+        pickedMap = msg.map; pickedAgent = msg.agent;
+        session = CoachingSession.fromJSON({ ...session.toJSON(), mapId: msg.map, playerAgent: msg.agent }, options);
+        fullMatch = new MatchGame({ map: msg.map, agent: msg.agent, playerId: session.playerId, seed: ++sequence, matchId: `bridge-match-${sequence}` });
+        send({ type: 'map', map: loadMap(msg.map) }); send(fullMatch.buyPhase()); scheduleBuy(); break;
+      }
+      case 'buy': case 'sell':
+        if (!fullMatch) throw new Error('No match');
+        fullMatch[msg.type](msg.item); send(fullMatch.loadoutMessage()); break;
+      case 'ready':
+        if (!fullMatch || fullMatch.phase !== 'buy') throw new Error('No buy phase');
+        startMatchRound(); break;
       case 'input': {
+        if (fullMatch) {
+          validateInput(msg.input);
+          const messages = fullMatch.step({ ...msg.input, agentId: session.playerId });
+          for (const message of messages) send(message);
+          if (fullMatch.phase === 'buy') scheduleBuy();
+          if (fullMatch.phase === 'ended') {
+            played.push(fullMatch.log()); fullMatch = null;
+            const fresh = CoachingSession.fromHistory([...logs, ...played], session.playerId, { ...options, mapId: pickedMap ?? session.toJSON().mapId }).toJSON();
+            session = CoachingSession.fromJSON({ ...session.toJSON(), report: fresh.report, historyMaps: fresh.historyMaps }, options);
+            report();
+          }
+          break;
+        }
         if (!active) throw new Error('No live drill');
         validateInput(msg.input);
         const step = active.run.step({ ...msg.input, agentId: active.run.spec.player.id });
@@ -187,7 +241,12 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         if (step.done) await finish();
         break;
       }
-      case 'abandon': await finish(true); break;
+      case 'abandon':
+        if (fullMatch) { clearBuyTimer(); const log = fullMatch.log(); if (log.rounds.length) played.push(log); fullMatch = null;
+          const fresh = CoachingSession.fromHistory([...logs, ...played], session.playerId, options).toJSON();
+          session = CoachingSession.fromJSON({ ...session.toJSON(), report: fresh.report, historyMaps: fresh.historyMaps }, options); report(); }
+        else await finish(true);
+        break;
       default: throw new Error(`Unknown message type: ${raw.type}`);
     }
   };

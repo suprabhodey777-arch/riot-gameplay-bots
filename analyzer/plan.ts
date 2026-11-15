@@ -12,7 +12,7 @@
 import type { MapDef } from '../shared/contract.ts';
 import type { DrillSpec, Skill, WeaknessReport } from '../shared/coaching.ts';
 import { createRng } from '../sim/rng.ts';
-import { buildDrill, EXAM_SEED_BASE } from './drills.ts';
+import { buildDrill, ecoDrill, EXAM_SEED_BASE } from './drills.ts';
 import { newStaircase, type StaircaseState } from './staircase.ts';
 
 export const PRACTICE_SEED_MAX = 8999;
@@ -45,7 +45,8 @@ export function planNext(
   let seed = 1 + rng.int(PRACTICE_SEED_MAX);
   while (seed === lastSeed) seed = 1 + rng.int(PRACTICE_SEED_MAX);
   const state = states[finding.skill] ?? newStaircase(finding.skill);
-  return { skill: finding.skill, drill: buildDrill(finding.skill, state.difficulty, map, seed) };
+  const drill = buildDrill(finding.skill, state.difficulty, map, seed);
+  return { skill: finding.skill, drill: report.ecoLosses && history.length % 3 === 0 ? ecoDrill(drill) : drill };
 }
 
 const SKILLS: Skill[] = ['entry', 'clutch', 'time_pressure', 'smoke_usage'];

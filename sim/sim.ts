@@ -1,3 +1,4 @@
+import { ARMOR, DEFAULT_LOADOUT, WEAPONS, equipped, weaponDamage, type Loadout, type WeaponId } from '../shared/weapons.ts';
 import { AGENTS, type AgentId } from '../shared/contract.ts';
 import type {
   AgentState,
@@ -62,7 +63,7 @@ export interface Scenario {
 export interface CreateSimOptions {
   map: MapDef;
   seed: number;
-  agents: { id: string; team: Team; isBot: boolean; agent?: AgentId }[];
+  agents: { id: string; team: Team; isBot: boolean; agent?: AgentId; loadout?: Loadout }[];
   scenario?: Scenario;
 }
 
@@ -75,7 +76,13 @@ export interface Sim {
   rng: Rng;
 }
 
-const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+// Copy the mutable world explicitly: loadout maps make JSON round-tripping costly at 20 Hz.
+const clone = (v: SimState): SimState => ({
+  ...v,
+  agents: v.agents.map(a => ({ ...a, pos: { ...a.pos }, abilities: { ...a.abilities }, ammo: { ...a.ammo }, reserve: { ...a.reserve } })),
+  smokes: v.smokes.map(s => ({ ...s, pos: { ...s.pos } })),
+  spike: v.spike.status === 'planted' || v.spike.status === 'dropped' ? { ...v.spike, pos: { ...v.spike.pos } } : { ...v.spike },
+});
 
 export function createSim(opts: CreateSimOptions): Sim {
   const { map } = opts;
@@ -103,6 +110,15 @@ export function createSim(opts: CreateSimOptions): Sim {
       revealedUntilTick: 0,
       smokesLeft: AGENTS[a.agent ?? 'haze'].kit.smoke,
       carryingSpike: false,
+      credits: a.loadout?.credits ?? 0,
+      armor: a.loadout?.armorPoints ?? (a.loadout?.armor ? ARMOR[a.loadout.armor].points : 0),
+      primary: (a.loadout ?? DEFAULT_LOADOUT).primary ?? null,
+      secondary: a.loadout?.secondary ?? 'pin',
+      slot: (a.loadout ?? DEFAULT_LOADOUT).primary ? 'primary' : 'secondary',
+      ammo: Object.fromEntries(Object.entries(WEAPONS).map(([id, w]) => [id, w.mag])) as Record<WeaponId, number>,
+      reserve: Object.fromEntries(Object.entries(WEAPONS).map(([id, w]) => [id, w.mag * 3])) as Record<WeaponId, number>,
+      reloadingUntilTick: 0,
+      scoped: false,
     };
   });
   const hadAgents = {
@@ -142,6 +158,8 @@ export function createSim(opts: CreateSimOptions): Sim {
   const reveals = new Map<string, { team: Team; until: number }[]>();
   const distance = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
   const spotted = new Set<string>();
+  const lastFire = new Map<string, number>();
+  const reloadWeapon = new Map<string, WeaponId>();
   let smokeCounter = 0;
   let plantTicks = 0;
   let defuseTicks = 0;
@@ -165,6 +183,29 @@ export function createSim(opts: CreateSimOptions): Sim {
     for (const inp of inputs) byId.set(inp.agentId, inp);
     const aliveAtStart = new Set(agents.filter((a) => a.alive).map((a) => a.id));
     const live = (id: string) => aliveAtStart.has(id);
+
+    // Weapon actions precede shooting; switching cancels a reload without granting ammo.
+    for (const a of agents) {
+      if (!a.alive) continue;
+      const inp = byId.get(a.id);
+      if (a.reloadingUntilTick && s.tick >= a.reloadingUntilTick) {
+        const id = reloadWeapon.get(a.id)!;
+        const count = Math.min(WEAPONS[id].mag - a.ammo[id], a.reserve[id]);
+        a.ammo[id] += count; a.reserve[id] -= count;
+        a.reloadingUntilTick = 0; reloadWeapon.delete(a.id);
+      }
+      if (inp?.slot && inp.slot !== a.slot && a[inp.slot]) {
+        a.slot = inp.slot; a.reloadingUntilTick = 0; reloadWeapon.delete(a.id);
+        events.push({ type: 'switch', tick: s.tick, agent: a.id, slot: a.slot });
+      }
+      if (inp?.scoped !== undefined) a.scoped = inp.scoped;
+      const id = equipped(a), w = WEAPONS[id];
+      if (inp?.reload && !a.reloadingUntilTick && a.ammo[id] < w.mag && a.reserve[id] > 0) {
+        a.reloadingUntilTick = s.tick + Math.ceil(w.reloadS * TICK_RATE);
+        reloadWeapon.set(a.id, id);
+        events.push({ type: 'reload', tick: s.tick, agent: a.id, weapon: id });
+      }
+    }
 
     // Movement and aim, in agent order.
     for (const a of agents) {
@@ -280,12 +321,20 @@ export function createSim(opts: CreateSimOptions): Sim {
     for (const a of agents) {
       const inp = byId.get(a.id);
       if (!inp?.fire || !live(a.id)) continue;
+      const id = equipped(a), w = WEAPONS[id];
+      if (a.reloadingUntilTick || a.ammo[id] <= 0 || s.tick - (lastFire.get(a.id) ?? -10000) < Math.ceil(w.fireIntervalS * TICK_RATE - 1e-9)) continue;
+      a.ammo[id]--; lastFire.set(a.id, s.tick);
       const target = agents.find((x) => x.id === inp.fire?.targetId);
       if (!target || target.team === a.team || target.hp <= 0 || !live(target.id)) continue;
       if (a.blindUntilTick > s.tick || inp.fire.result === 'miss') continue;
       if (!lineOfSight(a.pos, target.pos, walls, s.smokes)) continue;
       const part = inp.fire.result;
-      const amount = part === 'head' ? HEAD_DAMAGE : BODY_DAMAGE;
+      let amount = 0;
+      for (let pellet = 0; pellet < w.pellets; pellet++) {
+        const damage = weaponDamage(id, part, distance(a.pos, target.pos));
+        const absorbed = Math.min(target.armor, damage * 0.66);
+        target.armor -= absorbed; amount += damage - absorbed;
+      }
       target.hp = Math.max(0, target.hp - amount);
       events.push({
         type: 'damage',

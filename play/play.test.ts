@@ -81,3 +81,14 @@ it('C is smoke rather than crouch; F holds the objective while E is available fo
   expect(ability).toMatchObject({ crouch: false, plantHeld: false, dash: true, flashAt: { x: 1, y: 2 }, reconAt: { x: 3, y: 4 } });
   expect(buildInput({ ...base, keys: new Set(['KeyF']) }).plantHeld).toBe(true);
 });
+
+import { WeaponAim } from './weapon-aim.ts';
+it('recoil follows the shared pattern, camera kick decays, and releasing resets the spray', () => {
+  const aim = new WeaponAim();
+  const first = aim.shot(0, 'lancer', 0, false, false, false, false, false);
+  const second = aim.shot(0, 'lancer', 0.15, false, false, false, false, false);
+  expect(first).not.toBe(second);
+  expect(aim.cameraKick(0.15).y).toBeGreaterThan(0);
+  expect(aim.cameraKick(0.55).y).toBeCloseTo(0);
+  expect(aim.shot(0, 'lancer', 1, false, false, false, false, false)).toBe(first);
+});

@@ -53,6 +53,7 @@ describe('fighting', () => {
     for (let i = 0; i < 2; i++) {
       const r = sim.step([input('a', { fire: body })]);
       expect(r.state.agents.find((a) => a.id === 'd')?.alive).toBe(true);
+      sim.step([]); sim.step([]); // Lancer's 0.15 s interval at 20 Hz.
     }
     const r = sim.step([input('a', { fire: body })]);
     expect(r.state.agents.find((a) => a.id === 'd')?.alive).toBe(false);

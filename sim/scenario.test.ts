@@ -34,9 +34,9 @@ function scripted(scenario?: Scenario): string {
 }
 
 describe('scenario', () => {
-  test('omitting a scenario and empty scenarios have the same deterministic v4 replay', () => {
-    // v4 digest includes agent kits, status timers and footstep events.
-    expect(scripted()).toBe('579372ba-ae2bc791');
+  test('omitting a scenario and empty scenarios have the same deterministic v5 replay', () => {
+    // v5 digest adds loadout, magazine and reserve state to the v4 replay.
+    expect(scripted()).toBe('24b6823a-bb9b7701');
     expect(scripted({})).toBe(scripted());
     expect(scripted({ agents: {} })).toBe(scripted());
   });

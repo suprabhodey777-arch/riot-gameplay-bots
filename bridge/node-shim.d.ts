@@ -10,6 +10,7 @@ declare module 'node:net' {
     setTimeout(ms: number, callback: () => void): this;
     on(event: 'data', listener: (chunk: string) => void): this;
     on(event: 'error', listener: (error: Error) => void): this;
+    on(event: 'close', listener: () => void): this;
     on(event: 'connect', listener: () => void): this;
   }
   export interface Server {
@@ -37,4 +38,10 @@ declare module 'node:url' {
 declare module 'node:process' {
   const process: { argv: string[]; env: Record<string, string | undefined>; exitCode?: number };
   export default process;
+}
+
+declare module 'node:timers' {
+  interface Timeout { unref(): this }
+  export function setTimeout(callback: () => void, ms: number): Timeout;
+  export function clearTimeout(timeout: Timeout): void;
 }

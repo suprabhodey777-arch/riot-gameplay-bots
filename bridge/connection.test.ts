@@ -170,3 +170,30 @@ describe('wire v2 additions', () => {
     expect((await c.next('step')).state.tick).toBe(1);
   }, 60000);
 });
+
+it('wire v3 exposes weapons and runs a full match through buy, ready, results and re-analysis', async () => {
+  const c = stream(); c.send({ type: 'hello', protocol: PROTOCOL });
+  const hello = await c.next('hello'); expect(hello.rules.weapons.lancer.fireIntervalS).toBe(0.15);
+  expect(hello.rules.weapons.brick.pellets).toBe(8);
+  c.send({ type: 'match', map: 'ironvale', agent: 'rook' });
+  await c.next('map'); let buy = await c.next('buy_phase'); expect(buy.credits).toBe(800); expect(buy.team).toHaveLength(4);
+  c.send({ type: 'buy', item: 'longshot' }); expect((await c.next('error')).message).toContain('afford');
+  c.send({ type: 'buy', item: 'hammer' }); expect((await c.next('loadout')).credits).toBe(300);
+  c.send({ type: 'sell', item: 'hammer' }); expect((await c.next('loadout')).credits).toBe(800);
+  let complete = false;
+  while (!complete) {
+    c.send({ type: 'ready' }); await c.next('step');
+    let done = false;
+    for (let tick = 0; tick < 3001 && !done; tick++) {
+      c.send({ type: 'input', input: idleInput('spoofed-enemy') });
+      done = (await c.next('step')).done;
+    }
+    expect(done).toBe(true);
+    const result = await c.next('round_result');
+    expect(result.creditsEarned).toBeGreaterThanOrEqual(1900);
+    complete = Math.max(result.score.player, result.score.enemy) === 7;
+    if (!complete) { buy = await c.next('buy_phase'); if (buy.round === 7) { expect(buy.side).toBe('defense'); expect(buy.roundType).toBe('pistol'); } }
+  }
+  expect((await c.next('match_end')).score).toEqual(expect.objectContaining({ enemy: expect.any(Number) }));
+  const report = await c.next('report'); expect(report.played).toBe(1); expect(report.report.matchesRead).toBe(1);
+}, 60000);

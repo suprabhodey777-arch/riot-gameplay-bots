@@ -310,6 +310,7 @@ export function analyze(logs: MatchLog[], playerId: string): WeaknessReport {
   // Worst first; among equal severities (usually 0), the furthest below its benchmark first.
   const shortfall = (f: WeaknessFinding): number => (f.benchmark - f.rate) / f.benchmark;
   findings.sort((a, b) => b.severity - a.severity || shortfall(b) - shortfall(a));
-  return { playerId, role, matchesRead: mine.length, findings };
+  const ecoLosses = mine.flatMap(l => l.rounds).filter(r => r.roundType === 'eco' && r.winner !== r.playerTeam).length;
+  return { playerId, role, matchesRead: mine.length, findings, ...(ecoLosses ? { ecoLosses } : {}) };
 }
 

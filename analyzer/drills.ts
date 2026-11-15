@@ -251,8 +251,8 @@ export function drillFor(finding: WeaknessFinding, difficulty: number, map: MapD
 export function drillSimOptions(spec: DrillSpec): CreateSimOptions {
   const map = loadMap(spec.mapId);
   const agents: CreateSimOptions['agents'] = [
-    { id: spec.player.id, team: spec.player.team, isBot: false, agent: withPlayerAgent(spec).player.agent },
-    ...spec.bots.map((b) => ({ id: b.id, team: b.team, isBot: true, agent: agentForArchetype(b.archetypeId) })),
+    { id: spec.player.id, team: spec.player.team, isBot: false, loadout: spec.loadout, agent: withPlayerAgent(spec).player.agent },
+    ...spec.bots.map((b) => ({ id: b.id, team: b.team, isBot: true, loadout: spec.eco ? undefined : spec.loadout, agent: agentForArchetype(b.archetypeId) })),
   ];
   const scenarioAgents: NonNullable<NonNullable<CreateSimOptions['scenario']>['agents']> = {
     [spec.player.id]: { spawn: spec.player.spawn, hp: spec.player.hp, carryingSpike: spec.player.carryingSpike },
@@ -264,4 +264,9 @@ export function drillSimOptions(spec: DrillSpec): CreateSimOptions {
     agents,
     scenario: { agents: scenarioAgents, roundTimeLeftS: spec.roundTimeLeftS, spikePlanted: spec.spikePlanted },
   };
+}
+
+/** Same skill and scenario, practising a cheap sidearm against rifles. */
+export function ecoDrill(spec: DrillSpec): DrillSpec {
+  return { ...spec, id: `eco-${spec.id}`, eco: true, title: `Eco round: ${spec.title}`, goal: `Win with a sidearm against rifles. ${spec.goal}`, loadout: { primary: null, secondary: spec.seed % 2 ? 'pin' : 'hammer', armor: null, credits: 800 } };
 }

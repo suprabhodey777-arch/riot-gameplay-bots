@@ -1,3 +1,4 @@
+import type { Loadout } from './weapons.ts';
 /**
  * Coaching contract: weaknesses, drills and bot traits. Shared by the
  * analyzer, the bot, the coach and the 3D client (which shows the drill goal
@@ -62,6 +63,7 @@ export interface WeaknessReport {
   role: 'duelist' | 'initiator' | 'controller' | 'sentinel';
   matchesRead: number;
   findings: WeaknessFinding[];
+  ecoLosses?: number;
 }
 
 /** How a bot plays. Every number is 0-1 unless the name says otherwise. */
@@ -107,6 +109,9 @@ export interface DrillBot {
 /** A scenario built to practise one skill. */
 export interface DrillSpec {
   id: string;
+  loadout?: Loadout;
+  /** Eco drills leave opponents on rifles. */
+  eco?: boolean;
   skill: Skill;
   title: string;
   /** What the player is asked to do, shown on screen. */
