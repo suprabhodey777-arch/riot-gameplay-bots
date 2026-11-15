@@ -115,7 +115,7 @@ describe('wire v2 additions', () => {
     expect(hello.rules).toMatchObject({ flashFuseS: .6, flashBlindS: 1.75, dashDistanceM: 6, runHearingM: 15, walkSpeedMps: 3, crouchSpeedMps: 2 });
     expect(Object.keys(hello.rules.agents ?? {})).toEqual(['rook', 'haze', 'wren', 'pike']);
     c.send({ type: 'maps' });
-    expect((await c.next('maps')).maps.map(m => m.id)).toEqual(['saltworks', 'ironvale']);
+    expect((await c.next('maps')).maps.map(m => m.id)).toEqual(['saltworks', 'ironvale', 'meridian']);
     c.send({ type: 'pick_map', map: 'ironvale' });
     expect((await c.next('map')).map.id).toBe('ironvale');
     c.send({ type: 'pick_agent', agent: 'pike' });

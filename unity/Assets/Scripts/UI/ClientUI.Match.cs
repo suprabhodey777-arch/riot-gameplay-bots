@@ -114,10 +114,10 @@ namespace Saltworks
         {
             switch ((t ?? "").ToLowerInvariant().Replace("_", "").Replace(" ", "").Replace("-", ""))
             {
-                case "pistol": return new Color(0.98f, 0.72f, 0.22f);
+                case "pistol": return Palette.Warn;
                 case "eco": return new Color(0.6f, 0.64f, 0.7f);
                 case "force": return new Color(1f, 0.5f, 0.25f);
-                case "full": case "fullbuy": return new Color(0.3f, 0.85f, 0.5f);
+                case "full": case "fullbuy": return Palette.Ok;
                 default: return Settings.Accent;
             }
         }
@@ -179,7 +179,8 @@ namespace Saltworks
                 bool enabled = i == 4 || (idle && (i != 0 || Game.V3));
                 var r = new Rect(x - (1f - ik) * 24f, by + i * (slatH + slatGap), slatW, slatH);
                 int key = 1000 + i;
-                float h = CardHover(r, key, enabled);
+                // The hover covers the resting slot and the lifted card, so the click rect never misses what is drawn.
+                float h = CardHover(new Rect(r.x - 8f, r.y, r.width + 8f, r.height), key, enabled);
                 Color oldC = GUI.color;
                 GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * ik);
                 var b = new Rect(r.x + h * 8f, r.y, r.width, r.height);
@@ -200,7 +201,7 @@ namespace Saltworks
                 else Lbl(dr, desc, menuDescLine, dc);
                 Lbl(new Rect(b.xMax - 40f, b.y, 28f, b.height), "\u203a", menuTitle, new Color(ac.r, ac.g, ac.b, 0.25f + 0.75f * h));
                 GUI.color = oldC;
-                if (CardHit(r, key, enabled))
+                if (CardHit(b, key, enabled))
                 {
                     switch (i)
                     {
@@ -222,9 +223,8 @@ namespace Saltworks
             Card(sr, ac);
             float sy = sr.y + 18f;
             Lbl(new Rect(sr.x + 20f, sy, 340f, 18f), Spaced("Session"), tinyCaps, Theme.Muted);
-            string proto = Game.V4 ? "bots-wire.4: personas, streamer overlay" : Game.V3 ? "bots-wire.3: matches, weapons, economy" : Game.V2 ? "bots-wire.2: drills, maps, agents" : "bots-wire.1: drills";
             Plate(new Rect(sr.x + 20f, sy + 30f, 9f, 9f), Game.Connected ? Palette.Ok : Palette.Bad);
-            Lbl(new Rect(sr.x + 36f, sy + 24f, 340f, 22f), (Game.Connected ? "Online   " : "Offline   ") + proto, smallMid, Game.Connected ? Palette.Ok : Palette.Bad);
+            Lbl(new Rect(sr.x + 36f, sy + 24f, 340f, 22f), Game.Connected ? "Online" : "Offline", smallMid, Game.Connected ? Palette.Ok : Palette.Bad);
             Lbl(new Rect(sr.x + 20f, sy + 58f, 160f, 18f), Spaced("Map"), tinyCaps, Theme.Muted);
             Lbl(new Rect(sr.x + 20f, sy + 78f, 170f, 26f), Upper(string.IsNullOrEmpty(Game.MapName) ? "?" : Game.MapName), cardTitle, Theme.Ink);
             Lbl(new Rect(sr.x + 200f, sy + 58f, 160f, 18f), Spaced("Agent"), tinyCaps, Theme.Muted);
@@ -298,10 +298,14 @@ namespace Saltworks
             y = SectionLabel(x, y, w, "Agent");
             int n = Agents.All.Count;
             float aw = (w - 12f * (n - 1)) / Mathf.Max(1, n);
+            // The cards grow with the longest blurb instead of clipping it at 46 px.
+            float blurbH = 0f;
+            for (int i = 0; i < n; i++) blurbH = Mathf.Max(blurbH, TextH(Agents.All[i].Blurb ?? "", menuDesc, aw - 32f));
+            float agentH = Mathf.Max(150f, 100f + blurbH + 8f);
             for (int i = 0; i < n; i++)
             {
                 AgentInfo a = Agents.All[i];
-                var r = new Rect(x + i * (aw + 12f), y, aw, 150f);
+                var r = new Rect(x + i * (aw + 12f), y, aw, agentH);
                 bool sel = a.Id == Game.MatchAgentId;
                 int key = StableKey("match-agent:" + a.Id);
                 float h = CardHover(r, key, true);
@@ -320,11 +324,11 @@ namespace Saltworks
                     Lbl(new Rect(ix + 24f, r.y + 72f, 30f, 20f), "\u00d7" + c, cardSmall, Theme.Ink);
                     ix += 56f;
                 }
-                Lbl(new Rect(r.x + 16f, r.y + 100f, r.width - 32f, 46f), a.Blurb ?? "", menuDesc, Theme.Muted);
+                Lbl(new Rect(r.x + 16f, r.y + 100f, r.width - 32f, blurbH), a.Blurb ?? "", menuDesc, Theme.Muted);
                 string id = a.Id;
                 if (CardHit(r, key, true)) Game.Do(() => Game.MatchAgentId = id);
             }
-            y += 150f + Theme.S5;
+            y += agentH + Theme.S5;
 
             // Enemy team: plain bots, or personas (bots-wire.4).
             y = SectionLabel(x, y, w, "Enemy team");
@@ -408,7 +412,10 @@ namespace Saltworks
                 roundStr = "ROUND " + Game.Round + (string.IsNullOrEmpty(Game.MatchSide) ? "" : "   " + Game.MatchSide.ToUpperInvariant());
             }
             Lbl(new Rect(x, y, 300f, 22f), roundStr, cardTitle, Theme.Ink);
-            Lbl(new Rect(x, y + 22f, Mathf.Max(200f, area.center.x - 130f - x), 20f), Weapons.RoundTypeAdvice(Game.RoundType), smallMid, Theme.Muted);
+            float adviceW = Mathf.Max(200f, area.center.x - 130f - x);
+            string advice = Weapons.RoundTypeAdvice(Game.RoundType);
+            float adviceH = Mathf.Min(46f, TextH(advice, small, adviceW));
+            Lbl(new Rect(x, y + 22f, adviceW, adviceH), advice, small, Theme.Muted);
 
             ScoreInfo sc = Game.Score;
             int sk = sc == null ? -1 : sc.player * 100 + sc.enemy;
@@ -477,7 +484,7 @@ namespace Saltworks
                     if (m == null) continue;
                     if (ty > tr.yMax - 44f) break;
                     bool me = m.id == Game.PlayerId;
-                    Lbl(new Rect(tr.x + 16f, ty, tr.width - 120f, 22f), me ? "You" : m.id, bodyBoldMid, me ? Settings.Accent : Settings.Ally);
+                    Lbl(new Rect(tr.x + 16f, ty, tr.width - 120f, 22f), me ? "You" : Upper(Game.DisplayName(m.id)), bodyBoldMid, me ? Settings.Accent : Settings.Ally);
                     Lbl(new Rect(tr.xMax - 106f, ty, 90f, 22f), Credits(m.credits), priceStyle, Theme.Ink);
                     string prim = m.loadout?.primary;
                     if (!string.IsNullOrEmpty(prim)) Tex(new Rect(tr.x + 16f, ty + 22f, 60f, 20f), GunModels.Icon(prim), new Color(1f, 1f, 1f, 0.75f));
@@ -492,7 +499,7 @@ namespace Saltworks
 
             float fy = area.yMax - 24f - Theme.ButtonH;
             Lbl(new Rect(area.x + 24f, fy, area.width - teamW - 200f, Theme.ButtonH),
-                (overlay ? "B closes the menu.  " : "") + "Click a weapon to buy it, click an owned one to sell it back. The round starts when the timer ends or everyone is ready.", smallMid, Theme.Muted);
+                (overlay ? "B closes. " : "") + "Buy, then Ready up. The round starts at 0:00.", smallMid, Theme.Muted);
             if (GButton(new Rect(area.xMax - 24f - teamW, fy, teamW, Theme.ButtonH), Game.Readied ? "Ready" : "Ready up", 1, Game.BuyPhaseActive, 0, false, null, "Enter")) Game.Do(Game.ReadyUp);
             if (overlay && GButton(new Rect(area.xMax - 24f - teamW - 142f, fy, 130f, Theme.ButtonH), "Close", 2, true, 0, false, null, "B")) Game.Do(Game.CloseBuyMenu);
             if ((!overlay && Game.Readied) || (!overlay && !Game.BuyPhaseActive))
@@ -549,7 +556,7 @@ namespace Saltworks
             string id = w.Id;
             if (CardHit(r, key, clickable))
             {
-                if (owned && w.Price > 0) { PlayUi(UiSound.Back, 0.8f); Game.Do(() => Game.SellItem(id)); }
+                if (owned && w.Price > 0) { PlayUi(SoundBank.Get("ui.cancel"), 0.5f); Game.Do(() => Game.SellItem(id)); }
                 else if (!owned && afford) Game.Do(() => Game.BuyItem(id));
             }
         }
@@ -579,7 +586,7 @@ namespace Saltworks
             string id = kind;
             if (CardHit(r, key, clickable))
             {
-                if (owned) { PlayUi(UiSound.Back, 0.8f); Game.Do(() => Game.SellItem(id)); }
+                if (owned) { PlayUi(SoundBank.Get("ui.cancel"), 0.5f); Game.Do(() => Game.SellItem(id)); }
                 else if (afford) Game.Do(() => Game.BuyItem(id));
             }
         }
@@ -601,7 +608,7 @@ namespace Saltworks
                     resultFor = rr;
                     string how = string.IsNullOrEmpty(rr.how) ? "" : rr.how.ToUpperInvariant();
                     string earned = rr.creditsEarned > 0 ? "+" + rr.creditsEarned.ToString("N0") + " credits" : "";
-                    string mvp = string.IsNullOrEmpty(rr.mvp) ? "" : "MVP  " + (rr.mvp == Game.PlayerId ? "You" : Game.PersonaName(rr.mvp) ?? rr.mvp);
+                    string mvp = string.IsNullOrEmpty(rr.mvp) ? "" : "MVP  " + Game.DisplayName(rr.mvp);
                     string score = rr.score != null ? rr.score.player + " : " + rr.score.enemy : "";
                     var parts = new List<string>();
                     foreach (string s in new[] { how, score, earned, mvp }) if (s.Length > 0) parts.Add(s);
@@ -624,7 +631,7 @@ namespace Saltworks
                 Plate(r, new Color(0.03f, 0.04f, 0.07f, 0.9f * k));
                 PlateLine(r, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, k));
                 Condensed(new Rect(r.x, r.y + 4f, r.width, 32f), Spaced("Sides swap"), hudCenter, new Color(1f, 1f, 1f, k), 0.9f, true);
-                Shadowed(new Rect(r.x, r.y + 34f, r.width, 20f), "You now play " + (Game.MatchSide ?? "the other side"), centerSmall, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, k));
+                Shadowed(new Rect(r.x, r.y + 34f, r.width, 20f), Upper("You now play " + (Game.MatchSide ?? "the other side")), centerSmall, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, k));
             }
             DrawRoundSweep(now);
         }

@@ -142,7 +142,7 @@ namespace Saltworks
         void FinishHoverSounds()
         {
             if (Event.current.type != EventType.Repaint) return;
-            if (hoverKey != 0 && hoverKey != lastHoverKey) PlayUi(UiSound.Tick, 0.45f);
+            if (hoverKey != 0 && hoverKey != lastHoverKey) PlayUi(SoundBank.Get("ui.hover"), 0.3f);
             lastHoverKey = hoverKey;
             hoverKey = 0;
         }

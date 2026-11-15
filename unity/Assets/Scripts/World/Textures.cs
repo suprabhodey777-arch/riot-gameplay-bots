@@ -112,7 +112,7 @@ namespace Saltworks
             public Texture2D Normal;
         }
 
-        static Pair concrete, metal, tiles, crate, trim, ground, brick, flags, deck, timber;
+        static Pair concrete, metal, tiles, crate, trim, ground, brick, flags, deck, timber, epoxy, pavers;
         static Texture2D grain, hole, dot, star, tracer, hazard, plant, scope, glowStrip;
 
         // ---- surfaces ----------------------------------------------------------------------------
@@ -570,6 +570,97 @@ namespace Saltworks
             timber.Albedo = Finish(New("SaltworksTimber", n, n, true, false, TextureWrapMode.Repeat), px);
             timber.Normal = NormalMap("SaltworksTimberN", h, n, 2.4f);
             return timber;
+        }
+
+        /// <summary>
+        /// Poured epoxy floor, one repeat = 4 m: pale, near-flat, with fine aggregate flecks, saw-cut control joints
+        /// every 2 m, a few soft scuffs, and more sheen than stone. A = smoothness.
+        /// </summary>
+        public static Pair Epoxy()
+        {
+            if (epoxy.Albedo != null) return epoxy;
+            const int n = 256;
+            var px = new Color32[n * n];
+            var h = new float[n * n];
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    float fine = Fbm(u, v, 32, 3, 141);
+                    float broad = Fbm(u, v, 4, 3, 142);
+                    float scuff = Fbm(u, v, 8, 2, 143);
+                    int jx = Mathf.Min(x % 128, 127 - x % 128), jy = Mathf.Min(y % 128, 127 - y % 128);
+                    float joint = Mathf.Min(jx, jy);
+                    float c = 0.76f + (fine - 0.5f) * 0.05f + (broad - 0.5f) * 0.07f;
+                    // Aggregate flecks: a few grains of sand sitting in the resin.
+                    if (Hash(x, y, 144) < 0.014f) c += 0.1f;
+                    else if (Hash(x, y, 145) < 0.01f) c -= 0.09f;
+                    c *= Mathf.Lerp(1f, 0.93f, Smooth(0.62f, 0.92f, scuff));
+                    float height = fine * 0.15f;
+                    float smooth = 0.6f + (fine - 0.5f) * 0.1f;
+                    // Saw-cut joints, barely darker than the floor and a little less glossy.
+                    if (joint < 1.5f)
+                    {
+                        c *= 0.68f;
+                        height = -0.8f;
+                        smooth = 0.25f;
+                    }
+                    else if (joint < 3f) c *= Mathf.Lerp(0.9f, 1f, (joint - 1.5f) / 1.5f);
+                    px[y * n + x] = new Color32(B(c), B(c * 0.995f), B(c * 0.985f), B(smooth));
+                    h[y * n + x] = height;
+                }
+            }
+            epoxy.Albedo = Finish(New("SaltworksEpoxy", n, n, true, false, TextureWrapMode.Repeat), px);
+            epoxy.Normal = NormalMap("SaltworksEpoxyN", h, n, 1.4f);
+            return epoxy;
+        }
+
+        /// <summary>
+        /// Concrete paving slabs, one repeat = 4 m: four 1 m columns and eight 0.5 m courses in running bond, each
+        /// slab its own tone, chamfered arrises, dark joints and a little salt bloom in them. A = smoothness.
+        /// </summary>
+        public static Pair Pavers()
+        {
+            if (pavers.Albedo != null) return pavers;
+            const int n = 256;
+            const int col = n / 4, row = n / 8;
+            var px = new Color32[n * n];
+            var h = new float[n * n];
+            for (int y = 0; y < n; y++)
+            {
+                int cy = y / row;
+                int ly = y % row;
+                int shift = (cy % 2) * (col / 2);
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n, v = y / (float)n;
+                    int xs = Wrap(x + shift, n);
+                    int cx = xs / col;
+                    int lx = xs % col;
+                    float edge = Mathf.Min(Mathf.Min(lx, col - 1 - lx), Mathf.Min(ly, row - 1 - ly));
+                    float fine = Fbm(u, v, 32, 3, 151);
+                    float broad = Fbm(u, v, 4, 3, 152);
+                    float tone = 0.6f + (Hash(cx, cy, 153) - 0.5f) * 0.12f;
+                    float c = tone + (fine - 0.5f) * 0.07f + (broad - 0.5f) * 0.05f;
+                    float height = 0.5f + fine * 0.3f;
+                    float smooth = 0.2f;
+                    if (edge < 2f)
+                    {
+                        // A dark joint with a little pale bloom where water sits.
+                        float bloom = Fbm(u, v, 16, 2, 154);
+                        c = 0.34f + bloom * 0.16f;
+                        height = -1.1f;
+                        smooth = 0.06f;
+                    }
+                    else if (edge < 5f) c *= Mathf.Lerp(0.88f, 1f, (edge - 2f) / 3f);
+                    px[y * n + x] = new Color32(B(c), B(c * 0.985f), B(c * 0.96f), B(smooth));
+                    h[y * n + x] = height;
+                }
+            }
+            pavers.Albedo = Finish(New("SaltworksPavers", n, n, true, false, TextureWrapMode.Repeat), px);
+            pavers.Normal = NormalMap("SaltworksPaversN", h, n, 2.4f);
+            return pavers;
         }
 
         /// <summary>Fine grain for guns and armour (A = smoothness variation).</summary>

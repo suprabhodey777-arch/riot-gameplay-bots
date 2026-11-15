@@ -149,7 +149,7 @@ namespace Saltworks
                 what = "10 kills this session";
             }
             int key = target * 1000 + have + (Game.InDuel ? 100000 : 0);
-            if (key != goalKey || (Game.InDuel && !ReferenceEquals(goalPersonaName, Game.DuelPersonaName)))
+            if (key != goalKey || (Game.InDuel && !string.Equals(goalPersonaName, Game.DuelPersonaName)))
             {
                 goalKey = key;
                 goalPersonaName = Game.DuelPersonaName;
@@ -170,7 +170,7 @@ namespace Saltworks
             float y = Settings.MinimapOn && !Game.FullMap ? 18f + Settings.MinimapSize + 30f : 150f;
             var r = new Rect(20f, y, 214f, 152f);
             if (r.yMax > H - 250f) return;
-            if (!ReferenceEquals(camAgent, agent))
+            if (!string.Equals(camAgent, agent))
             {
                 camAgent = agent;
                 camKey = "cam:" + agent;

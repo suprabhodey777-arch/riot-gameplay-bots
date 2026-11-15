@@ -3,9 +3,11 @@
 // change), wall lamps with a warm lens and a faint halo, painted metal sign
 // plates, metal corner caps and straps on crates, small prop groups tucked into
 // inside corners (barrels, crate stacks, pallets with sacks), hazard markings
-// across chokes, a plant-zone stencil on every site and a fogged skyline of
-// banded buildings with rooftop tanks beyond the outer walls. Nothing here has
-// a collider: the sim's walls are the only geometry that matters for play.
+// across chokes, a plant-zone stencil on every site, one landmark per large
+// exterior area standing on the wall head beside it (a water tower, a satellite
+// dish, a tower crane or a billboard), and a fogged skyline of banded buildings
+// with rooftop tanks beyond the outer walls. Nothing here has a collider: the
+// sim's walls are the only geometry that matters for play.
 // Everything is merged into one mesh per material, so the whole set costs about
 // eight draw calls. Density (0.35 to 1.3) comes from the graphics preset.
 using System.Collections.Generic;
@@ -100,6 +102,7 @@ namespace Saltworks
                 }
             }
             CornerProps(metal, wood, map, edges, keepOut, density, rng);
+            Landmarks(metal, map);
 
             Chokes(hazard, map, density);
             PlantZones(plant, map);
@@ -433,6 +436,169 @@ namespace Saltworks
             for (int sx = -1; sx <= 1; sx += 2)
             for (int sz = -1; sz <= 1; sz += 2)
                 k.Box(0, m * Matrix4x4.TRS(new Vector3(sx * hs, 0f, sz * hs), Quaternion.identity, Vector3.one), new Vector3(0.06f, size + 0.01f, 0.06f), 0.008f, strap);
+        }
+
+        // ---- landmarks -------------------------------------------------------------------------------
+        /// <summary>
+        /// One landmark per large exterior area, standing on the wall head beside it so it is seen against the sky
+        /// and never in the way: a water tower, a satellite dish, a tower crane or a painted billboard, chosen by a
+        /// stable hash of the area's name. All of it above the wall top, and no collider.
+        /// </summary>
+        static void Landmarks(MeshKit k, MapDef map)
+        {
+            foreach (MapZones.LandmarkSite site in MapZones.Landmarks(map))
+            {
+                Matrix4x4 m = MeshKit.At(new Vector3(site.At.x, site.Base, site.At.y), new Vector3(0f, site.Yaw, 0f));
+                switch (site.Kind)
+                {
+                    case 0: WaterTower(k, m); break;
+                    case 1: Dish(k, m); break;
+                    case 2: Crane(k, m); break;
+                    default: Billboard(k, m); break;
+                }
+            }
+        }
+
+        /// <summary>A water tower on four braced legs: tank with hoops, conical roof and a ladder.</summary>
+        static void WaterTower(MeshKit k, Matrix4x4 m)
+        {
+            Color steel = new Color(0.34f, 0.36f, 0.38f, 1f);
+            Color paint = new Color(0.76f, 0.74f, 0.68f, 0f);
+            const float legTop = 3.3f;
+            for (int sx = -1; sx <= 1; sx += 2)
+            for (int sz = -1; sz <= 1; sz += 2)
+            {
+                Vector3 a = m.MultiplyPoint3x4(new Vector3(sx * 0.72f, 0.02f, sz * 0.72f));
+                Vector3 b = m.MultiplyPoint3x4(new Vector3(sx * 1.08f, legTop, sz * 1.08f));
+                k.Cylinder(0, MeshKit.Along((a + b) * 0.5f, b - a), 0.085f, (b - a).magnitude, 8, steel);
+            }
+            for (int lvl = 0; lvl < 2; lvl++)
+            {
+                float y = 1.05f + lvl * 1.1f;
+                float half = Mathf.Lerp(0.78f, 1.03f, y / legTop);
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, y, s * half), Quaternion.identity, Vector3.one), new Vector3(half * 2f, 0.06f, 0.06f), 0.005f, steel);
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(s * half, y, 0f), Quaternion.identity, Vector3.one), new Vector3(0.06f, 0.06f, half * 2f), 0.005f, steel);
+                }
+            }
+            k.Cylinder(0, MeshKit.Along(m.MultiplyPoint3x4(new Vector3(0f, legTop + 1.3f, 0f)), Vector3.up), 1.42f, 2.6f, 16, paint);
+            k.Cylinder(0, MeshKit.Along(m.MultiplyPoint3x4(new Vector3(0f, legTop + 0.24f, 0f)), Vector3.up), 1.46f, 0.12f, 16, steel);
+            k.Cylinder(0, MeshKit.Along(m.MultiplyPoint3x4(new Vector3(0f, legTop + 2.36f, 0f)), Vector3.up), 1.46f, 0.12f, 16, steel);
+            List<Sec> roof = Loft.Begin();
+            roof.Add(new Sec(0f, 1.44f, 1.44f));
+            roof.Add(new Sec(0.9f, 0.22f, 0.22f));
+            Loft.Tube(k, m * Matrix4x4.TRS(new Vector3(0f, legTop + 2.6f, 0f), Quaternion.identity, Vector3.one), roof, 16, new Color(0.5f, 0.47f, 0.42f, 0f));
+            for (int i = 0; i < 8; i++)
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(0.7f, 0.35f + i * 0.4f, 0.82f), Quaternion.identity, Vector3.one), new Vector3(0.32f, 0.03f, 0.03f), 0f, steel);
+        }
+
+        /// <summary>A satellite dish on a mast: a shallow bowl of concentric rings, tilted out over the yard, with a feed horn.</summary>
+        static void Dish(MeshKit k, Matrix4x4 m)
+        {
+            Color white = new Color(0.83f, 0.82f, 0.79f, 0f);
+            Color steel = new Color(0.3f, 0.32f, 0.34f, 1f);
+            k.Cylinder(0, MeshKit.Along(m.MultiplyPoint3x4(new Vector3(0f, 1.45f, 0f)), Vector3.up), 0.14f, 2.9f, 10, steel);
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0.06f, 0f), Quaternion.identity, Vector3.one), new Vector3(0.9f, 0.12f, 0.9f), 0.02f, steel);
+            Matrix4x4 d = m * Matrix4x4.TRS(new Vector3(0f, 3.5f, 0.1f), Quaternion.Euler(52f, 0f, 0f), Vector3.one);
+            float[] r = { 0.3f, 0.75f, 1.15f, 1.5f, 1.75f };
+            float[] dy = { 0f, 0.05f, 0.14f, 0.29f, 0.5f };
+            const int sides = 20;
+            Vector3 face = d.MultiplyVector(Vector3.up).normalized;
+            for (int ring = 0; ring + 1 < r.Length; ring++)
+            {
+                for (int s = 0; s < sides; s++)
+                {
+                    float a0 = s * Mathf.PI * 2f / sides, a1 = (s + 1) * Mathf.PI * 2f / sides;
+                    Vector3 p0 = d.MultiplyPoint3x4(new Vector3(Mathf.Cos(a0) * r[ring], dy[ring], Mathf.Sin(a0) * r[ring]));
+                    Vector3 p1 = d.MultiplyPoint3x4(new Vector3(Mathf.Cos(a1) * r[ring], dy[ring], Mathf.Sin(a1) * r[ring]));
+                    Vector3 p2 = d.MultiplyPoint3x4(new Vector3(Mathf.Cos(a1) * r[ring + 1], dy[ring + 1], Mathf.Sin(a1) * r[ring + 1]));
+                    Vector3 p3 = d.MultiplyPoint3x4(new Vector3(Mathf.Cos(a0) * r[ring + 1], dy[ring + 1], Mathf.Sin(a0) * r[ring + 1]));
+                    k.Quad(0, p0, p1, p2, p3, face, white);
+                }
+            }
+            List<Sec> back = Loft.Begin();
+            back.Add(new Sec(-0.5f, 0.25f, 0.25f));
+            back.Add(new Sec(0f, 1.75f, 1.75f));
+            Loft.Tube(k, d, back, sides, new Color(0.62f, 0.61f, 0.58f, 0f), true, false);
+            Vector3 focus = d.MultiplyPoint3x4(new Vector3(0f, 1.15f, 0f));
+            for (int i = 0; i < 3; i++)
+            {
+                float a = i * Mathf.PI * 2f / 3f;
+                Vector3 rim = d.MultiplyPoint3x4(new Vector3(Mathf.Cos(a) * 1.55f, 0.35f, Mathf.Sin(a) * 1.55f));
+                k.Cylinder(0, MeshKit.Along((rim + focus) * 0.5f, focus - rim), 0.025f, (focus - rim).magnitude, 6, steel);
+            }
+            k.Cylinder(0, MeshKit.Along(focus, face), 0.09f, 0.3f, 8, steel);
+        }
+
+        /// <summary>A tower crane: a braced mast, a jib reaching over the yard with cross ties, a counterweight and a hook.</summary>
+        static void Crane(MeshKit k, Matrix4x4 m)
+        {
+            Color steel = new Color(0.72f, 0.66f, 0.22f, 1f);
+            Color dark = new Color(0.24f, 0.25f, 0.26f, 1f);
+            const float mastTop = 7.2f;
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, 0.18f, 0f), Quaternion.identity, Vector3.one), new Vector3(1.5f, 0.36f, 1.5f), 0.03f, new Color(0.6f, 0.6f, 0.58f, 0f));
+            for (int sx = -1; sx <= 1; sx += 2)
+            for (int sz = -1; sz <= 1; sz += 2)
+            {
+                Vector3 a = m.MultiplyPoint3x4(new Vector3(sx * 0.45f, 0.36f, sz * 0.45f));
+                Vector3 b = m.MultiplyPoint3x4(new Vector3(sx * 0.38f, mastTop, sz * 0.38f));
+                k.Cylinder(0, MeshKit.Along((a + b) * 0.5f, b - a), 0.075f, (b - a).magnitude, 6, steel);
+            }
+            for (int lvl = 0; lvl < 6; lvl++)
+            {
+                float y = 1.1f + lvl * 1f;
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, y, s * 0.42f), Quaternion.identity, Vector3.one), new Vector3(0.84f, 0.05f, 0.05f), 0f, dark);
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.42f, y, 0f), Quaternion.identity, Vector3.one), new Vector3(0.05f, 0.05f, 0.84f), 0f, dark);
+                }
+            }
+            for (int s = -1; s <= 1; s += 2)
+            {
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.4f, mastTop + 0.25f, 3.9f), Quaternion.identity, Vector3.one), new Vector3(0.12f, 0.12f, 9.4f), 0f, steel);
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.4f, mastTop + 0.85f, 3f), Quaternion.identity, Vector3.one), new Vector3(0.09f, 0.09f, 8.6f), 0f, steel);
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.4f, mastTop + 0.25f, -1.1f), Quaternion.identity, Vector3.one), new Vector3(0.12f, 0.12f, 1.6f), 0f, steel);
+            }
+            for (int i = 0; i < 8; i++)
+            {
+                float z = 0.4f + i * 1f;
+                for (int s = -1; s <= 1; s += 2)
+                    k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 0.4f, mastTop + 0.55f, z), Quaternion.identity, Vector3.one), new Vector3(0.05f, 0.6f, 0.05f), 0f, dark);
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, mastTop + 0.55f, z), Quaternion.identity, Vector3.one), new Vector3(0.84f, 0.05f, 0.05f), 0f, dark);
+            }
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0f, mastTop + 0.1f, -1.4f), Quaternion.identity, Vector3.one), new Vector3(1.5f, 0.9f, 1f), 0.04f, new Color(0.5f, 0.5f, 0.48f, 0f));
+            k.Box(0, m * Matrix4x4.TRS(new Vector3(0.5f, mastTop - 0.9f, 0.6f), Quaternion.identity, Vector3.one), new Vector3(0.9f, 1.1f, 1.2f), 0.04f, new Color(0.82f, 0.74f, 0.36f, 0f));
+            Vector3 hookTop = m.MultiplyPoint3x4(new Vector3(0f, mastTop + 0.1f, 7.8f));
+            Vector3 hookBot = m.MultiplyPoint3x4(new Vector3(0f, mastTop - 2.6f, 7.8f));
+            k.Cylinder(0, MeshKit.Along((hookTop + hookBot) * 0.5f, hookBot - hookTop), 0.03f, (hookTop - hookBot).magnitude, 5, dark);
+            k.Box(0, MeshKit.At(hookBot, Vector3.zero), new Vector3(0.3f, 0.5f, 0.3f), 0.04f, new Color(0.42f, 0.42f, 0.4f, 0f));
+        }
+
+        /// <summary>A painted billboard on two posts on the wall head, facing the yard: frame, bands and letter bars.</summary>
+        static void Billboard(MeshKit k, Matrix4x4 m)
+        {
+            Color post = new Color(0.3f, 0.31f, 0.32f, 1f);
+            Color paint = new Color(0.82f, 0.34f, 0.24f, 0f);
+            Color ink = new Color(0.94f, 0.92f, 0.86f, 0f);
+            Color frame = new Color(0.22f, 0.24f, 0.28f, 0f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 2.5f, 1.25f, 0f), Quaternion.identity, Vector3.one), new Vector3(0.22f, 2.5f, 0.22f), 0.02f, post);
+                k.Box(0, m * Matrix4x4.TRS(new Vector3(s * 2.5f, 0.1f, 0f), Quaternion.identity, Vector3.one), new Vector3(0.6f, 0.2f, 0.6f), 0.02f, new Color(0.55f, 0.55f, 0.53f, 0f));
+            }
+            Matrix4x4 p = m * Matrix4x4.TRS(new Vector3(0f, 3.7f, 0.16f), Quaternion.identity, Vector3.one);
+            k.Box(0, p, new Vector3(6.4f, 2.8f, 0.18f), 0.02f, paint);
+            k.Box(0, p * Matrix4x4.TRS(new Vector3(0f, 1.42f, 0f), Quaternion.identity, Vector3.one), new Vector3(6.6f, 0.16f, 0.24f), 0.01f, frame);
+            k.Box(0, p * Matrix4x4.TRS(new Vector3(0f, -1.42f, 0f), Quaternion.identity, Vector3.one), new Vector3(6.6f, 0.16f, 0.24f), 0.01f, frame);
+            for (int s = -1; s <= 1; s += 2)
+                k.Box(0, p * Matrix4x4.TRS(new Vector3(s * 3.2f, 0f, 0f), Quaternion.identity, Vector3.one), new Vector3(0.16f, 2.8f, 0.24f), 0.01f, frame);
+            k.Box(0, p * Matrix4x4.TRS(new Vector3(-0.3f, 0.55f, 0.11f), Quaternion.identity, Vector3.one), new Vector3(4.2f, 0.62f, 0.04f), 0f, ink);
+            k.Box(0, p * Matrix4x4.TRS(new Vector3(-1.1f, -0.25f, 0.11f), Quaternion.identity, Vector3.one), new Vector3(2.8f, 0.4f, 0.04f), 0f, ink);
+            k.Box(0, p * Matrix4x4.TRS(new Vector3(1.9f, -0.6f, 0.11f), Quaternion.identity, Vector3.one), new Vector3(1.1f, 0.24f, 0.04f), 0f, new Color(0.98f, 0.78f, 0.2f, 0f));
+            for (int q = -1; q <= 1; q += 2)
+            for (int v = -1; v <= 1; v += 2)
+                k.Cylinder(0, p * Matrix4x4.TRS(new Vector3(q * 3.05f, v * 1.28f, 0.1f), Quaternion.identity, Vector3.one), 0.045f, 0.04f, 8, new Color(0.5f, 0.5f, 0.48f, 1f));
         }
 
         // ---- chokes ----------------------------------------------------------------------------------

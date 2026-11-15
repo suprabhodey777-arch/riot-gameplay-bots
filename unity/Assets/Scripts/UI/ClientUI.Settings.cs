@@ -411,9 +411,22 @@ namespace Saltworks
             x += PreviewChip(x, rowY, "ENEMY", Settings.Enemy) + 12f;
             x += PreviewChip(x, rowY, "ALLY", Settings.Ally) + 12f;
             x += PreviewChip(x, rowY, "ACCENT", Settings.Accent) + 24f;
-            GButton(new Rect(x, rowY, 220f, 40f), "Primary button", 1, true, StableKey("preview-primary"));
-            GButton(new Rect(x + 232f, rowY, 200f, 40f), "Button", 0, true, StableKey("preview-secondary"));
+            PreviewButton(new Rect(x, rowY, 220f, 40f), "Primary button", 1);
+            PreviewButton(new Rect(x + 232f, rowY, 200f, 40f), "Button", 0);
             rowY += 52f;
+        }
+
+        /// <summary>
+        /// A button's appearance as a static plate: the colours preview shows what the accent does, it is not a
+        /// control (no hover, no click, no sound).
+        /// </summary>
+        void PreviewButton(Rect r, string label, int kind)
+        {
+            Color ac = Settings.Accent;
+            Shadow(r, 10f, 0.35f);
+            Plate(r, kind == 1 ? ac : Theme.ButtonC);
+            PlateLine(r, kind == 1 ? new Color(1f, 1f, 1f, 0.3f) : new Color(1f, 1f, 1f, 0.1f));
+            Lbl(r, Upper(label), btnText, kind == 1 ? Theme.OnAccent : Theme.Ink);
         }
 
         float PreviewChip(float x, float y, string label, Color c)

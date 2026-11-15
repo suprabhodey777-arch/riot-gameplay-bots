@@ -81,6 +81,14 @@ namespace Saltworks
             V(a.x, a.y); V(b.x, b.y); V(c.x, c.y);
         }
 
+        /// <summary>A triangle with a colour per corner (the static map's tessellated fills).</summary>
+        public static void TriColored(Vector2 a, Color ca, Vector2 b, Color cb, Vector2 c, Color cc)
+        {
+            GL.Color(ca); V(a.x, a.y);
+            GL.Color(cb); V(b.x, b.y);
+            GL.Color(cc); V(c.x, c.y);
+        }
+
         /// <summary>A textured quad: corners and their texture coordinates in order (a, b, c, d).</summary>
         public static void TexQuad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud, Color col)
         {

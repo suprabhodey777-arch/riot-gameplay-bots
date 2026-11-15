@@ -261,9 +261,15 @@ namespace Saltworks
                     case AppScreen.Menu: DrawMenu(); break;
                     case AppScreen.MatchSetup: DrawMatchSetup(); break;
                     case AppScreen.Buy:
-                        DrawBuy(false);
+                        // The round banners go under the buy panel: its header already carries the round and score.
                         DrawRoundBanners(now);
+                        bool buyPaused = Game.Paused && !Game.SettingsOpen;
+                        bool buyEnabled = GUI.enabled;
+                        if (buyPaused) GUI.enabled = false;
+                        DrawBuy(false);
                         if (Settings.StreamerMode) DrawStreamerOverlay(now, false);
+                        GUI.enabled = buyEnabled;
+                        if (buyPaused) DrawPause();
                         break;
                     case AppScreen.MatchEnd: DrawMatchEnd(); break;
                     case AppScreen.Choose: DrawChoose(); break;
@@ -296,6 +302,8 @@ namespace Saltworks
             ScreenSounds();
             FinishHoverSounds();
             EndFocusFrame();
+            // The flash also washes out the HUD, so it has to land after everything else this frame.
+            if (Game.Screen == AppScreen.Playing && FlashOverlay.Active) FlashOverlay.Draw(new Rect(0f, 0f, W, H), Game.BlindSecondsLeft, Game.BlindTotalSeconds, true);
         }
 
         void DrawSettingsButton()
@@ -323,12 +331,13 @@ namespace Saltworks
         void DrawToast()
         {
             if (string.IsNullOrEmpty(Game.Toast) || Time.unscaledTime > Game.ToastUntil) return;
-            // Under the score bug in a round (the bottom centre holds the ability bar), low on the menus.
-            float y = Game.Screen == AppScreen.Playing ? 124f : H - 84f;
+            // Under the score bug in a round (clear of the drill card when one is shown), low on the menus.
+            float y = Game.Screen == AppScreen.Playing ? (hudCardBottom > 0f ? hudCardBottom + 12f : 124f) : H - 84f;
             float w = Mathf.Min(680f, Mathf.Max(320f, TextW(Game.Toast, toastStyle) + 60f));
             var r = new Rect(W / 2f - w / 2f, y, w, 44f);
             Shadow(r, 12f, 0.5f);
-            Plate(r, new Color(0.42f, 0.11f, 0.12f, 0.96f));
+            Color toastPlate = Theme.Darken(Palette.Bad, 0.6f);
+            Plate(r, new Color(toastPlate.r, toastPlate.g, toastPlate.b, 0.96f));
             Fill(new Rect(r.x + 2f, r.y + 10f, 3f, r.height - 20f), Palette.Bad);
             Lbl(new Rect(r.x + 16f, r.y, r.width - 32f, r.height), Game.Toast, toastStyle, Color.white);
         }
@@ -343,6 +352,8 @@ namespace Saltworks
         DrillMsg hudDrill;
         string hudTitleStr = "", hudSkillStr = "", hudSetupStr = "", hudGoalStr = "";
         float hudGoalH, hudInfoW = -1f;
+        /// <summary>The drill card's bottom this repaint (-1 when no card), so the toast can clear it.</summary>
+        float hudCardBottom = -1f;
         Color hudSetupColor = Color.white;
 
         void CacheDrillStrings(float infoW)
@@ -355,7 +366,10 @@ namespace Saltworks
             hudSkillStr = spec == null ? "" : Upper(GameController.SkillName(spec.skill)) + "   \u00b7   DIFFICULTY " + spec.difficulty.ToString("0.00");
             string setup = Game.MapName;
             if (!string.IsNullOrEmpty(Game.PlayerAgent))
-                setup += (setup.Length > 0 ? "   \u00b7   " : "") + Agents.NameOf(Game.PlayerAgent) + " (" + (Agents.Get(Game.PlayerAgent)?.Role ?? "agent") + ")";
+            {
+                string role = Agents.Get(Game.PlayerAgent)?.Role ?? "agent";
+                setup += (setup.Length > 0 ? "   \u00b7   " : "") + Agents.NameOf(Game.PlayerAgent) + " (" + Upper(role) + ")";
+            }
             hudSetupStr = setup;
             hudSetupColor = string.IsNullOrEmpty(Game.PlayerAgent) ? Color.white : Agents.ColorOf(Game.PlayerAgent);
             hudGoalStr = spec?.goal ?? "";
@@ -379,7 +393,7 @@ namespace Saltworks
             if (dmg > 0f && repaint)
             {
                 Color oldD = GUI.color;
-                GUI.color = new Color(0.95f, 0.08f, 0.08f, 0.55f * dmg);
+                GUI.color = new Color(Palette.Bad.r, Palette.Bad.g, Palette.Bad.b, 0.55f * dmg);
                 GUI.DrawTexture(new Rect(-30f, -30f, W + 60f, H + 60f), UiTex.Vignette, ScaleMode.StretchToFill, true);
                 GUI.color = oldD;
             }
@@ -403,13 +417,8 @@ namespace Saltworks
             }
             if (alive && !Game.Paused) DrawDamageIndicators(now);
 
-            // Blinded: a white-out over the world and the crosshair that eases out over the blind's remaining time.
-            float blind = Game.BlindAmount();
-            if (blind > 0f)
-            {
-                Fill(new Rect(0f, 0f, W, H), new Color(1f, 1f, 0.97f, 0.97f * blind));
-                if (blind > 0.5f) Shadowed(new Rect(0f, H * 0.62f, W, 30f), "BLINDED", hudCenter, new Color(0.35f, 0.35f, 0.4f, blind));
-            }
+            // Blinded: FlashOverlay's white-out and afterimage over the world and the crosshair.
+            FlashOverlay.Draw(new Rect(0f, 0f, W, H), Game.BlindSecondsLeft, Game.BlindTotalSeconds, false);
 
             // The tactical map (M) or the peek (Tab) covers the play view; the round's HUD stays on top of it.
             if (Game.FullMap) DrawTacticalMap(Game.MapPeek && !Game.MapOpen);
@@ -435,17 +444,29 @@ namespace Saltworks
                 Shadowed(rr, "YOU ARE REVEALED", hudCenter, new Color(rc.r, rc.g, rc.b, pulse));
             }
 
-            // Drill, map and agent: a quiet card beside the minimap, clear of the score bug.
+            // Drill, map and agent: a quiet card beside the minimap, clear of the score bug, or stacked under the
+            // minimap when the window is too narrow for a card beside it.
             float iw = Mathf.Min(420f, W / 2f - 170f - infoX);
-            if (iw >= 180f && !Game.FullMap) CacheDrillStrings(iw);
-            if (hudDrill?.spec != null && iw >= 180f && !Game.FullMap)
+            float iy = 18f;
+            if (iw < 180f)
+            {
+                // Too narrow for a card beside the minimap: stack it under the minimap (or, with the minimap off,
+                // under the score bug) instead of dropping it.
+                infoX = 20f;
+                iw = Mathf.Max(200f, Mathf.Min(340f, W - 40f));
+                iy = Settings.MinimapOn && !Game.FullMap ? 18f + Settings.MinimapSize + 12f : 118f;
+            }
+            if (!Game.FullMap) CacheDrillStrings(iw);
+            hudCardBottom = -1f;
+            if (hudDrill?.spec != null && !Game.FullMap)
             {
                 float ih = 12f + 24f + (Game.InMatch ? 0f : 20f) + (hudSetupStr.Length > 0 ? 20f : 0f) + (hudGoalStr.Length > 0 && !Game.InMatch ? hudGoalH + 6f : 0f) + 10f;
-                var r = new Rect(infoX, 18f, iw, ih);
+                var r = new Rect(infoX, iy, iw, ih);
+                hudCardBottom = r.yMax;
                 Plate(r, new Color(0.02f, 0.025f, 0.04f, 0.55f));
                 Fill(new Rect(r.x + 2f, r.y + 10f, 3f, 22f), Palette.Team(Game.PlayerTeam));
                 float x = r.x + 14f, w = r.width - 24f, y = r.y + 10f;
-                Shadowed(new Rect(x, y, w, 24f), Game.InMatch ? "Match" : hudTitleStr, hudTitle, Color.white);
+                Shadowed(new Rect(x, y, w, 24f), Upper(Game.InMatch ? "Match" : hudTitleStr), hudTitle, Color.white);
                 y += 26f;
                 if (!Game.InMatch)
                 {
@@ -477,7 +498,7 @@ namespace Saltworks
                 var sr = new Rect(W - 440f, H - 160f, 420f, 30f);
                 // On a dark plate: dim text straight on a sunlit floor could not be read.
                 Plate(new Rect(sr.x + 100f, sr.y - 22f, sr.width - 100f, sr.height + 26f), new Color(0.02f, 0.025f, 0.04f, 0.78f));
-                Shadowed(new Rect(sr.x, sr.y, sr.width - 12f, sr.height), spikeStr, spikeStyle, s.spike != null && s.spike.status == "planted" ? new Color(1f, 0.6f, 0.6f) : Color.white);
+                Shadowed(new Rect(sr.x, sr.y, sr.width - 12f, sr.height), spikeStr, spikeStyle, s.spike != null && s.spike.status == "planted" ? Theme.Lighten(Palette.Bad, 0.35f) : Color.white);
                 Lbl(new Rect(sr.x, sr.y - 18f, sr.width - 12f, 18f), "S P I K E", capRight, new Color(0.75f, 0.77f, 0.82f));
             }
 
@@ -515,7 +536,7 @@ namespace Saltworks
                 else if (Game.PlayerTeam == "defense" && Game.NearPlantedSpike(me.pos)) hint = "Hold F to defuse";
                 if (hint != null) Shadowed(new Rect(cx - 160f, cy + 60f, 320f, 26f), hint, hudCenter, new Color(1f, 0.95f, 0.8f));
             }
-            if (!alive) Shadowed(new Rect(cx - 260f, cy + 44f, 520f, 30f), "You are down. The round plays out.", hudCenter, new Color(1f, 0.7f, 0.7f));
+            if (!alive) Shadowed(new Rect(cx - 260f, cy + 44f, 520f, 30f), "You are down. The round plays out.", hudCenter, Theme.Lighten(Palette.Bad, 0.45f));
             if (Game.DrillDone && Game.Result == null && !Game.InMatch) Shadowed(new Rect(cx - 260f, cy + 104f, 520f, 30f), "Round over. Waiting for the verdict...", hudCenter, Color.white);
             if (Game.DrillDone && Game.InMatch && Game.RoundResult == null) Shadowed(new Rect(cx - 260f, cy + 104f, 520f, 30f), "Round over.", hudCenter, Color.white);
 
@@ -592,9 +613,9 @@ namespace Saltworks
             if (key != modeKey)
             {
                 modeKey = key;
-                if (mode == "crouch") modeStr = moving ? "CROUCHING  quiet" : "CROUCHED";
-                else if (mode == "walk") modeStr = moving ? "WALKING  quiet" : "WALK";
-                else modeStr = moving ? "RUNNING  heard within " + Game.Rules.runHearingM.ToString("0") + " m" : "STILL";
+                if (mode == "crouch") modeStr = "CROUCHED";
+                else if (mode == "walk") modeStr = "WALKING";
+                else modeStr = moving ? "RUNNING" : "STILL";
                 modeWidth = modeStyle.CalcSize(new GUIContent(modeStr)).x;
             }
             Plate(new Rect(r.x, r.y, modeWidth + 32f, r.height), new Color(0.02f, 0.025f, 0.04f, 0.68f));
@@ -685,8 +706,7 @@ namespace Saltworks
                 float x = sp.x / scale;
                 float y = (Screen.height - sp.y) / scale;
                 Color tc = Color.Lerp(Palette.Relation(b.Team, Game.PlayerTeam), Color.white, 0.25f);
-                string name = b.Id;
-                if (!string.IsNullOrEmpty(b.Persona)) name = Game.PersonaName(b.Id) ?? b.Id;
+                string name = Game.DisplayName(b.Id);
                 if (revealed)
                 {
                     int m = Mathf.RoundToInt(sp.z);

@@ -17,9 +17,9 @@ namespace Saltworks
         Mesh quad;
         Material decalMat;
         ParticleSystem sparks, dust, shells;
-        AudioSource tinkSource;
+        AudioSource tinkSource, hitSource;
         AudioClip tink;
-        float nextTink;
+        float nextTink, nextHit;
         int lastFlashFrame = -1;
 
         void Awake()
@@ -75,7 +75,17 @@ namespace Saltworks
             tinkSource = gameObject.AddComponent<AudioSource>();
             tinkSource.playOnAwake = false;
             tinkSource.spatialBlend = 0f;
-            tink = Synth.Tink();
+            tink = SoundBank.Get("foley.shell");
+            // Bullet impacts are positional: the pool is one child source moved to each hit, rate-limited.
+            var hgo = new GameObject("Hit audio");
+            hgo.transform.SetParent(root, false);
+            hitSource = hgo.AddComponent<AudioSource>();
+            hitSource.playOnAwake = false;
+            hitSource.spatialBlend = 1f;
+            hitSource.rolloffMode = AudioRolloffMode.Linear;
+            hitSource.dopplerLevel = 0f;
+            hitSource.minDistance = 2f;
+            hitSource.maxDistance = 45f;
         }
 
         ParticleSystem MakeSystem(string name, Material mat, int max, float gravity)
@@ -135,6 +145,7 @@ namespace Saltworks
         {
             if (n.sqrMagnitude < 1e-6f) n = -dir;
             n.Normalize();
+            HitSound("impact.wall", p, 0.3f);
             Transform d = decals[nextDecal];
             nextDecal = (nextDecal + 1) % DecalCount;
             d.gameObject.SetActive(true);
@@ -183,6 +194,7 @@ namespace Saltworks
         /// <summary>A hit on an agent: a short burst of sparks in their colour (no blood, stylised armour).</summary>
         public void BodyHit(Vector3 p, Vector3 dir, Color c)
         {
+            HitSound("impact.body", p, 0.55f);
             for (int i = 0; i < 8; i++)
             {
                 Vector3 v = (-dir.normalized * 0.4f + Random.insideUnitSphere).normalized * Random.Range(1.5f, 4.5f);
@@ -197,6 +209,16 @@ namespace Saltworks
                 };
                 sparks.Emit(ep, 1);
             }
+        }
+
+        /// <summary>One positional impact sound, rate-limited so a shotgun's pellets are not a burst of noise.</summary>
+        void HitSound(string key, Vector3 p, float volume)
+        {
+            if (hitSource == null || Time.time < nextHit) return;
+            nextHit = Time.time + 0.04f;
+            hitSource.transform.position = p;
+            hitSource.pitch = Random.Range(0.92f, 1.08f);
+            hitSource.PlayOneShot(SoundBank.Pick(key), volume);
         }
 
         /// <summary>An ejected shell (world space), tumbling, bouncing on the floor.</summary>
@@ -218,6 +240,7 @@ namespace Saltworks
             {
                 nextTink = Time.time + 0.08f;
                 tinkSource.pitch = Random.Range(0.9f, 1.15f);
+                tinkSource.volume = 0.35f;
                 tinkSource.clip = tink;
                 tinkSource.PlayDelayed(Random.Range(0.35f, 0.55f));
             }

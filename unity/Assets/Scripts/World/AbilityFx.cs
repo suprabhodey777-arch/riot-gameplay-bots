@@ -29,7 +29,6 @@ namespace Saltworks
         Material popShell;
         AudioClip popClip, throwClip, dashClip, thunkClip, pingClip, ringClip;
         AudioClip[][] stepClips;
-        AudioClip[] scuffClips;
         AudioSource[] pool;
         int poolNext;
         AudioSource ownSource, stepSource;
@@ -47,21 +46,19 @@ namespace Saltworks
             flashCore = Mats.Emissive(new Color(1f, 0.97f, 0.8f), 3f);
             dartMat = Mats.Emissive(Agents.AbilityColor(Ability.Recon), 2f);
             popShell = Mats.Transparent(new Color(1f, 1f, 0.95f, 0f), 3250);
-            popClip = Synth.FlashPop();
-            throwClip = Synth.Whoosh(0.22f, 1);
-            dashClip = Synth.Whoosh(0.32f, 2);
-            thunkClip = Synth.DartThunk();
-            pingClip = Synth.ReconPing();
+            popClip = SoundBank.Get("ability.flash");
+            throwClip = SoundBank.Get("ability.throw");
+            dashClip = SoundBank.Get("ability.dash");
+            thunkClip = SoundBank.Get("ability.dart");
+            pingClip = SoundBank.Get("ability.ping");
             ringClip = Synth.BlindRing();
-            // Five soft footfalls per surface (concrete, metal, wood) and three quiet scuffs.
+            // Only concrete is recorded; metal and wood keep five synthesised footfalls each.
             stepClips = new AudioClip[3][];
-            for (int s = 0; s < 3; s++)
+            for (int s = 1; s < 3; s++)
             {
                 stepClips[s] = new AudioClip[5];
                 for (int i = 0; i < 5; i++) stepClips[s][i] = Synth.Step((StepSurface)s, i);
             }
-            scuffClips = new AudioClip[3];
-            for (int i = 0; i < scuffClips.Length; i++) scuffClips[i] = Synth.Scuff(i);
 
             pool = new AudioSource[14];
             for (int i = 0; i < pool.Length; i++)
@@ -122,7 +119,7 @@ namespace Saltworks
         public void PlayBlindRing(float seconds)
         {
             ownSource.pitch = 1f;
-            ownSource.PlayOneShot(ringClip, Mathf.Clamp01(0.4f + seconds * 0.35f));
+            ownSource.PlayOneShot(ringClip, Mathf.Clamp(0.4f + seconds * 0.3f, 0.4f, 0.8f));
         }
 
         public void PlayOwnDash()
@@ -134,11 +131,11 @@ namespace Saltworks
         /// <summary>
         /// One footstep event from the sim (it sends one per moving tick). Sounds follow the stride, not a timer: the
         /// distance between an agent's events accumulates and a footfall plays every half gait cycle
-        /// (BotRig.CycleLength), so cadence matches the animation and speed. Each footfall picks one of five soft
-        /// samples for the surface underfoot (MapBuilder.StepSurfaceAt), never the same twice in a row, with random
-        /// pitch and volume. Other agents are heard only on loud (running) steps, positional, fading out at
-        /// `runHearingM`. The player's own running steps are 2D and quiet; walking or crouching gives only a faint
-        /// scuff every other step.
+        /// (BotRig.CycleLength), so cadence matches the animation and speed. Each footfall picks a sample for the
+        /// surface underfoot (MapBuilder.StepSurfaceAt) with random pitch and volume: one of the four recorded
+        /// concrete steps, or one of five synthesised footfalls on metal and wood. Other agents are heard only on
+        /// loud (running) steps, positional, fading out at `runHearingM`. The player's own running steps are 2D; a
+        /// walk is the same footfall at a quarter of the volume.
         /// </summary>
         public void Footstep(string agentId, Vector3 pos, bool loud, bool own, float runHearingM)
         {
@@ -182,8 +179,9 @@ namespace Saltworks
             if (own)
             {
                 stepSource.pitch = pitch;
-                if (loud) stepSource.PlayOneShot(PickStep(pos, tr), 0.13f * vol);
-                else if (tr.Foot) stepSource.PlayOneShot(scuffClips[Random.Range(0, scuffClips.Length)], 0.035f * vol);
+                // Loud steps every half stride when running, quiet ones every other step when walking.
+                if (loud) stepSource.PlayOneShot(PickStep(pos, tr), 0.3f * vol);
+                else if (tr.Foot) stepSource.PlayOneShot(PickStep(pos, tr), 0.08f * vol);
                 return;
             }
             float range = Mathf.Max(6f, runHearingM);
@@ -192,7 +190,9 @@ namespace Saltworks
 
         AudioClip PickStep(Vector3 pos, StepTrack tr)
         {
-            AudioClip[] set = stepClips[(int)MapBuilder.StepSurfaceAt(pos)];
+            StepSurface surface = MapBuilder.StepSurfaceAt(pos);
+            if (surface == StepSurface.Concrete) return SoundBank.Pick("footstep.concrete");
+            AudioClip[] set = stepClips[(int)surface];
             int i;
             if (tr.LastClip >= 0 && tr.LastClip < set.Length)
             {
@@ -288,18 +288,20 @@ namespace Saltworks
                     Light.enabled = true;
                     fx.Play3D(fx.popClip, To, 1f, 4f, 60f);
                 }
-                float k = (now - PopAt) / 0.45f;
-                if (k >= 1f)
+                float k = now - PopAt;
+                if (k >= 0.4f)
                 {
                     Kill();
                     return false;
                 }
-                float e = 1f - (1f - k) * (1f - k);
-                Shell.transform.localScale = Vector3.one * Mathf.Lerp(0.4f, 3.2f, e);
+                // A 60 ms flare out to a big white disc, then an exponential fade over the next 0.35 s.
+                float flare = Mathf.Clamp01(k / 0.06f);
+                float grow = 1f - (1f - flare) * (1f - flare);
+                Shell.transform.localScale = Vector3.one * Mathf.Lerp(0.4f, 6.5f, grow);
                 Color c = ShellMat.color;
-                c.a = 0.9f * (1f - k) * (1f - k);
+                c.a = 0.95f * Mathf.Exp(-Mathf.Max(0f, k - 0.06f) * 9f);
                 ShellMat.color = c;
-                Light.intensity = 9f * (1f - k) * (1f - k);
+                Light.intensity = 55f * Mathf.Exp(-k * 9f);
                 return true;
             }
 

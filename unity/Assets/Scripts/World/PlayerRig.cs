@@ -49,6 +49,8 @@ namespace Saltworks
         Vector2 lastLook;
         AudioSource audioSrc;
         AudioClip tickClip;
+        AudioClip headshotClip;
+        float lastHeadShotAt = -10f;
 
         void Awake()
         {
@@ -60,7 +62,8 @@ namespace Saltworks
             audioSrc = gameObject.AddComponent<AudioSource>();
             audioSrc.playOnAwake = false;
             audioSrc.spatialBlend = 0f;
-            tickClip = Synth.Tick();
+            tickClip = SoundBank.Get("impact.body");
+            headshotClip = SoundBank.Get("impact.headshot");
             Weapon = gameObject.AddComponent<Viewmodel>();
             Weapon.Init(Cam);
             Bloom = gameObject.AddComponent<Glow>();
@@ -266,6 +269,7 @@ namespace Saltworks
                 outcome.Result = curHead ? "head" : "body";
             }
             else outcome.TargetId = NearestAimed(world, myTeam, new Ray(origin, ShotDir(Vector2.zero)));
+            if (outcome.Result == "head") PlayHeadshot();
 
             recoil = Mathf.Min(1.5f, recoil + (w.Auto ? 0.45f : 0.8f));
             // No screen shake on firing: recoil (Gun.Kick) already moves the aim, and shake on top made the view wobble.
@@ -275,7 +279,18 @@ namespace Saltworks
 
         public void PlayHitTick()
         {
-            audioSrc.PlayOneShot(tickClip, 0.8f);
+            // The headshot ding already confirmed this hit; don't stack the body tick on top of it.
+            if (Time.unscaledTime - lastHeadShotAt < 0.4f) return;
+            audioSrc.pitch = 1f;
+            audioSrc.PlayOneShot(tickClip, 0.45f);
+        }
+
+        /// <summary>The bright ding that confirms a bullet found a head.</summary>
+        void PlayHeadshot()
+        {
+            lastHeadShotAt = Time.unscaledTime;
+            audioSrc.pitch = Random.Range(0.98f, 1.03f);
+            audioSrc.PlayOneShot(headshotClip, 0.45f);
         }
 
         static string NearestAimed(WorldView world, string myTeam, Ray ray)

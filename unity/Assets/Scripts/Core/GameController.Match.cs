@@ -149,9 +149,7 @@ namespace Saltworks
         // ---- the kill feed and damage numbers -----------------------------------------------------------
         string ShortName(string id)
         {
-            if (string.IsNullOrEmpty(id)) return "?";
-            if (id == PlayerId) return "You";
-            return PersonaName(id) ?? id;
+            return DisplayName(id);
         }
 
         /// <summary>The display name of the persona bot `id` plays (the player's custom name when set), or null.</summary>

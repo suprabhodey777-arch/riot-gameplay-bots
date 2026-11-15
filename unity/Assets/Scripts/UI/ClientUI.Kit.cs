@@ -339,7 +339,9 @@ namespace Saltworks
             if (isDefault) e.Use();
             if (isDefault || FocusActivated(focused) || GUI.Button(r, GUIContent.none, GUIStyle.none))
             {
-                PlayUi(kind == 2 ? UiSound.Back : UiSound.Confirm, 0.8f);
+                if (kind == 1) PlayUi(SoundBank.Get("ui.confirm"), 0.6f);
+                else if (kind == 2) PlayUi(SoundBank.Get("ui.cancel"), 0.5f);
+                else PlayUi(SoundBank.Get("ui.click"), 0.5f);
                 return true;
             }
             return false;
@@ -359,7 +361,7 @@ namespace Saltworks
             if (!enabled) return false;
             if (FocusActivated(focused) || GUI.Button(r, GUIContent.none, GUIStyle.none))
             {
-                PlayUi(UiSound.Confirm, 0.75f);
+                PlayUi(SoundBank.Get("ui.confirm"), 0.6f);
                 return true;
             }
             return false;
@@ -386,7 +388,7 @@ namespace Saltworks
             if (adj != 0) return adj > 0;
             if (FocusActivated(focused) || GUI.Button(r, GUIContent.none, GUIStyle.none))
             {
-                PlayUi(UiSound.Tick, 0.8f);
+                PlayUi(SoundBank.Get("ui.click"), 0.5f);
                 return !v;
             }
             return v;
@@ -418,7 +420,7 @@ namespace Saltworks
                 if (i > 0 && !sel && i - 1 != v) Fill(new Rect(cell.x, cell.y + 10f, 1f, cell.height - 20f), Theme.Line);
                 if (enabled && GUI.Button(cell, GUIContent.none, GUIStyle.none) && v != i)
                 {
-                    PlayUi(UiSound.Tick, 0.8f);
+                    PlayUi(SoundBank.Get("ui.click"), 0.5f);
                     v = i;
                 }
             }

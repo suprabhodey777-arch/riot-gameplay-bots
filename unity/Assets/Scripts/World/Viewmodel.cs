@@ -50,7 +50,8 @@ namespace Saltworks
 
         AudioSource audioSrc;
         readonly Dictionary<WeaponClass, AudioClip> shotClips = new Dictionary<WeaponClass, AudioClip>();
-        AudioClip magOut, magIn, slideClip, drawClip;
+        AudioClip magOut, magIn, slideClip, shellClip, drawClip, dryFireClip;
+        bool triggerHeld;
 
         float kickZ, kickZVel, kickPitch, kickPitchVel;
         /// <summary>Uniform scale of every first-person gun and its hands.</summary>
@@ -102,11 +103,13 @@ namespace Saltworks
             audioSrc = gameObject.AddComponent<AudioSource>();
             audioSrc.playOnAwake = false;
             audioSrc.spatialBlend = 0f;
-            foreach (WeaponClass c in System.Enum.GetValues(typeof(WeaponClass))) shotClips[c] = Synth.GunFor(c);
-            magOut = Synth.Click(1, 900f);
-            magIn = Synth.Click(2, 1400f);
-            slideClip = Synth.Click(3, 600f);
-            drawClip = Synth.Whoosh(0.18f, 7);
+            foreach (WeaponClass c in System.Enum.GetValues(typeof(WeaponClass))) shotClips[c] = SoundBank.Get(SoundBank.GunKey(c));
+            magOut = SoundBank.Get("reload.magout");
+            magIn = SoundBank.Get("reload.magin");
+            slideClip = SoundBank.Get("reload.slide");
+            shellClip = SoundBank.Get("reload.shell");
+            drawClip = SoundBank.Get("weapon.draw");
+            dryFireClip = SoundBank.Get("reload.dryfire");
             armsMat = Mats.World(Color.white, Textures.Grain(), null, 0f, 0.3f, 0.6f, 0.5f, 1f);
         }
 
@@ -268,6 +271,12 @@ namespace Saltworks
             if (rp > 0f && lastReloadP <= 0f) audioSrc.PlayOneShot(slideClip, 0.4f);
             lastReloadP = rp;
 
+            // A pull on an empty gun with nothing in reserve: the hammer falls on a dry chamber.
+            bool trigger = GameInput.FireHeld;
+            if (trigger && !triggerHeld && Gun.Ammo <= 0 && Gun.Reserve == 0 && rp <= 0f && !Gun.Drawing(now))
+                audioSrc.PlayOneShot(dryFireClip, 0.5f);
+            triggerHeld = trigger;
+
             // Slide / bolt / pump cycle.
             if (m.Slide != null)
             {
@@ -336,7 +345,7 @@ namespace Saltworks
                     bool active = rp > 0.15f && rp < 0.85f;
                     if (m.Mag.gameObject.activeSelf != active) m.Mag.gameObject.SetActive(active);
                     m.Mag.localPosition = m.MagHome + new Vector3(0f, -0.07f * (1f - frac), -0.02f * (1f - frac));
-                    if (Cross(rp, 0.15f + 0.7f / 3f) || Cross(rp, 0.15f + 1.4f / 3f) || Cross(rp, 0.85f)) audioSrc.PlayOneShot(magIn, 0.45f);
+                    if (Cross(rp, 0.15f + 0.7f / 3f) || Cross(rp, 0.15f + 1.4f / 3f) || Cross(rp, 0.85f)) audioSrc.PlayOneShot(shellClip, 0.5f);
                     break;
                 }
                 default:
@@ -403,7 +412,7 @@ namespace Saltworks
             if (shotClips.TryGetValue(w.Class, out AudioClip clip))
             {
                 audioSrc.pitch = Random.Range(0.96f, 1.04f);
-                audioSrc.PlayOneShot(clip, w.Class == WeaponClass.Sniper || w.Class == WeaponClass.Shotgun ? 0.85f : 0.7f);
+                audioSrc.PlayOneShot(clip, w.Class == WeaponClass.Sniper || w.Class == WeaponClass.Shotgun ? 1f : 0.85f);
             }
             if (m.Slide != null)
             {

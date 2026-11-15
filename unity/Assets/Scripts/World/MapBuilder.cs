@@ -10,6 +10,13 @@
 // wall, and callout labels. Trim and frames carry no colliders and stay above
 // head height or within a few centimetres of a wall, so sight lines match the
 // sim. All trim is one merged mesh, windows another.
+//
+// Read as places, not as boxes on one floor: MapZones classifies every callout
+// as an interior (more than 60% of its boundary on walls 3 m or taller) or an
+// exterior, and this builder gives them their own ground, a ceiling slab with
+// warm lamps and a roof edge over the interiors, parapets along the street
+// faces of the buildings, and closed wall above every doorway head. All of it
+// is above 3.2 m or a few centimetres proud of a wall and none of it collides.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -77,6 +84,21 @@ namespace Saltworks
             return (Zone)(StableHash((map.id ?? map.name ?? "") + "/" + key) % 4);
         }
 
+        /// <summary>Materials for one build, cached by key so every wall dressed the same way shares one material.</summary>
+        class Look
+        {
+            readonly Dictionary<string, Material> cache = new Dictionary<string, Material>();
+
+            public Material Get(string key, Color c, Surface kind, Textures.Pair tex, float gloss, float bump)
+            {
+                if (cache.TryGetValue(key, out Material m) && m != null) return m;
+                m = Mats.World(c, tex.Albedo, tex.Normal, bump, gloss, 0f, gloss, 1f);
+                WorldLook.Register(m, c, kind);
+                cache[key] = m;
+                return m;
+            }
+        }
+
         public static GameObject Build(MapDef map, Font font, Material textMat)
         {
             var root = new GameObject("Map " + (map.name ?? map.id));
@@ -90,17 +112,7 @@ namespace Saltworks
             Textures.Pair concrete = Textures.Concrete();
             Textures.Pair crate = Textures.Crate();
             Textures.Pair trimTex = Textures.Trim();
-            var matCache = new Dictionary<string, Material>();
-            Material Get(string key, Color c, Surface kind, Textures.Pair tex, float gloss, float bump)
-            {
-                if (!matCache.TryGetValue(key, out Material m))
-                {
-                    m = Mats.World(c, tex.Albedo, tex.Normal, bump, gloss, 0f, gloss, 1f);
-                    WorldLook.Register(m, c, kind);
-                    matCache[key] = m;
-                }
-                return m;
-            }
+            var look = new Look();
 
             var walls = new GameObject("Walls").transform;
             walls.SetParent(root.transform, false);
@@ -150,20 +162,21 @@ namespace Saltworks
                 string tk = sideTex.Albedo != null ? sideTex.Albedo.name : "";
                 mr.sharedMaterials = new[]
                 {
-                    Get("s" + side + tk, side, Surface.Wall, sideTex, sideGloss, bump),
-                    Get("t" + top, top, Surface.Wall, concrete, 0.25f, 0.8f),
-                    Get("r" + baseTrim, baseTrim, Surface.Trim, trimTex, 0.45f, 1f),
+                    look.Get("s" + side + tk, side, Surface.Wall, sideTex, sideGloss, bump),
+                    look.Get("t" + top, top, Surface.Wall, concrete, 0.25f, 0.8f),
+                    look.Get("r" + baseTrim, baseTrim, Surface.Trim, trimTex, 0.45f, 1f),
                 };
                 go.AddComponent<MeshCollider>().sharedMesh = mesh;
                 ContactShadow(contact, wall.points, ContactWidth, 0.012f);
                 if (height > 1.5f) WallTrim(trim, glass, wall, map, w, h, outer ? Zone.Concrete : zone, side);
             }
             Doorways(trim, map);
+            Parapets(trim, map, w, h);
             // One draw call per wall material: static batching of every wall (the colliders stay per wall).
             StaticBatchingUtility.Combine(walls.gameObject);
 
             // The trim (stone and paint, by vertex colour) and the window glass, each one mesh.
-            Material trimMat = Get("trim", Color.white, Surface.Trim, concrete, 0.22f, 0.6f);
+            Material trimMat = look.Get("trim", Color.white, Surface.Trim, concrete, 0.22f, 0.6f);
             AddMesh(root.transform, "Architectural trim", trim, trimMat, true);
             Material glassMat = Mats.World(new Color(0.16f, 0.19f, 0.22f), Texture2D.whiteTexture, null, 0f, 0.88f, 0.2f, 0.9f, 0f);
             AddMesh(root.transform, "Window glass", glass, glassMat, false);
@@ -179,6 +192,11 @@ namespace Saltworks
             if (cm.HasProperty("_MainTex")) cm.mainTexture = Mats.GradientTexture();
             cmr.sharedMaterial = cm;
             cmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            // Places, not one big floor: each callout gets its own paving (interiors a poured floor, exteriors one
+            // of two stone or slab looks) and each interior a ceiling with lamps, so rooms read as rooms.
+            ZoneFloors(root.transform, map, look);
+            Roofs(root.transform, map, look);
 
             var deco = new GameObject("Sites and callouts").transform;
             deco.SetParent(root.transform, false);
@@ -329,19 +347,20 @@ namespace Saltworks
         }
 
         /// <summary>
-        /// Door frames at every choke between two walls: stone jambs at both sides, and where the walls are tall
-        /// enough a lintel with a keystone and a stepped arch, all above 2.6 m.
+        /// Door frames at every doorway: stone jambs at both sides, and where the walls are tall enough a lintel with
+        /// a keystone and a stepped arch, all above 2.6 m. The wall above the head is closed up to the wall top, so a
+        /// doorway reads as a hole punched through a wall and not as a free-standing frame.
         /// </summary>
         static void Doorways(MeshKit k, MapDef map)
         {
-            foreach (PropBuilder.Choke c in PropBuilder.FindChokes(map))
+            foreach (MapZones.DoorGap c in MapZones.Doors(map))
             {
-                if (c.MinHeight < 2.6f) continue;
+                if (c.Height < 2.6f) continue;
                 Vector2 dir = (c.B - c.A).normalized;
                 var perp = new Vector2(-dir.y, dir.x);
                 float yaw = Mathf.Atan2(perp.x, perp.y) * Mathf.Rad2Deg;
-                bool lintel = c.MinHeight >= 3.3f;
-                float jambTop = lintel ? 2.9f : Mathf.Min(c.MinHeight, 3f);
+                bool lintel = c.Height >= 3.3f;
+                float jambTop = lintel ? 2.9f : Mathf.Min(c.Height, 3f);
                 Color jamb = StoneTrim;
                 for (int s = 0; s < 2; s++)
                 {
@@ -353,7 +372,7 @@ namespace Saltworks
                 }
                 if (!lintel) continue;
                 Vector2 mid = (c.A + c.B) * 0.5f;
-                float topY = Mathf.Min(c.MinHeight, 3.5f);
+                float topY = Mathf.Min(c.Height, 3.5f);
                 float lh = topY - 2.9f;
                 k.Box(0, MeshKit.At(new Vector3(mid.x, 2.9f + lh * 0.5f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(c.Width + 0.64f, lh, 0.44f), 0.012f, jamb);
                 k.Box(0, MeshKit.At(new Vector3(mid.x, 2.9f + lh * 0.5f - 0.02f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(0.32f, lh + 0.08f, 0.5f), 0.01f, new Color(0.78f, 0.75f, 0.68f, 0f));
@@ -371,6 +390,180 @@ namespace Saltworks
                         k.Box(0, MeshKit.At(new Vector3(at.x, y, at.y), new Vector3(0f, yaw, 0f)), new Vector3(reach, 0.12f, 0.42f), 0.006f, jamb);
                     }
                 }
+                // Above the head: the wall closes over the doorway in a beam, with a proud face band and a shadow
+                // line under it, so the gap is a doorway in a wall rather than a slot to the sky.
+                float wallTop = Mathf.Min(c.Height, 3.98f);
+                if (wallTop - topY < 0.12f) continue;
+                float bh = wallTop - topY;
+                k.Box(0, MeshKit.At(new Vector3(mid.x, topY + bh * 0.5f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(c.Width + 0.58f, bh, 0.36f), 0.012f, new Color(0.72f, 0.7f, 0.65f, 0f));
+                k.Box(0, MeshKit.At(new Vector3(mid.x, wallTop - 0.04f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(c.Width + 0.72f, 0.1f, 0.44f), 0.012f, StoneTrim);
+                k.Box(0, MeshKit.At(new Vector3(mid.x, topY + 0.03f, mid.y), new Vector3(0f, yaw, 0f)), new Vector3(c.Width + 0.52f, 0.06f, 0.42f), 0.006f, DarkStone);
+            }
+        }
+
+        // ---- zones ---------------------------------------------------------------------------------
+        static readonly Color LampWarm = new Color(1f, 0.86f, 0.68f);
+        const int MaxCeilingLights = 24;
+
+        /// <summary>
+        /// The ground per callout: interiors a smooth poured floor, exteriors one of two paving looks picked by a
+        /// stable hash, laid a few millimetres over the base floor so each place has its own surface. The site
+        /// polygons keep their own paving, which sits above this.
+        /// </summary>
+        static void ZoneFloors(Transform parent, MapDef map, Look look)
+        {
+            var inside = new MeshKit(1);
+            var flags = new MeshKit(1);
+            var slabs = new MeshKit(1);
+            int seed = StableHash(map.id ?? map.name ?? "");
+            int i = 0;
+            foreach (MapZones.Area a in MapZones.Areas(map))
+            {
+                float y = 0.0028f + (i++ % 6) * 0.0005f;
+                MeshKit k = a.Interior ? inside : (StableHash(a.Name ?? "") ^ seed) % 2 == 0 ? flags : slabs;
+                FacePolygon(k, a.Edge, y, true, Color.white, 4f);
+            }
+            if (!inside.Empty) AddMesh(parent, "Interior floors", inside, look.Get("floor-inside", new Color(0.62f, 0.63f, 0.62f), Surface.Floor, Textures.Epoxy(), 0.7f, 0.35f), false);
+            if (!flags.Empty) AddMesh(parent, "Flagged streets", flags, look.Get("floor-paving", new Color(0.72f, 0.7f, 0.66f), Surface.Floor, Textures.Flagstones(), 0.3f, 1f), false);
+            if (!slabs.Empty) AddMesh(parent, "Slabbed yards", slabs, look.Get("floor-slabs", new Color(0.63f, 0.61f, 0.57f), Surface.Floor, Textures.Pavers(), 0.26f, 1f), false);
+        }
+
+        /// <summary>
+        /// Ceilings over the interiors: a slab tucked 0.4 m into the surrounding walls, its underside a plaster
+        /// soffit, its top a weathered roof with a slab edge, and one or two warm lamps per room. Above 3.2 m, so
+        /// nothing comes into the space where people play; no collider.
+        /// </summary>
+        static void Roofs(Transform parent, MapDef map, Look look)
+        {
+            var soffit = new MeshKit(1);
+            var slab = new MeshKit(1);
+            var housings = new MeshKit(1);
+            var lenses = new MeshKit(1);
+            int lights = 0;
+            foreach (MapZones.Area a in MapZones.Areas(map))
+            {
+                if (!a.Interior) continue;
+                float y = a.Roof;
+                List<Vector2> p = MapZones.Offset(a.Edge, 0.4f);
+                FacePolygon(soffit, p, y - 0.02f, false, Color.white, 4f);
+                FacePolygon(slab, p, y + 0.2f, true, Color.white, 4f);
+                SlabEdge(slab, p, y + 0.02f, y + 0.2f);
+                Vector2 min = new Vector2(float.MaxValue, float.MaxValue), max = new Vector2(float.MinValue, float.MinValue);
+                foreach (Vector2 v in p)
+                {
+                    min = Vector2.Min(min, v);
+                    max = Vector2.Max(max, v);
+                }
+                Vector2 span = max - min;
+                int count = Mathf.Clamp(Mathf.RoundToInt(a.Size / 130f), 1, 2);
+                for (int s = 0; s < count && lights < MaxCeilingLights; s++)
+                {
+                    float t = count == 1 ? 0f : s == 0 ? -0.24f : 0.24f;
+                    Vector2 at = span.x >= span.y
+                        ? new Vector2(a.Centre.x + span.x * t, a.Centre.y)
+                        : new Vector2(a.Centre.x, a.Centre.y + span.y * t);
+                    CeilingLamp(housings, lenses, at, y);
+                    CeilingLight(parent, at, y);
+                    lights++;
+                }
+            }
+            if (!soffit.Empty) AddMesh(parent, "Ceilings", soffit, look.Get("soffit", new Color(0.79f, 0.78f, 0.74f), Surface.Trim, Textures.Concrete(), 0.35f, 0.45f), true);
+            if (!slab.Empty) AddMesh(parent, "Roofs", slab, look.Get("roof-slab", new Color(0.36f, 0.36f, 0.35f), Surface.Wall, Textures.Ground(), 0.12f, 1.2f), true);
+            if (housings.Empty) return;
+            AddMesh(parent, "Ceiling housings", housings, look.Get("lamp-housing", Color.white, Surface.Trim, Textures.Trim(), 0.5f, 1f), false);
+            Material lensMat = Mats.Glow(LampWarm, 1.5f);
+            WorldLook.RegisterGlow(lensMat, LampWarm, 1.5f);
+            AddMesh(parent, "Ceiling lenses", lenses, lensMat, false);
+        }
+
+        /// <summary>A recessed ceiling fitting: a dark housing in the slab and a warm lens facing down.</summary>
+        static void CeilingLamp(MeshKit housing, MeshKit lens, Vector2 at, float y)
+        {
+            Matrix4x4 m = MeshKit.At(new Vector3(at.x, y - 0.06f, at.y), Vector3.zero);
+            housing.Box(0, m, new Vector3(1.6f, 0.12f, 0.46f), 0.02f, new Color(0.2f, 0.21f, 0.22f, 0f));
+            housing.Box(0, m * Matrix4x4.TRS(new Vector3(0f, -0.09f, 0f), Quaternion.identity, Vector3.one), new Vector3(1.72f, 0.05f, 0.56f), 0.01f, new Color(0.44f, 0.44f, 0.42f, 0.6f));
+            Vector3 c = new Vector3(at.x, y - 0.17f, at.y);
+            var rx = new Vector3(0.68f, 0f, 0f);
+            var rz = new Vector3(0f, 0f, 0.15f);
+            lens.Quad(0, c - rx - rz, c + rx - rz, c + rx + rz, c - rx + rz, Vector3.down, Color.white);
+        }
+
+        /// <summary>A cheap warm point light in a room's ceiling: no shadows, so a map full of rooms stays cheap.</summary>
+        static void CeilingLight(Transform parent, Vector2 at, float y)
+        {
+            var go = new GameObject("Ceiling light");
+            go.transform.SetParent(parent, false);
+            go.transform.position = new Vector3(at.x, y - 0.55f, at.y);
+            var l = go.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = LampWarm;
+            l.intensity = 1.15f;
+            l.range = 13f;
+            l.shadows = LightShadows.None;
+            l.renderMode = LightRenderMode.Auto;
+        }
+
+        /// <summary>
+        /// Walls that enclose a building get a coping and a low parapet along the faces that look onto the street,
+        /// so a building reads as a building from outside instead of an open-topped box. All above 4 m.
+        /// </summary>
+        static void Parapets(MeshKit k, MapDef map, float mapW, float mapH)
+        {
+            var coping = new Color(0.68f, 0.65f, 0.59f, 0f);
+            foreach (WallDef wall in map.walls)
+            {
+                if (wall == null || wall.points == null || wall.points.Count < 3 || wall.height < 3.9f) continue;
+                List<Vector2> p = ToCounterClockwise(wall.points);
+                if (!MapZones.EnclosesInterior(map, p, out _)) continue;
+                float top = wall.height;
+                for (int i = 0; i < p.Count; i++)
+                {
+                    Vector2 a = p[i], b = p[(i + 1) % p.Count];
+                    Vector2 e = b - a;
+                    float len = e.magnitude;
+                    if (len < 1f) continue;
+                    Vector2 dir = e / len;
+                    var n = new Vector2(e.y, -e.x) / len;
+                    Vector2 front = (a + b) * 0.5f + n * 0.6f;
+                    if (front.x < 0.2f || front.y < 0.2f || front.x > mapW - 0.2f || front.y > mapH - 0.2f) continue;
+                    MapZones.Area facing = MapZones.At(map, front);
+                    if (facing != null && facing.Interior) continue;
+                    if (!IsClear(front, map, 0.2f)) continue;
+                    float mid = len * 0.5f;
+                    FaceBox(k, a, dir, n, mid, len + 0.06f, top + 0.14f, 0.28f, 0.16f, coping, 0.012f);
+                    FaceBox(k, a, dir, n, mid, len + 0.02f, top + 0.46f, 0.36f, 0.1f, coping, 0.008f);
+                    FaceBox(k, a, dir, n, mid, len + 0.1f, top + 0.64f, 0.06f, 0.18f, DarkStone, 0.006f);
+                }
+            }
+        }
+
+        /// <summary>Adds a flat polygon (facing up or down) at height `y` to a kit, UVs in metres / uvMetres.</summary>
+        static void FacePolygon(MeshKit k, List<Vector2> pts, float y, bool up, Color c, float uvMetres)
+        {
+            List<Vector2> p = pts;
+            if (SignedArea(p) < 0f)
+            {
+                p = new List<Vector2>(pts);
+                p.Reverse();
+            }
+            if (p.Count < 3) return;
+            Vector3 n = up ? Vector3.up : Vector3.down;
+            int first = k.VertexCount;
+            foreach (Vector2 v in p) k.VertUv(new Vector3(v.x, y, v.y), n, c, v / uvMetres);
+            List<int> tris = Triangulate(p);
+            for (int i = 0; i < tris.Count; i += 3) k.Index(0, first + tris[i], first + tris[i + 1], first + tris[i + 2], n);
+        }
+
+        /// <summary>The exposed edge of a roof slab: a quad around every edge of the ceiling polygon.</summary>
+        static void SlabEdge(MeshKit k, List<Vector2> p, float y0, float y1)
+        {
+            for (int i = 0; i < p.Count; i++)
+            {
+                Vector2 a = p[i], b = p[(i + 1) % p.Count];
+                Vector2 e = b - a;
+                if (e.sqrMagnitude < 1e-8f) continue;
+                var n = new Vector3(e.y, 0f, -e.x).normalized;
+                k.Quad(0, new Vector3(a.x, y0, a.y), new Vector3(b.x, y0, b.y), new Vector3(b.x, y1, b.y), new Vector3(a.x, y1, a.y), n, Color.white);
             }
         }
 

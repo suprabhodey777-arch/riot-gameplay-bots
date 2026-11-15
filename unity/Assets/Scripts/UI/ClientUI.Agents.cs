@@ -40,7 +40,7 @@ namespace Saltworks
                 float ik = Theme.Ease((now - screenAt - i * 0.06f) / 0.35f);
                 var hit = new Rect(x0 + i * (cw + gap), cy, cw, ch);
                 int btnKey = StableKey("lock:" + id);
-                bool hot = idle && (keyNav ? focusId == btnKey : Hover(hit));
+                bool hot = idle && (keyNav ? focusId == btnKey : Hover(hit) || Hover(new Rect(hit.x, hit.y - 8f, hit.width, hit.height + 8f)));
                 float h = Anim(6000 + i, hot);
                 if (hot) hero = i;
                 var r = new Rect(hit.x, hit.y + (1f - ik) * 30f - h * 8f, hit.width, hit.height);

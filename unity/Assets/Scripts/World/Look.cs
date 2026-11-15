@@ -566,13 +566,13 @@ namespace Saltworks
             });
         }
 
-        /// <summary>The high whine heard while blinded.</summary>
+        /// <summary>The soft high whine heard while blinded: one 3.2 kHz sine fading out over two seconds.</summary>
         public static AudioClip BlindRing()
         {
-            return Make("blindring", 1.8f, t =>
+            return Make("blindring", 2f, t =>
             {
-                float env = Mathf.Clamp01(t * 40f) * Mathf.Exp(-t * 1.6f);
-                return (Mathf.Sin(2f * Mathf.PI * 4200f * t) * 0.6f + Mathf.Sin(2f * Mathf.PI * 4230f * t) * 0.4f) * 0.16f * env;
+                float env = Mathf.Clamp01(t * 12f) * Mathf.Exp(-t * 1.9f) * Mathf.Clamp01((2f - t) * 6f);
+                return Mathf.Sin(2f * Mathf.PI * 3200f * t) * 0.06f * env;
             });
         }
     }

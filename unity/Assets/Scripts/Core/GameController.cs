@@ -345,11 +345,19 @@ namespace Saltworks
 
         public void Resume()
         {
-            if (Screen != AppScreen.Playing) return;
+            if (Screen != AppScreen.Playing && Screen != AppScreen.Buy) return;
             SettingsOpen = false;
             Paused = false;
             // sendAcc and tickDisp are kept: the eye was drawn with them, so resuming does not jump.
             fireArmed = false;
+        }
+
+        /// <summary>Esc on the buy screen: the pause overlay (Resume / Settings / Leave match), as in a round.</summary>
+        public void TogglePauseMenu()
+        {
+            if (Screen != AppScreen.Playing && Screen != AppScreen.Buy) return;
+            if (Paused) Resume();
+            else Paused = true;
         }
 
         public void OpenSettings()
@@ -490,24 +498,27 @@ namespace Saltworks
                 Settings.ShowFps = !Settings.ShowFps;
                 Settings.Save();
             }
-            // Esc closes the settings first, on any screen; then the tactical map; then an open buy menu.
-            bool escForSettings = SettingsOpen && GameInput.Pressed(GameKey.Pause);
-            if (escForSettings) CloseSettings();
-            else if (MapOpen && Screen == AppScreen.Playing && GameInput.Pressed(GameKey.Pause))
+            // Esc closes the settings first, on any screen; then the tactical map or an open buy menu in a round;
+            // on every other screen it runs that screen's own Back / Menu action (so "Esc closes menus" holds).
+            bool esc = GameInput.Pressed(GameKey.Pause);
+            bool escUsed = esc && SettingsOpen;
+            if (escUsed) CloseSettings();
+            else if (esc && MapOpen && Screen == AppScreen.Playing)
             {
                 MapOpen = false;
-                escForSettings = true;
+                escUsed = true;
             }
-            else if (BuyOpen && Screen == AppScreen.Playing && GameInput.Pressed(GameKey.Pause))
+            else if (esc && BuyOpen && Screen == AppScreen.Playing)
             {
                 BuyOpen = false;
-                escForSettings = true;
+                escUsed = true;
             }
+            else if (esc && Screen != AppScreen.Playing) escUsed = EscBack();
 
             switch (Screen)
             {
                 case AppScreen.Playing:
-                    TickPlaying(escForSettings);
+                    TickPlaying(escUsed);
                     break;
                 case AppScreen.Intro:
                     if (!SettingsOpen && GameInput.Pressed(GameKey.Confirm)) Begin();
@@ -527,11 +538,49 @@ namespace Saltworks
             if (Screen != AppScreen.Playing || Paused) MapOpen = false;
             MapPeek = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
             FullMap = MapOpen || MapPeek;
-            if (Screen == AppScreen.Playing || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
+            if ((Screen == AppScreen.Playing || Screen == AppScreen.Intro) && !Paused) Minimap.Tick(this, EyePos, Rig.Heading);
             if (Screen != AppScreen.Playing && Aiming.HasValue) CancelAim();
             bool lockIt = Screen == AppScreen.Playing && !Paused && Result == null && !SettingsOpen && !BuyOpen && !(InMatch && DrillDone && MatchEnd != null);
             Cursor.lockState = lockIt ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !lockIt;
+        }
+
+        /// <summary>Esc outside a round: run the action the screen's own Back / Menu button runs.</summary>
+        bool EscBack()
+        {
+            switch (Screen)
+            {
+                case AppScreen.Intro:
+                case AppScreen.Result:
+                    BackToReport();
+                    return true;
+                case AppScreen.Choose:
+                case AppScreen.Report:
+                case AppScreen.MatchSetup:
+                case AppScreen.PersonaSelect:
+                    OpenMenu();
+                    return true;
+                case AppScreen.MapSelect:
+                    KeepCurrentMap();
+                    return true;
+                case AppScreen.AgentSelect:
+                    OpenMapSelect();
+                    return true;
+                case AppScreen.Buy:
+                    TogglePauseMenu();
+                    return true;
+                case AppScreen.MatchEnd:
+                    BackFromMatchEnd();
+                    return true;
+                case AppScreen.DuelSetup:
+                    OpenPersonas();
+                    return true;
+                case AppScreen.DuelEnd:
+                    BackFromDuelEnd();
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         void TrackFps()
@@ -730,6 +779,20 @@ namespace Saltworks
             float k = x / hold;
             return 1f - (1f - k) * (1f - k);
         }
+
+        /// <summary>The player's remaining blindness in seconds (0 when not blinded).</summary>
+        public float BlindSecondsLeft
+        {
+            get
+            {
+                AgentState me = Me;
+                if (me == null || State == null || me.blindUntilTick <= State.tick) return 0f;
+                return Mathf.Max(0f, (me.blindUntilTick - World.TickNow) / Mathf.Max(1f, Rules.tickRate));
+            }
+        }
+
+        /// <summary>The length of the player's current (or last) blind, in seconds.</summary>
+        public float BlindTotalSeconds => blindTotalTicks / Mathf.Max(1f, Rules.tickRate);
 
         void QueueFire()
         {
@@ -1319,10 +1382,41 @@ namespace Saltworks
         {
             if (string.IsNullOrEmpty(id)) return "?";
             if (id == PlayerId) return "You";
+            return DisplayName(id);
+        }
+
+        /// <summary>
+        /// The name a player sees for `id`: the persona's name, else the name of the agent the bot plays, else
+        /// "Bot N" (its 1-based place in the drill's bots). Never the bridge's raw id.
+        /// </summary>
+        public string DisplayName(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return "?";
+            if (id == PlayerId) return "You";
             string persona = PersonaName(id);
-            if (persona != null) return persona;
-            if (World.Bots.TryGetValue(id, out BotView b)) return id + " " + ArchetypeName(b.Archetype);
+            if (!string.IsNullOrEmpty(persona)) return persona;
+            if (World == null) return id;
+            if (World.Bots.TryGetValue(id, out BotView b))
+            {
+                string agent = BotAgent(id);
+                if (!string.IsNullOrEmpty(agent)) return Agents.NameOf(agent);
+                int n = BotNumber(id);
+                if (n > 0) return "Bot " + n;
+            }
             return id;
+        }
+
+        /// <summary>`id`'s 1-based place among the drill's bots, or 0 when it is not one.</summary>
+        public int BotNumber(string id)
+        {
+            if (World == null) return 0;
+            int n = 0;
+            foreach (KeyValuePair<string, BotView> kv in World.Bots)
+            {
+                n++;
+                if (kv.Key == id) return n;
+            }
+            return 0;
         }
 
         public static string ArchetypeName(string id)

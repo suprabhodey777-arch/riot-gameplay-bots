@@ -52,7 +52,7 @@ namespace Saltworks
                 clockKey = ck;
                 clockStr = string.Format("{0}:{1:00}", (int)(t / 60f), (int)t % 60) + (t < 10f ? "." + ((int)(t * 10f) % 10) : "");
             }
-            if (!ReferenceEquals(phaseSrc, s.phase))
+            if (!string.Equals(phaseSrc, s.phase))
             {
                 phaseSrc = s.phase;
                 phaseStr = Spaced((s.phase ?? "").Replace('_', ' '));
@@ -151,7 +151,7 @@ namespace Saltworks
             var panel = new Rect(20f, H - 112f, 330f, 92f);
             Plate(panel, new Color(0.02f, 0.025f, 0.04f, 0.72f));
             PlateLine(panel, new Color(1f, 1f, 1f, 0.07f));
-            Color hpc = hp > 50f ? new Color(0.92f, 0.96f, 1f) : hp > 25f ? Palette.Warn : Palette.Bad;
+            Color hpc = hp > 50f ? Theme.Ink : hp > 25f ? Palette.Warn : Palette.Bad;
             if (alive && hp <= 25f) hpc.a = 0.7f + 0.3f * Mathf.Sin(now * 9f);
             Condensed(new Rect(panel.x + 14f, panel.y + 4f, 100f, 56f), hpStr, hpBig, alive ? hpc : Palette.Bad, 0.86f, true);
             Lbl(new Rect(panel.x + 16f, panel.y + 60f, 100f, 14f), "H E A L T H", tinyCaps, Theme.Muted);
@@ -203,7 +203,12 @@ namespace Saltworks
                 float lit = Mathf.Clamp01(v * n - i);
                 float gh = Mathf.Clamp01(ghost * n - i);
                 Slash(cell, new Color(1f, 1f, 1f, 0.09f));
-                if (gh > lit) Slash(new Rect(cell.x, cell.y, cell.width * gh, cell.height), new Color(1f, 0.25f, 0.25f, 0.75f));
+                if (gh > lit)
+                {
+                    Color ghostC = Theme.Lighten(Palette.Bad, 0.15f);
+                    ghostC.a = 0.75f;
+                    Slash(new Rect(cell.x, cell.y, cell.width * gh, cell.height), ghostC);
+                }
                 if (lit > 0f) Slash(new Rect(cell.x, cell.y, cell.width * lit, cell.height), c);
             }
         }
@@ -360,7 +365,7 @@ namespace Saltworks
                 reserveKey = rk;
                 reserveStr = g.Reserve >= 0 ? "/ " + Theme.Int(g.Reserve) : "/ " + Theme.Int(w.Mag);
             }
-            if (!ReferenceEquals(weaponLineFor, w.Id))
+            if (!string.Equals(weaponLineFor, w.Id))
             {
                 weaponLineFor = w.Id;
                 weaponNameStr = w.Name.ToUpperInvariant();
@@ -483,7 +488,7 @@ namespace Saltworks
                 float ang = Mathf.DeltaAngle(heading, Mathf.Atan2(to.x, to.y) * Mathf.Rad2Deg);
                 float k = 1f - age / 1.4f;
                 float pop = 1f + Mathf.Clamp01(1f - age / 0.15f) * 0.15f;
-                Arc(c, r * pop, (r + 16f * scale) * pop, ang, 46f, new Color(1f, 0.16f, 0.12f, 0.85f * k));
+                Arc(c, r * pop, (r + 16f * scale) * pop, ang, 46f, new Color(Palette.Bad.r, Palette.Bad.g, Palette.Bad.b, 0.85f * k));
                 Arc(c, r * pop - 3f * scale, r * pop, ang, 52f, new Color(1f, 0.85f, 0.8f, 0.6f * k));
             }
             Draw2D.End();
@@ -496,7 +501,8 @@ namespace Saltworks
             float k = 1f - Mathf.Clamp01(me.hp / 35f);
             float pulse = 0.75f + 0.25f * Mathf.Sin(now * (4f + 4f * k));
             Color old = GUI.color;
-            GUI.color = new Color(0.75f, 0.02f, 0.04f, (0.35f + 0.45f * k) * pulse * old.a);
+            Color low = Theme.Darken(Palette.Bad, 0.15f);
+            GUI.color = new Color(low.r, low.g, low.b, (0.35f + 0.45f * k) * pulse * old.a);
             GUI.DrawTexture(new Rect(-40f, -40f, W + 80f, H + 80f), UiTex.Vignette, ScaleMode.StretchToFill, true);
             GUI.color = old;
         }

@@ -50,11 +50,11 @@ namespace Saltworks
             y = sr.yMax + Theme.S4;
             if (Game.Link == LinkState.Failed || Game.Link == LinkState.Closed)
             {
-                Lbl(new Rect(x, y, w, 20f), "Start the bridge from the repository root, then press Reconnect:", small, Theme.Muted);
+                Lbl(new Rect(x, y, w, 20f), "Can't reach the coach. Start it with:", small, Theme.Muted);
                 y += 24f;
                 Lbl(new Rect(x, y, w, 28f), "npm run bridge", monoBig, Theme.Ink);
                 y += 32f;
-                Lbl(new Rect(x, y, w, 20f), "(" + (string.IsNullOrEmpty(Game.LinkError) ? "no answer" : Game.LinkError) + ")", small, Theme.Faint);
+                Lbl(new Rect(x, y, w, 20f), "Then press Reconnect.", small, Theme.Faint);
             }
             bool can = Game.Link != LinkState.Connecting;
             if (GButton(new Rect(r.xMax - Pad - 240f, r.yMax - Pad - Theme.ButtonH, 240f, Theme.ButtonH), "Reconnect", 1, can, 0, false, null, "Enter")) Game.Do(Game.ConnectNow);
@@ -166,7 +166,6 @@ namespace Saltworks
                     else
                     {
                         Condensed(new Rect(pv.x, pv.y, pv.width, pv.height), Spaced(m.name ?? id), displayMC, new Color(1f, 1f, 1f, 0.12f), 0.84f);
-                        Lbl(new Rect(pv.x, pv.yMax - 30f, pv.width, 20f), "PREVIEW AFTER LOADING", centerSmall, Theme.Faint);
                     }
                     float ty = pv.yMax + 18f;
                     Condensed(new Rect(cr.x + 20f, ty, cr.width - 40f, 38f), Upper(m.name ?? id), cardTitleL, Theme.Ink, 0.9f);
@@ -291,14 +290,25 @@ namespace Saltworks
                 if (GButton(new Rect(col.x, y, w, 28f), "\u25b2  " + reportFirst + " more above", 2, true, StableKey("report-up"))) reportFirst--;
                 y += more;
             }
+            // Reserve the strip for the "more below" button before the blocks are laid out, so it cannot cover one.
+            float need = 0f;
+            for (int i = reportFirst; i < reportBlocks.Count; i++) need += reportBlocks[i].Height + (i < reportBlocks.Count - 1 ? gap : 0f);
+            bool reserveBelow = need > col.yMax - y;
+            float limit = col.yMax - (reserveBelow ? more : 0f);
             int last = reportFirst - 1;
             for (int i = reportFirst; i < reportBlocks.Count; i++)
             {
                 Block b = reportBlocks[i];
-                bool lastOne = i == reportBlocks.Count - 1;
-                float room = col.yMax - y - (lastOne ? 0f : more);
-                if (b.Height > room && i > reportFirst) break;
-                DrawReportBlock(rm, rep, b, new Rect(col.x, y, w, Mathf.Min(b.Height, col.yMax - y)));
+                float room = limit - y;
+                if (b.Height > room)
+                {
+                    if (i > reportFirst) break;
+                    // The first block alone is taller than the column: show its top, clamped above the strip.
+                    DrawReportBlock(rm, rep, b, new Rect(col.x, y, w, Mathf.Max(0f, room)));
+                    last = i;
+                    break;
+                }
+                DrawReportBlock(rm, rep, b, new Rect(col.x, y, w, b.Height));
                 y += b.Height + gap;
                 last = i;
             }
@@ -323,7 +333,7 @@ namespace Saltworks
 
         static string EvidenceText(WeaknessEvidence e)
         {
-            return e == null ? "" : string.Format("Evidence: {0}, round {1}, {2:0.0} s: {3}", e.matchId, e.round, e.tick / 20f, e.note);
+            return e == null ? "" : string.Format("Round {0}, {1:0.0} s: {2}", e.round, e.tick / 20f, e.note);
         }
 
         float RehearsalHeight(RehearsalInfo ri, float w)
@@ -485,10 +495,13 @@ namespace Saltworks
                     if (b == null || y + 24f > maxY) break;
                     Color rc = Palette.Relation(b.team, Game.PlayerTeam);
                     Plate(new Rect(x, y + 6f, 10f, 10f), rc);
-                    string who = Game.PersonaName(b.id) ?? b.id;
+                    string who = Game.DisplayName(b.id);
                     string agent = !string.IsNullOrEmpty(b.agent) ? "   " + Agents.NameOf(b.agent) : "";
-                    Lbl(new Rect(x + 20f, y, leftW - 20f, 22f), who + "   " + (b.team ?? "") + "   " + GameController.ArchetypeName(b.archetype) + agent, body, Theme.Ink);
-                    y += 26f;
+                    string line = who + "   " + Upper(b.team ?? "") + "   " + GameController.ArchetypeName(b.archetype) + agent;
+                    float lh = TextH(line, body, leftW - 20f);
+                    if (y + lh > maxY) break;
+                    Lbl(new Rect(x + 20f, y, leftW - 20f, lh), line, body, Theme.Ink);
+                    y += lh + 4f;
                 }
             }
 
@@ -499,21 +512,28 @@ namespace Saltworks
             DrawControlsList(cr.x + 16f, cy, cr.width - 32f, cr.yMax - 10f);
 
             float by = r.yMax - Pad - Theme.ButtonH;
-            Lbl(new Rect(x, by, r.width - 2f * Pad - 340f, Theme.ButtonH), "The clock starts when you begin. The mouse is captured; Esc pauses.", smallMid, Theme.Muted);
-            if (GButton(new Rect(r.xMax - Pad - 320f, by, 320f, Theme.ButtonH), "Begin drill", 1, true, 0, false, UiTex.Glyph("play"), "Enter")) Game.Do(Game.Begin);
+            const float beginW = 320f, backW = 150f, backGap = 12f;
+            float beginX = r.xMax - Pad - beginW;
+            float backX = beginX - backGap - backW;
+            Lbl(new Rect(x, by, Mathf.Max(120f, backX - 16f - x), Theme.ButtonH), "The clock starts when you begin. The mouse is captured; Esc goes back.", small, Theme.Muted);
+            if (GButton(new Rect(backX, by, backW, Theme.ButtonH), "Back", 2, true, StableKey("intro-back"), false, UiTex.Glyph("back"))) Game.Do(Game.BackToReport);
+            if (GButton(new Rect(beginX, by, beginW, Theme.ButtonH), "Begin drill", 1, true, 0, false, UiTex.Glyph("play"), "Enter")) Game.Do(Game.Begin);
         }
 
-        /// <summary>The key list: a key cap column and the action beside it, as many rows as fit above `maxY`.</summary>
+        /// <summary>The key list: a key cap column and the action beside it, wrapped, as many rows as fit above `maxY`.</summary>
         void DrawControlsList(float x, float y, float w, float maxY)
         {
             const float rowH = 26f, keyW = 112f;
+            float textW = w - keyW - 10f;
             foreach (string[] c in Controls)
             {
-                if (y + rowH > maxY) break;
+                float th = TextH(c[1], small, textW);
+                float h = Mathf.Max(rowH, th);
+                if (y + h > maxY) break;
                 float kw = Mathf.Min(keyW, TextW(c[0], keyCap) + 14f);
                 KeyCapAt(new Rect(x, y + 2f, kw, 22f), c[0], new Color(1f, 1f, 1f, 0.09f), Theme.Ink);
-                Lbl(new Rect(x + keyW + 10f, y, w - keyW - 10f, 26f), c[1], smallMid, Theme.Muted);
-                y += rowH;
+                Lbl(new Rect(x + keyW + 10f, y, textW, th), c[1], small, Theme.Muted);
+                y += h;
             }
         }
 
@@ -578,10 +598,12 @@ namespace Saltworks
             ly = SectionLabel(x, ly, leftW, "Difficulty");
             if (res.staircaseBefore.HasValue && res.staircaseAfter.HasValue)
             {
-                float b = res.staircaseBefore.Value, a = res.staircaseAfter.Value;
-                string change = a > b + 1e-4f ? "harder" : a < b - 1e-4f ? "easier" : "the same";
-                ly = Para(x, ly, leftW, string.Format("{0} drills go from {1:0.00} to {2:0.00} ({3}).", GameController.SkillName(spec.skill), b, a, change), body, Theme.Ink) + 10f;
-                Meter(new Rect(x, ly, leftW, 8f), a, a >= b ? Palette.Attack : Palette.Defense, b);
+                float before = res.staircaseBefore.Value, after = res.staircaseAfter.Value;
+                string change = after > before + 1e-4f ? "harder" : after < before - 1e-4f ? "easier" : "the same";
+                string skillName = GameController.SkillName(spec.skill);
+                if (skillName.Length > 0) skillName = char.ToUpperInvariant(skillName[0]) + skillName.Substring(1);
+                ly = Para(x, ly, leftW, string.Format("{0} drills go from {1:0.00} to {2:0.00} ({3}).", skillName, before, after, change), body, Theme.Ink) + 10f;
+                Meter(new Rect(x, ly, leftW, 8f), after, after >= before ? Palette.Attack : Palette.Defense, before);
                 ly += 26f;
             }
             else
