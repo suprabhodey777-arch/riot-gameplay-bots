@@ -97,11 +97,12 @@ namespace Saltworks
 
         public static readonly NamedColor[] AccentColors =
         {
-            new NamedColor("Coral", new Color(1.00f, 0.42f, 0.33f)),
+            new NamedColor("Crimson", new Color(0.88f, 0.20f, 0.25f)),
             new NamedColor("Teal", new Color(0.18f, 0.78f, 0.72f)),
             new NamedColor("Violet", new Color(0.62f, 0.48f, 1.00f)),
             new NamedColor("Gold", new Color(1.00f, 0.76f, 0.25f)),
             new NamedColor("Blue", new Color(0.30f, 0.60f, 1.00f)),
+            new NamedColor("Coral", new Color(1.00f, 0.42f, 0.33f)),
         };
 
         public static readonly string[] PaletteNames = { "Day", "Dusk", "Night", "High contrast" };

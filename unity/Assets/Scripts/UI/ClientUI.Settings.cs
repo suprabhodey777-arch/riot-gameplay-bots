@@ -475,7 +475,7 @@ namespace Saltworks
         /// <summary>About: what this is, who made it, and the persona rule.</summary>
         void AboutPanel()
         {
-            Condensed(new Rect(rowX, rowY, rowW, 70f), Spaced("Saltworks"), displayL, Theme.Ink, 0.78f);
+            Condensed(new Rect(rowX, rowY, rowW, 70f), Spaced("Clutchline"), displayL, Theme.Ink, 0.78f);
             rowY += 74f;
             Neon(new Rect(rowX, rowY, 120f, 3f), Settings.Accent, 1f);
             rowY += 14f;

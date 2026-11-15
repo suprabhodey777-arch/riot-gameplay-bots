@@ -389,9 +389,9 @@ namespace Saltworks
             float lk = Theme.Ease(Mathf.Clamp01((t - 0.1f) / 0.6f));
             Fill(new Rect(cx - 260f * lk, cy + 62f, 520f * lk, 2f), new Color(ac.r, ac.g, ac.b, a));
             float wk = Theme.Ease(Mathf.Clamp01((t - 0.35f) / 0.5f));
-            if (wk > 0f) Condensed(new Rect(0f, cy - 64f + (1f - wk) * 18f, W, 120f), Spaced("Saltworks"), stingTitle, new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, a * wk), 0.8f);
+            if (wk > 0f) Condensed(new Rect(0f, cy - 64f + (1f - wk) * 18f, W, 120f), Spaced("Clutchline"), stingTitle, new Color(Theme.Ink.r, Theme.Ink.g, Theme.Ink.b, a * wk), 0.8f);
             float ck = Mathf.Clamp01((t - 0.9f) / 0.5f);
-            if (ck > 0f) Lbl(new Rect(0f, cy + 80f, W, 24f), Spaced("Gameplay Coach"), centerSmall, new Color(Theme.Muted.r, Theme.Muted.g, Theme.Muted.b, a * ck));
+            if (ck > 0f) Lbl(new Rect(0f, cy + 80f, W, 24f), Spaced("Tactical training"), centerSmall, new Color(Theme.Muted.r, Theme.Muted.g, Theme.Muted.b, a * ck));
             Lbl(new Rect(0f, H - 44f, W, 20f), "PRESS ANY KEY TO SKIP", centerSmall, new Color(1f, 1f, 1f, 0.3f * a));
         }
 

@@ -1,4 +1,4 @@
-# Gameplay coach
+# Clutchline
 
 A coach that reads your matches, finds the situation you lose most, rebuilds those exact moments as drills against bots that play like people, and adapts as you improve. Built for DevHacks 2026, Riot track “Gameplay bots: agents that play and adapt.” The demo starts with sample match histories and records your practice and matches into the same coaching loop. The maps, agents and weapons are our own designs inspired by tactical shooters.
 

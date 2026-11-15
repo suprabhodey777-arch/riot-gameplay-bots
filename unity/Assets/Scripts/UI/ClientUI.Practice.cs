@@ -21,7 +21,7 @@ namespace Saltworks
             Frame(r, "Bridge link");
             Glass(r);
             float x = r.x + Pad, w = r.width - 2f * Pad;
-            float y = Header(x, r.y + 28f, w, null, "Saltworks", "Tactical coaching client. The bridge runs the sim, the bots and the coach; this window is the eyes and hands.");
+            float y = Header(x, r.y + 28f, w, null, "Clutchline", "Tactical coaching client. The bridge runs the sim, the bots and the coach; this window is the eyes and hands.");
             BridgeClient c = Game.Client;
             string where = c.Host + ":" + c.Port;
             Color dot;

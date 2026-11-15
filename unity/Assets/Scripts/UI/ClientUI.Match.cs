@@ -156,7 +156,7 @@ namespace Saltworks
             Lbl(new Rect(x, y, 600f, 18f), "TACTICAL TRAINING", kickerStyle, Theme.Muted);
             GUIStyle word = W > 1150f ? displayXL : displayL;
             float wh = W > 1150f ? 104f : 64f;
-            Condensed(new Rect(x - 3f, y + 20f, Mathf.Min(760f, W - x - 20f), wh), "SALTWORKS", word, Theme.Ink);
+            Condensed(new Rect(x - 3f, y + 20f, Mathf.Min(760f, W - x - 20f), wh), "CLUTCHLINE", word, Theme.Ink);
             float ty = y + 20f + wh + 6f;
             float tagW = Mathf.Min(440f, W - x - 40f);
             float tagH = TextH("Find what you lose, practise it against bots that play like people, then take it into a full match.", subStyle, tagW);
