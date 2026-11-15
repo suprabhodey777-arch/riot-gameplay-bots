@@ -10,3 +10,8 @@ CLAUDE.md
 CLAUDE.local.md
 replay/
 play/dist/
+
+# Rendered video, raw footage and recordings stay local-only
+video/
+recordings/
+unity/Recordings/
