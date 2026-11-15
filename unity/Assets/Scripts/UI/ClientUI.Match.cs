@@ -123,7 +123,7 @@ namespace Saltworks
         }
 
         // ---- main menu -----------------------------------------------------------------------------
-        static readonly string[] MenuTitles = { "Play match", "Practice", "Rehearse", "Pro personas", "Settings" };
+        static readonly string[] MenuTitles = { "Play match", "Practice", "Rehearse", "Favourite streamer", "Settings" };
         static readonly string[] MenuNums = { "01", "02", "03", "04", "05" };
         static readonly string[] MenuIcons = { "play", "target", "rewind", "persona", "gear" };
         // One line each: the card is sized to the widest of them (DrawMenu).
@@ -132,7 +132,7 @@ namespace Saltworks
             "You and four bot teammates against five bots. Buy rounds, first to 7.",
             "The coach reads a player's matches and drills their weakest moment.",
             "Replay the exact moments a sample player lost, on the same clock.",
-            "Duel original pro playstyles: the flick duelist, the anchor, the lurker.",
+            "Play your favourite streamer's style: the flick duelist, the anchor, the lurker.",
             "Mouse, crosshair, graphics, map, streamer mode, colours and names.",
         };
 

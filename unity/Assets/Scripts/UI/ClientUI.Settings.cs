@@ -192,6 +192,14 @@ namespace Saltworks
             bool streamer = ToggleRow("Streamer mode", Settings.StreamerMode, "Chat, alerts, a goal bar, the LIVE pill and a camera frame.");
             if (streamer != Settings.StreamerMode) Game.Do(() => Game.SetStreamer(streamer));
             if (!Game.V4) Note("Chat comes from a bridge that speaks bots-wire.4; on this bridge the overlay shows your own kill alerts.");
+            Section("Bots");
+            int diff = Mathf.RoundToInt(SliderRow("Bot difficulty", Settings.BotDifficulty, 0f, 3f, Settings.DifficultyNames[Mathf.Clamp(Settings.BotDifficulty, 0, 3)], 1f));
+            if (diff != Settings.BotDifficulty)
+            {
+                Settings.BotDifficulty = Mathf.Clamp(diff, 0, 3);
+                Game.Do(Game.SendDifficulty);
+            }
+            Note("How well bots aim. Every level misses more after a fast turn, against a strafing target, at long range and in a long spray. Applies to the next drill, match or duel.");
             Section("Movement");
             Settings.ToggleCrouch = ToggleRow("Toggle crouch", Settings.ToggleCrouch, "On: Ctrl switches crouch on and off. Off: hold.");
             Settings.ToggleWalk = ToggleRow("Toggle walk", Settings.ToggleWalk, "On: Shift switches walk on and off. Off: hold.");

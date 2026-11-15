@@ -21,6 +21,7 @@ export class MatchGame {
   readonly mapId: string;
   readonly wallets: Wallet[];
   readonly recorder: Recorder;
+  aimScale: number | undefined;
   round = 1;
   score = { player: 0, enemy: 0 };
   phase: 'buy' | 'live' | 'ended' = 'buy';
@@ -35,11 +36,12 @@ export class MatchGame {
   private deaths = 0;
   private heads = 0;
 
-  constructor(opts: { map: string; agent: AgentId; playerId?: string; seed?: number; matchId?: string; enemyPersonas?: PersonaId[]; allyPersonas?: PersonaId[]; duel?: { persona: PersonaId; site: SiteId } }) {
+  constructor(opts: { map: string; agent: AgentId; playerId?: string; seed?: number; matchId?: string; enemyPersonas?: PersonaId[]; allyPersonas?: PersonaId[]; duel?: { persona: PersonaId; site: SiteId }; /** Bot aim from the difficulty setting; see AIM_DIFFICULTY. */ aimScale?: number }) {
     const map = loadMap(opts.map);
     if (opts.duel) { personaById(opts.duel.persona); sitePoly(map, opts.duel.site); }
     for (const [ids, length] of [[opts.enemyPersonas, 5], [opts.allyPersonas, 4]] as const) if (ids && (ids.length !== length || !ids.every(isPersona))) throw new Error('Invalid persona team');
     this.duel = opts.duel;
+    this.aimScale = opts.aimScale;
     this.mapId = opts.map; this.playerId = opts.playerId ?? 'player'; this.seed = opts.seed ?? 1;
     this.wallets = Array.from({ length: 10 }, (_, i) => ({ id: i === 0 ? this.playerId : i < 5 ? `ally-${i}` : `enemy-${i - 4}`, ally: i < 5,
       agent: i === 0 ? opts.agent : (['rook', 'haze', 'wren', 'pike'] as const)[i % 4],
@@ -167,7 +169,7 @@ export class MatchGame {
       const spawn = w.ally ? playerSpawn ?? enemySpawn! : enemySpawn!;
       const opponent = w.ally ? enemySpawn! : playerSpawn ?? enemySpawn!;
       return [w.id, { spawn, yaw: Math.atan2(opponent.y - spawn.y, opponent.x - spawn.x), carryingSpike: false }];
-    })) } : undefined, seed: this.seed + this.round, teamPlay: true,
+    })) } : undefined, seed: this.seed + this.round, teamPlay: true, aimScale: this.aimScale,
       agents: this.wallets.map(w => ({ id: w.id, team: this.team(w), isBot: w.id !== this.playerId, agent: w.agent, archetypeId: w.archetypeId, loadout: { ...this.loadout(w), armorPoints: w.armorPoints } })) });
     this.phase = 'live';
     this.recorder.beginRound(this.match.state(), undefined, { roundType: this.types.player, loadout: this.loadout(this.wallets[0]) });

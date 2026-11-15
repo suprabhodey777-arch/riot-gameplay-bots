@@ -143,7 +143,7 @@ export function idleInput(agentId: string, yaw = 0): PlayerInput {
   return { agentId, move: { x: 0, y: 0 }, yaw, walk: false, crouch: false, fire: null, smokeAt: null, plantHeld: false, defuseHeld: false };
 }
 
-export function startDrill(spec: DrillSpec, opts: { maxTicks?: number; /** Bot team behaviour (default true); see BotOptions.teamPlay. */ teamPlay?: boolean } = {}): DrillRun {
+export function startDrill(spec: DrillSpec, opts: { maxTicks?: number; /** Bot team behaviour (default true); see BotOptions.teamPlay. */ teamPlay?: boolean; /** Bot aim from the difficulty setting; see AIM_DIFFICULTY. */ aimScale?: number } = {}): DrillRun {
   const sim = drillSimOptions(spec);
   const botTraits = new Map(spec.bots.map((b) => [b.id, b]));
   const match = createMatch({
@@ -152,6 +152,7 @@ export function startDrill(spec: DrillSpec, opts: { maxTicks?: number; /** Bot t
     scenario: sim.scenario,
     agents: sim.agents.map((a) => ({ id: a.id, team: a.team, isBot: a.isBot, agent: a.agent, loadout: a.loadout, archetypeId: botTraits.get(a.id)?.archetypeId, traits: botTraits.get(a.id)?.traits, hold: botTraits.get(a.id)?.hold })),
     teamPlay: opts.teamPlay ?? true,
+    aimScale: opts.aimScale,
   });
   const maxTicks = opts.maxTicks ?? Math.round((spec.roundTimeLeftS + BUDGET_SLACK_S) * TICK_RATE);
   const judge = new DrillJudge(spec, sim.map.sites);

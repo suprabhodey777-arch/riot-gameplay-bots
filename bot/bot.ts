@@ -5,7 +5,7 @@ import type { BotTraits } from '../shared/coaching.ts';
 import type { FireIntent, MapDef, PlayerInput, SimState, SimEvent, SiteId, TraceEntry, Vec2 } from '../shared/contract.ts';
 import { lineOfSight, pointInPolygon, siteAt, siteIds, sitePoly } from '../sim/geometry.ts';
 import type { Rng } from '../sim/rng.ts';
-import { RUN_HEARING_M, SMOKE_RADIUS, TICK_RATE } from '../sim/sim.ts';
+import { RUN_HEARING_M, RUN_SPEED, SMOKE_RADIUS, TICK_RATE } from '../sim/sim.ts';
 import { calloutAt, centroid, clearSegment, hashStr, pathBetween, type Spot, spotsFor, navFor, minWallDist } from './nav.ts';
 import { type BotView, botView, createMemory } from './view.ts';
 
@@ -18,6 +18,8 @@ export interface BotOptions {
   map: MapDef;
   traits: BotTraits;
   archetypeId?: string;
+  /** Overall aim from the difficulty setting (AIM_DIFFICULTY); default normal. */
+  aimScale?: number;
   /**
    * Team behaviour (default true): commit on a teammate's foothold, spread after the plant,
    * use the agent's flash, dash and recon, gate investigations on patience, and hear running
@@ -74,6 +76,36 @@ export interface Action {
 
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
 const bearing = (a: Vec2, b: Vec2) => Math.atan2(b.y - a.y, b.x - a.x);
+const turnBetween = (a: number, b: number): number => Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
+const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
+
+/** Overall bot aim, from the player's difficulty setting (multiplies every hit chance). */
+export const AIM_DIFFICULTY = { easy: 0.5, normal: 0.85, hard: 1.2, pro: 1.45 } as const;
+export type AimDifficulty = keyof typeof AIM_DIFFICULTY;
+
+/**
+ * How well a bot's shot can land, 0-1, from what makes aiming hard for a person. Before this a
+ * bot's hit chance ignored all of it, so a bot that had just turned 90 degrees hit a strafing
+ * player 30 m away exactly as often as one already looking at a still target, and players died
+ * about 0.7 s after being seen whatever they did.
+ *   flick    the first shots after turning onto a target are worse, recovering over a settle time
+ *            that grows with the turn (120 ms + up to 380 ms for a half turn), scaled by how fast
+ *            the bot reacts (a 150 ms reactor settles in 60% of the time).
+ *   moving   a strafing or running target is harder: x0.5 at full run speed, x0.78 walking.
+ *   range    x1 to 12 m, falling to x0.55 at 42 m.
+ *   self     a bot moving while it shoots: x0.65.
+ *   spray    from the third shot in a row, -10% per shot, to x0.5.
+ * Pure: no random draws, so drills stay deterministic.
+ */
+export function aimQuality(o: { turnRad: number; sinceReadyMs: number; reactionMs: number; targetSpeed: number; distM: number; selfMoving: boolean; shotsInRow: number }): number {
+  const settleMs = (120 + 380 * Math.min(1, o.turnRad / Math.PI)) * Math.max(0.5, o.reactionMs / 250);
+  const flick = 0.35 + 0.65 * clamp01(o.sinceReadyMs / settleMs);
+  const moving = 1 - 0.5 * clamp01(o.targetSpeed / RUN_SPEED);
+  const range = o.distM <= 12 ? 1 : Math.max(0.55, 1 - (o.distM - 12) * 0.015);
+  const self = o.selfMoving ? 0.65 : 1;
+  const spray = o.shotsInRow <= 2 ? 1 : Math.max(0.5, 1 - 0.1 * (o.shotsInRow - 2));
+  return flick * moving * range * self * spray;
+}
 const fmt = (p: Vec2) => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`;
 
 function alongPath(from: Vec2, pts: Vec2[], d: number): Vec2 {
@@ -101,6 +133,9 @@ export function createBot(opts: BotOptions): Bot {
   let lastKey = '';
   let lastFireTick = -1000;
   let target: string | null = null;
+  /** The current target's aim state: how far we turned onto it, its last position, shots so far. */
+  let aim: { id: string; since: number; turn: number; lastPos: Vec2; lastTick: number; speed: number; shots: number } | null = null;
+  const aimScale = opts.aimScale ?? AIM_DIFFICULTY.normal;
   const investigated = new Set<string>();
   let smokesThrown = 0;
   let utilityUntil = -1;
@@ -171,6 +206,12 @@ export function createBot(opts: BotOptions): Bot {
       target = foe.id;
       const ageMs = (tick - foe.since) * MS_PER_TICK;
       const yaw = bearing(me.pos, foe.pos);
+      if (!aim || aim.id !== foe.id || aim.since !== foe.since) aim = { id: foe.id, since: foe.since, turn: turnBetween(me.yaw, yaw), lastPos: { ...foe.pos }, lastTick: tick, speed: 0, shots: 0 };
+      else if (tick > aim.lastTick) {
+        aim.speed = dist(aim.lastPos, foe.pos) / ((tick - aim.lastTick) / TICK_RATE);
+        aim.lastPos = { ...foe.pos };
+        aim.lastTick = tick;
+      }
       const where = calloutAt(map, foe.pos);
       const ageS = (ageMs / 1000).toFixed(2);
       if (ageMs < traits.reactionMs) {
@@ -189,8 +230,11 @@ export function createBot(opts: BotOptions): Bot {
         lastFireTick = tick;
         const id = equipped(me);
         const scale = id === 'lancer' ? 1 : id === 'longshot' ? (advance ? 0.25 : d > 15 ? 1.5 : 0.8) : id === 'wasp' ? (d <= 15 ? 1.15 : 0.7) : id === 'brick' ? (d <= 8 ? 1.2 : 0.45) : id === 'hammer' ? (d <= 15 ? 1 : 0.8) : id === 'pin' ? 0.85 : 1.05;
+        aim.shots++;
+        const q = aimQuality({ turnRad: aim.turn, sinceReadyMs: ageMs - traits.reactionMs, reactionMs: traits.reactionMs, targetSpeed: aim.speed, distM: d, selfMoving: advance, shotsInRow: aim.shots }) * aimScale;
+        // A head shot needs precise aim, so it takes the full penalty; a body hit is more forgiving.
         const r = rng.next();
-        const result: FireIntent['result'] = r < traits.headAccuracy * scale ? 'head' : rng.next() < traits.bodyAccuracy * scale ? 'body' : 'miss';
+        const result: FireIntent['result'] = r < traits.headAccuracy * scale * q ? 'head' : rng.next() < traits.bodyAccuracy * scale * (0.4 + 0.6 * q) ? 'body' : 'miss';
         fire = { targetId: foe.id, result };
       }
       return {

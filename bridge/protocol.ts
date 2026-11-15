@@ -1,3 +1,4 @@
+import type { AimDifficulty } from '../bot/bot.ts';
 import type { Persona, PersonaId } from '../shared/personas.ts';
 import type { SiteId } from '../shared/contract.ts';
 import type { ArmorId, Loadout, RoundType, WeaponId, Weapon } from '../shared/weapons.ts';
@@ -18,6 +19,7 @@ export type ClientMessage =
   | { type: 'pick_agent'; agent: AgentId }
   | { type: 'next_drill' }
   | { type: 'retry' }
+  | { type: 'difficulty'; level: AimDifficulty }
   | { type: 'rehearse'; index: number }
   | { type: 'versus'; archetype: ArchetypeId | PersonaId; skill: Skill }
   | { type: 'input'; input: BridgeInput }
@@ -59,6 +61,7 @@ export type ServerMessage =
   | { type: 'map'; map: MapDef }
   | { type: 'agent'; agent: AgentId; kit: AbilityCharges }
   | { type: 'hello'; protocol: Protocol; map: MapDef; rules: Rules }
+  | { type: 'difficulty'; level: AimDifficulty; aimScale: number }
   | { type: 'report'; report: WeaknessReport; rehearsals: { index: number; title: string; brief: string; skill: Skill }[];
       staircases: Record<Skill, { difficulty: number }>; played: number; agentAdvice?: AgentAdvice; personaOffer?: { persona: PersonaId; skill: Skill; title: string; beatTip: string } }
   | { type: 'drill'; spec: DrillSpec; intro: string; playerId: string; playerTeam: Team; playerAgent?: AgentId;

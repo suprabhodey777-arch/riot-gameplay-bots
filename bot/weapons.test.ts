@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { createBot } from './bot.ts';
+import { AIM_DIFFICULTY, aimQuality, createBot } from './bot.ts';
 import { DEFAULT_TRAITS } from './traits.ts';
 import { arena, duel } from '../sim/test-util.ts';
 import { createSim } from '../sim/sim.ts';
@@ -19,10 +19,27 @@ test.each(Object.keys(WEAPONS) as WeaponId[])('%s bot fires at its own interval'
   expect(ticks.slice(1).every((t, i) => t - ticks[i] === gap)).toBe(true);
 });
 test('weapon and range scale head/body accuracy without extra random draws', () => {
-  const close = firing('wasp', 5), far = firing('wasp', 16);
+  // A low fixed roll: the first shot after acquiring a target carries the flick penalty (aimQuality),
+  // so the same roll lands a head shot only where the weapon and range help.
+  const close = firing('wasp', 5, 0.3, 0.1), far = firing('wasp', 16, 0.3, 0.1);
   expect(close.bot.decide(close.state).input.fire?.result).toBe('head');
-  expect(far.bot.decide(far.state).input.fire?.result).toBe('miss');
-  const still = firing('longshot', 16), moving = firing('longshot', 16, 0.9);
+  expect(far.bot.decide(far.state).input.fire?.result).not.toBe('head');
+  const still = firing('longshot', 16, 0.3, 0.1), moving = firing('longshot', 16, 0.9, 0.1);
   expect(still.bot.decide(still.state).input.fire?.result).toBe('head');
-  expect(moving.bot.decide(moving.state).input.fire?.result).toBe('miss');
+  expect(moving.bot.decide(moving.state).input.fire?.result).not.toBe('head');
+});
+
+test('aim quality: a fast turn, a strafing target, range, moving and a long spray all cost accuracy', () => {
+  const base = { turnRad: 0, sinceReadyMs: 2000, reactionMs: 250, targetSpeed: 0, distM: 8, selfMoving: false, shotsInRow: 1 };
+  expect(aimQuality(base)).toBeCloseTo(1);
+  expect(aimQuality({ ...base, sinceReadyMs: 0 })).toBeCloseTo(0.35);
+  // A bigger turn takes longer to settle: 150 ms after a half turn is worse than after a small one.
+  expect(aimQuality({ ...base, sinceReadyMs: 150, turnRad: Math.PI })).toBeLessThan(aimQuality({ ...base, sinceReadyMs: 150, turnRad: 0.2 }));
+  expect(aimQuality({ ...base, targetSpeed: 6.75 })).toBeCloseTo(0.5);
+  expect(aimQuality({ ...base, distM: 42 })).toBeCloseTo(0.55);
+  expect(aimQuality({ ...base, selfMoving: true })).toBeCloseTo(0.65);
+  expect(aimQuality({ ...base, shotsInRow: 7 })).toBeCloseTo(0.5);
+  expect(AIM_DIFFICULTY.easy).toBeLessThan(AIM_DIFFICULTY.normal);
+  expect(AIM_DIFFICULTY.normal).toBeLessThan(AIM_DIFFICULTY.hard);
+  expect(AIM_DIFFICULTY.hard).toBeLessThan(AIM_DIFFICULTY.pro);
 });

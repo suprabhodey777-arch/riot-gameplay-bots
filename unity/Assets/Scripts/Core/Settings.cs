@@ -156,6 +156,10 @@ namespace Saltworks
         /// <summary>0 Low, 1 Medium, 2 High, 3 Ultra (shadows, bloom, prop density, resolution scale).</summary>
         public static int GfxPreset = 2;
         public static bool DamageNumbers = true;
+        /// <summary>How well bots aim: 0 easy, 1 normal, 2 hard, 3 pro (the bridge's AIM_DIFFICULTY).</summary>
+        public static int BotDifficulty = 1;
+        public static readonly string[] DifficultyIds = { "easy", "normal", "hard", "pro" };
+        public static readonly string[] DifficultyNames = { "Easy", "Normal", "Hard", "Pro" };
         /// <summary>Vertical field of view of the weapon camera, degrees.</summary>
         public static float ViewmodelFov = 60f;
         /// <summary>Viewmodel offsets, -1..1 (about 4 cm each way).</summary>
@@ -233,6 +237,7 @@ namespace Saltworks
             World = (WorldPaletteId)Mathf.Clamp(PlayerPrefs.GetInt(P + "col.world", 0), 0, PaletteNames.Length - 1);
             GfxPreset = PlayerPrefs.GetInt(P + "gfx", GfxPreset);
             DamageNumbers = PlayerPrefs.GetInt(P + "dmgnum", 1) == 1;
+            BotDifficulty = Mathf.Clamp(PlayerPrefs.GetInt(P + "botdiff", 1), 0, 3);
             ViewmodelFov = PlayerPrefs.GetFloat(P + "vm.fov", ViewmodelFov);
             ViewmodelX = PlayerPrefs.GetFloat(P + "vm.x", 0f);
             ViewmodelY = PlayerPrefs.GetFloat(P + "vm.y", 0f);
@@ -317,6 +322,7 @@ namespace Saltworks
             PlayerPrefs.SetInt(P + "col.world", (int)World);
             PlayerPrefs.SetInt(P + "gfx", GfxPreset);
             PlayerPrefs.SetInt(P + "dmgnum", DamageNumbers ? 1 : 0);
+            PlayerPrefs.SetInt(P + "botdiff", BotDifficulty);
             PlayerPrefs.SetFloat(P + "vm.fov", ViewmodelFov);
             PlayerPrefs.SetFloat(P + "vm.x", ViewmodelX);
             PlayerPrefs.SetFloat(P + "vm.y", ViewmodelY);

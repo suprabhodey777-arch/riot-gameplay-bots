@@ -19,6 +19,7 @@ import { sampleHistory } from '../analyzer/synthetic.ts';
 import { analyze } from '../analyzer/analyze.ts';
 import { recommendAgents } from '../analyzer/recommend.ts';
 import { navFor } from '../bot/nav.ts';
+import { AIM_DIFFICULTY, type AimDifficulty } from '../bot/bot.ts';
 import { buildDrill, withPlayerAgent } from '../analyzer/drills.ts';
 import { archetypeById } from '../bot/traits.ts';
 import { debrief } from '../coach/debrief.ts';
@@ -104,6 +105,8 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
   let active: { run: DrillRun; initial: SimState; versus: boolean } | null = null;
   /** The last drill started, so `retry` can play the same situation again (same seed, same bots). */
   let lastDrill: { drill: DrillSpec; versus: boolean } | null = null;
+  /** The player's bot difficulty (how well bots aim); see AIM_DIFFICULTY. */
+  let aimLevel: AimDifficulty = 'normal';
   /** The map the client last received, so a drill on another map (a rehearsal) brings its own. */
   // A client that skipped hello still has the default map in hand (the one hello would send).
   let clientMap: string = session.toJSON().mapId;
@@ -160,7 +163,7 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
       clientMap = spec.mapId;
       send({ type: 'map', map: loadMap(spec.mapId) });
     }
-    const run = startDrill(spec);
+    const run = startDrill(spec, { aimScale: AIM_DIFFICULTY[aimLevel] });
     active = { run, initial: run.state(), versus };
     send({ type: 'drill', spec, intro: spec.goal, playerId: spec.player.id, playerTeam: spec.player.team,
       playerAgent: spec.player.agent, bots: spec.bots.map((b) => ({ id: b.id, team: b.team, archetype: b.archetypeId, agent: agentForArchetype(b.archetypeId) })), state: run.state() });
@@ -180,6 +183,12 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         clientMap = session.toJSON().mapId;
         send({ type: 'hello', protocol, map: loadMap(clientMap), rules: RULES });
         break;
+      case 'difficulty': {
+        if (!Object.hasOwn(AIM_DIFFICULTY, msg.level)) throw new Error('Unknown difficulty');
+        aimLevel = msg.level;
+        send({ type: 'difficulty', level: aimLevel, aimScale: AIM_DIFFICULTY[aimLevel] });
+        break;
+      }
       case 'maps':
         send({ type: 'maps', maps: PLAYABLE_MAPS.map(id => ({ id, name: loadMap(id).name })) });
         break;
@@ -263,7 +272,7 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         if (!siteIds(map).includes(msg.site)) throw new Error('Unknown site');
         if (active) await finish(true);
         clearBuyTimer();
-        fullMatch = new MatchGame({ map: msg.map, agent: pickedAgent ?? 'rook', playerId: session.playerId, seed: ++sequence, duel: { persona: msg.persona, site: msg.site } });
+        fullMatch = new MatchGame({ map: msg.map, agent: pickedAgent ?? 'rook', playerId: session.playerId, seed: ++sequence, duel: { persona: msg.persona, site: msg.site }, aimScale: AIM_DIFFICULTY[aimLevel] });
         send({ type: 'map', map }); startMatchRound(); break;
       }
       case 'match': {
@@ -275,7 +284,7 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
         clearBuyTimer();
         pickedMap = msg.map; pickedAgent = msg.agent;
         session = CoachingSession.fromJSON({ ...session.toJSON(), mapId: msg.map, playerAgent: msg.agent }, options);
-        fullMatch = new MatchGame({ map: msg.map, agent: msg.agent, playerId: session.playerId, seed: ++sequence, matchId: `bridge-match-${sequence}`, enemyPersonas: msg.enemyPersonas, allyPersonas: msg.allyPersonas });
+        fullMatch = new MatchGame({ map: msg.map, agent: msg.agent, playerId: session.playerId, seed: ++sequence, matchId: `bridge-match-${sequence}`, enemyPersonas: msg.enemyPersonas, allyPersonas: msg.allyPersonas, aimScale: AIM_DIFFICULTY[aimLevel] });
         send({ type: 'map', map: loadMap(msg.map) }); send(fullMatch.buyPhase()); scheduleBuy(); break;
       }
       case 'buy': case 'sell':

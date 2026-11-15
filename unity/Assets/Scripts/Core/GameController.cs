@@ -861,6 +861,7 @@ namespace Saltworks
                 switch (type)
                 {
                     case "hello": OnHello(Wire.Read<HelloMsg>(o)); break;
+                    case "difficulty": break; // the bridge confirming the level Settings sent
                     case "maps": OnMaps(Wire.Read<MapsMsg>(o)); break;
                     case "map": OnMap(Wire.Read<MapMsg>(o)); break;
                     case "agent": OnAgent(o); break;
@@ -922,10 +923,18 @@ namespace Saltworks
             }
         }
 
+        /// <summary>Tells the bridge the bot difficulty from Settings (on connect and when it changes).</summary>
+        public void SendDifficulty()
+        {
+            if (!V2) return;
+            Client.Send(Wire.Difficulty(Settings.DifficultyIds[Mathf.Clamp(Settings.BotDifficulty, 0, 3)]));
+        }
+
         void OnHello(HelloMsg h)
         {
             V3 = h.protocol == Wire.Protocol || h.protocol == Wire.Protocol4 || (h.rules != null && h.rules.weapons != null && h.rules.weapons.Type != JTokenType.Null);
             V2 = h.protocol == Wire.Protocol2 || V3;
+            SendDifficulty();
             if (!V2 && h.protocol != Wire.LegacyProtocol)
                 ShowToast("The bridge speaks " + h.protocol + ", this client expects " + Wire.Protocol4 + ".");
             Rules = h.rules ?? new Rules();

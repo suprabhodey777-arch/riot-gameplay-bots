@@ -332,7 +332,7 @@ namespace Saltworks
         {
             float now = Time.unscaledTime;
             float x0 = 56f, top = 44f;
-            float cy = Header(x0, top, W - 2f * x0 - 200f, "Pro personas  //  original playstyles, not real people", "Pick your opponent",
+            float cy = Header(x0, top, W - 2f * x0 - 200f, "Play your favourite streamer  //  name them in Settings", "Pick your streamer",
                 Game.V4 ? "Each persona plays one well-known style. Rename any of them: the name is used everywhere in the client."
                         : "This bridge does not speak bots-wire.4: the cards show the built-in profiles and duels stay off.");
 

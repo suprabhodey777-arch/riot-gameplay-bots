@@ -54,6 +54,12 @@ namespace Saltworks
         }
 
         /// <summary>Play the last drill again: same situation, same seed, same bots.</summary>
+        /// <summary>Set how well bots aim for every drill, match and duel that starts after it.</summary>
+        public static JObject Difficulty(string level)
+        {
+            return new JObject { ["type"] = "difficulty", ["level"] = level };
+        }
+
         public static JObject Retry()
         {
             return new JObject { ["type"] = "retry" };
