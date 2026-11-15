@@ -22,6 +22,7 @@ import {
   SHOWCASE_SKILLS,
   showcaseDrill,
   showcaseDrills,
+  SHOWCASE_MARGIN_S,
 } from './showcase.ts';
 
 const map = loadMap('saltworks');
@@ -188,8 +189,8 @@ describe('the action is 1-2 s of running away', () => {
     const walk = routeLength(d.player.spawn, plant);
     expect(walk).toBeGreaterThanOrEqual(7);
     expect(walk).toBeLessThanOrEqual(12);
-    // The clock fits exactly: the walk, the plant, and the 3 s margin, no more (rounded to 0.1 s).
-    const need = walk / RUN_SPEED + PLANT_TIME_S + 3;
+    // The clock fits exactly: the walk, the plant, and the showcase margin, no more (rounded to 0.1 s).
+    const need = walk / RUN_SPEED + PLANT_TIME_S + SHOWCASE_MARGIN_S;
     expect(Math.abs(d.roundTimeLeftS - need), `clock ${d.roundTimeLeftS} vs need ${need.toFixed(2)}`).toBeLessThanOrEqual(0.05 + 1e-9);
   });
 
