@@ -159,7 +159,7 @@ Bridge → client:
 
 | Path | Who | Notes |
 | --- | --- | --- |
-| `docs/unity-bridge.md` | Claude | This file. Workers do not edit it; they report any gap. |
+| `docs/unity-bridge.md` | Lead (Suprabho) | This file. Workers do not edit it; they report any gap. |
 | `bridge/` + `npm run bridge` | Codex | Node/TS, imports the existing lanes, adds no dependencies. |
 | `unity/` | Kiro | Unity 6 project, C#, built-in render pipeline. |
-| everything else | Claude | Workers do not edit it. |
+| everything else | Lead (Suprabho) | Workers do not edit it. |

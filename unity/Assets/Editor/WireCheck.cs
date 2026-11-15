@@ -27,6 +27,12 @@ public static class WireCheck
         ["round_result"] = typeof(RoundResultMsg),
         ["match_end"] = typeof(MatchEndMsg),
         ["error"] = typeof(ErrorMsg),
+        // bots-wire.4 (docs/streamer-mode.md)
+        ["personas"] = typeof(PersonasMsg),
+        ["chat"] = typeof(ChatMsg),
+        ["alert"] = typeof(AlertMsg),
+        ["persona_line"] = typeof(PersonaLineMsg),
+        ["duel_end"] = typeof(DuelEndMsg),
     };
 
     public static void Run()
@@ -59,6 +65,22 @@ public static class WireCheck
                 else if (Typed.TryGetValue(type, out Type t))
                 {
                     if (readGeneric.MakeGenericMethod(t).Invoke(null, new object[] { o }) == null) throw new Exception("Read returned null");
+                    if (type == "personas")
+                    {
+                        // Each persona must read as a PersonaInfo with an id, and its lists must come out.
+                        PersonasMsg pm = Wire.Read<PersonasMsg>(o);
+                        if (!(pm.personas is JArray arr)) throw new Exception("personas is not an array");
+                        foreach (JToken pt in arr)
+                        {
+                            if (!(pt is JObject po)) throw new Exception("a persona is not an object");
+                            PersonaInfo p = Wire.Read<PersonaInfo>(po);
+                            if (string.IsNullOrEmpty(p.id)) throw new Exception("a persona has no id");
+                            if (po["lines"] != null && Lenient.Strings(p.lines).Count == 0) throw new Exception("lines of " + p.id + " did not resolve");
+                            if (po["colors"] != null && Lenient.Strings(p.colors).Count == 0) throw new Exception("colors of " + p.id + " did not resolve");
+                        }
+                    }
+                    if (type == "duel_end" && o["score"] != null && !(Wire.Read<DuelEndMsg>(o).score is JObject))
+                        throw new Exception("duel_end.score is not an object");
                     if (type == "step")
                     {
                         // The values the HUD reads every frame must come out, not just parse.

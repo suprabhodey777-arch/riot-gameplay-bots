@@ -112,4 +112,4 @@ Events gain `reload`, `buy`, `switch`.
 | --- | --- |
 | `shared/contract.ts`, `sim/`, `bot/`, `analyzer/`, `session/`, `bridge/`, `play/` | Codex |
 | `unity/Assets/` | Kiro |
-| docs | Claude |
+| docs | Lead (Suprabho) |

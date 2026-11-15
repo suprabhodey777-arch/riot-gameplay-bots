@@ -24,6 +24,10 @@ namespace Saltworks
         MatchSetup,
         Buy,
         MatchEnd,
+        // round 5
+        PersonaSelect,
+        DuelSetup,
+        DuelEnd,
     }
 
     public class FeedItem
@@ -39,6 +43,8 @@ namespace Saltworks
         public string Victim;
         public string Weapon;
         public bool Head;
+        /// <summary>The kill went through a wall (the event's flag, else the floor plan).</summary>
+        public bool Wallbang;
         public Color KillerColor;
         public Color VictimColor;
         public float KillerW = -1f;
@@ -224,6 +230,7 @@ namespace Saltworks
             WorldLook.Setup(Rig.Cam);
             World = new GameObject("World").AddComponent<WorldView>();
             Fx = World.gameObject.AddComponent<AbilityFx>();
+            SetupRound5();
             Rig.Gun = Gun;
             if (Rig.Weapon != null) Rig.Weapon.Gun = Gun;
             if (Rig.Weapon != null) Rig.Weapon.Impacts = World.Impacts;
@@ -495,6 +502,7 @@ namespace Saltworks
                     break;
             }
             TickMatch();
+            TickRound5();
             FullMap = Screen == AppScreen.Playing && !Paused && GameInput.Held(GameKey.FullMap);
             if (Screen == AppScreen.Playing || Screen == AppScreen.Intro) Minimap.Tick(this, EyePos, Rig.Heading);
             if (Screen != AppScreen.Playing && Aiming.HasValue) CancelAim();
@@ -721,6 +729,7 @@ namespace Saltworks
             if (ticksSent + 1 - lastFireTick < needTicks) return;
             Gun.PlanShot(now);
             pendingFire = Rig.Fire(World, PlayerTeam, Gun);
+            if (Rig.Weapon != null) FxLights.Flash(Rig.Weapon.MuzzleWorld(Rig.transform), new Color(1f, 0.8f, 0.5f), 1.6f, 4f, 0.05f);
             lastFireTick = ticksSent + 1;
             LastShotAt = now;
             semiReleased = false;
@@ -846,16 +855,17 @@ namespace Saltworks
                     case "match_end": OnMatchEnd(o); break;
                     case "error":
                         ErrorMsg e = Wire.Read<ErrorMsg>(o);
-                        if (Screen == AppScreen.Connect && helloFallback < 2)
+                        if (Screen == AppScreen.Connect && helloFallback < 3)
                         {
-                            // An error before any hello: an older bridge refusing our hello. Step down: .3, then .2, then .1.
+                            // An error before any hello: an older bridge refusing our hello. Step down: .4, then .3, .2, .1.
                             helloFallback++;
-                            Client.Send(Wire.Hello(helloFallback == 1 ? Wire.Protocol2 : Wire.LegacyProtocol));
+                            Client.Send(Wire.Hello(helloFallback == 1 ? Wire.Protocol : helloFallback == 2 ? Wire.Protocol2 : Wire.LegacyProtocol));
                             break;
                         }
-                        if (WaitingFor == "match")
+                        if (WaitingFor == "match" || WaitingFor == "duel")
                         {
                             InMatch = false;
+                            ResetDuel();
                             WaitingFor = null;
                         }
                         if (WaitingFor == "buy") WaitingFor = null;
@@ -864,7 +874,7 @@ namespace Saltworks
                         if (WaitingFor != "result") WaitingFor = null;
                         break;
                     default:
-                        Debug.Log("Saltworks: ignoring message type " + type);
+                        if (!HandleV4(type, o)) Debug.Log("Saltworks: ignoring message type " + type);
                         break;
                 }
             }
@@ -894,10 +904,10 @@ namespace Saltworks
 
         void OnHello(HelloMsg h)
         {
-            V3 = h.protocol == Wire.Protocol || (h.rules != null && h.rules.weapons != null && h.rules.weapons.Type != JTokenType.Null);
+            V3 = h.protocol == Wire.Protocol || h.protocol == Wire.Protocol4 || (h.rules != null && h.rules.weapons != null && h.rules.weapons.Type != JTokenType.Null);
             V2 = h.protocol == Wire.Protocol2 || V3;
             if (!V2 && h.protocol != Wire.LegacyProtocol)
-                ShowToast("The bridge speaks " + h.protocol + ", this client expects " + Wire.Protocol + ".");
+                ShowToast("The bridge speaks " + h.protocol + ", this client expects " + Wire.Protocol4 + ".");
             Rules = h.rules ?? new Rules();
             if (Rules.tickRate <= 0f) Rules.tickRate = 20f;
             Agents.MergeFromRules(Rules.agents);
@@ -913,6 +923,7 @@ namespace Saltworks
             Maps = null;
             ResetMatch();
             Screen = AppScreen.Menu;
+            HelloRound5(h);
             if (!V2)
             {
                 // A bots-wire.1 bridge: one map, no agents. Skip both select screens.
@@ -938,6 +949,7 @@ namespace Saltworks
             Predictor.Configure(Walls, Rules);
             Minimap.Build(m);
             RebuildProps();
+            Atmos.Build(m, font, textMat);
             WorldLook.RefreshReflections(m);
             sitePolys.Clear();
             foreach (KeyValuePair<string, List<Vec2>> site in m.SiteList()) sitePolys.Add(site.Value);
@@ -1030,6 +1042,7 @@ namespace Saltworks
             WaitingFor = null;
             ResetGunFor(d, mine);
             DamageNumbers.Clear();
+            RoundStartRound5();
             if (InMatch)
             {
                 // A match round: no intro card, straight into the round (the buy menu may still be open over it).
@@ -1082,6 +1095,7 @@ namespace Saltworks
             if (InMatch)
             {
                 // Match rounds end with round_result; the drill-style result screen is not shown.
+                NoteDuelResult(r);
                 Result = null;
                 abandoning = false;
                 return;
@@ -1143,9 +1157,12 @@ namespace Saltworks
                         World.NoteShot(e.attacker);
                         Vector3 from = World.MuzzleOf(e.attacker, Geo.ToWorld(e.attackerPos, 1.45f));
                         World.Tracer(from, Geo.ToWorld(e.victimPos, 1.3f), new Color(c.r, c.g, c.b, 0.9f), 0.12f);
+                        FxLights.Flash(from, new Color(1f, 0.78f, 0.45f), 2.2f, 5f, 0.06f);
                     }
+                    DamageRound5(e);
                     break;
                 case "kill":
+                    KillRound5(e);
                     if (e.killer == PlayerId)
                     {
                         HitMarkerAt = now;

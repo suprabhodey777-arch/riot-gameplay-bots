@@ -10,6 +10,8 @@ namespace Saltworks
 {
     public static class Wire
     {
+        /// <summary>bots-wire.4 (docs/streamer-mode.md): personas, duels and the streamer overlay. The hello asks for it first, then .3, .2, .1.</summary>
+        public const string Protocol4 = "bots-wire.4";
         /// <summary>bots-wire.3 (docs/weapons-economy.md): weapons, economy and match mode. Falls back to .2, then .1.</summary>
         public const string Protocol = "bots-wire.3";
         public const string Protocol2 = "bots-wire.2";
@@ -32,7 +34,7 @@ namespace Saltworks
         }
 
         // ---- client -> bridge -------------------------------------------------
-        public static JObject Hello(string protocol = Protocol)
+        public static JObject Hello(string protocol = Protocol4)
         {
             return new JObject { ["type"] = "hello", ["protocol"] = protocol };
         }
@@ -94,6 +96,33 @@ namespace Saltworks
             if (!string.IsNullOrEmpty(map)) o["map"] = map;
             if (!string.IsNullOrEmpty(agent)) o["agent"] = agent;
             return o;
+        }
+
+        // ---- bots-wire.4: personas, duels, the streamer overlay -----------------------------------
+        public static JObject Personas()
+        {
+            return new JObject { ["type"] = "personas" };
+        }
+
+        public static JObject Duel(string persona, string map, string site)
+        {
+            var o = new JObject { ["type"] = "duel", ["persona"] = persona };
+            if (!string.IsNullOrEmpty(map)) o["map"] = map;
+            if (!string.IsNullOrEmpty(site)) o["site"] = site;
+            return o;
+        }
+
+        /// <summary>A match with the enemy team made of personas (bots-wire.4); an empty list is the plain bots-wire.3 match.</summary>
+        public static JObject Match(string map, string agent, IList<string> enemyPersonas)
+        {
+            JObject o = Match(map, agent);
+            if (enemyPersonas != null && enemyPersonas.Count > 0) o["enemyPersonas"] = new JArray(enemyPersonas);
+            return o;
+        }
+
+        public static JObject Streamer(bool on)
+        {
+            return new JObject { ["type"] = "streamer", ["on"] = on };
         }
 
         public static JObject Buy(string item)
@@ -457,6 +486,8 @@ namespace Saltworks
         public string weapon;
         public string item;
         public string slot;
+        /// <summary>Not in any spec yet; a kill may say it went through a wall (read with Lenient.Bool).</summary>
+        public JToken wallbang;
     }
 
     // ---- shared/coaching.ts -----------------------------------------------------
@@ -626,6 +657,8 @@ namespace Saltworks
         public string team;
         public string archetype;
         public string agent;
+        /// <summary>bots-wire.4 persona matches and duels may name the persona a bot plays (shape not in the spec).</summary>
+        public JToken persona;
     }
 
     public class DrillMsg
@@ -763,5 +796,137 @@ namespace Saltworks
         public ScoreInfo score;
         public bool won;
         public MatchStats stats;
+    }
+
+    // ---- bots-wire.4: personas and the streamer overlay (docs/streamer-mode.md) ---------------------
+    // Read leniently: list and object fields are JTokens read through the helpers below, so a field of an
+    // unexpected shape is dropped instead of losing the message.
+    public static class Lenient
+    {
+        public static string Str(JToken t)
+        {
+            if (t == null || t.Type == JTokenType.Null || t.Type == JTokenType.Object || t.Type == JTokenType.Array) return null;
+            return (string)t;
+        }
+
+        public static int Int(JToken t, int fallback = 0)
+        {
+            if (t == null) return fallback;
+            if (t.Type == JTokenType.Integer || t.Type == JTokenType.Float) return (int)(double)t;
+            if (t.Type == JTokenType.String && int.TryParse((string)t, out int v)) return v;
+            return fallback;
+        }
+
+        public static bool Bool(JToken t)
+        {
+            if (t == null) return false;
+            if (t.Type == JTokenType.Boolean) return (bool)t;
+            if (t.Type == JTokenType.Integer || t.Type == JTokenType.Float) return (double)t != 0.0;
+            if (t.Type == JTokenType.String) return (string)t == "true";
+            return false;
+        }
+
+        /// <summary>Strings of an array (a single string becomes a list of one; anything else, an empty list).</summary>
+        public static List<string> Strings(JToken t)
+        {
+            var list = new List<string>();
+            if (t == null) return list;
+            if (t is JArray a)
+            {
+                foreach (JToken e in a)
+                {
+                    string s = Str(e);
+                    if (!string.IsNullOrEmpty(s)) list.Add(s);
+                }
+            }
+            else
+            {
+                string s = Str(t);
+                if (!string.IsNullOrEmpty(s)) list.Add(s);
+            }
+            return list;
+        }
+
+        /// <summary>"#rrggbb" (or "#rgb", "#rrggbbaa") as a colour; `fallback` when unreadable.</summary>
+        public static UnityEngine.Color Color(string hex, UnityEngine.Color fallback)
+        {
+            if (string.IsNullOrEmpty(hex)) return fallback;
+            if (UnityEngine.ColorUtility.TryParseHtmlString(hex.StartsWith("#") ? hex : "#" + hex, out UnityEngine.Color c)) return c;
+            return fallback;
+        }
+
+        /// <summary>A short display form of a value of any shape: "34%" stays, a number prints, an object prints its first pairs.</summary>
+        public static string Text(JToken t)
+        {
+            if (t == null || t.Type == JTokenType.Null) return null;
+            if (t.Type == JTokenType.String) return (string)t;
+            if (t.Type == JTokenType.Integer || t.Type == JTokenType.Float || t.Type == JTokenType.Boolean) return t.ToString();
+            if (t is JObject o)
+            {
+                var parts = new List<string>();
+                foreach (JProperty p in o.Properties())
+                {
+                    if (parts.Count >= 3) break;
+                    string v = Text(p.Value);
+                    if (!string.IsNullOrEmpty(v)) parts.Add(p.Name + " " + v);
+                }
+                return string.Join("  ", parts);
+            }
+            return null;
+        }
+    }
+
+    public class PersonaInfo
+    {
+        public string id;
+        public string name;
+        public string style;
+        public string tagline;
+        public JToken lines;
+        public JToken colors;
+        public string agent;
+        /// <summary>A string per the spec ("first bloods 34%"); any other shape is printed through Lenient.Text.</summary>
+        public JToken signature;
+        public string beatTip;
+    }
+
+    public class PersonasMsg
+    {
+        public JToken personas;
+    }
+
+    public class ChatMsg
+    {
+        public string user;
+        public string color;
+        public string text;
+        /// <summary>"sub", "mod" or null.</summary>
+        public JToken badge;
+    }
+
+    public class AlertMsg
+    {
+        /// <summary>"first_blood", "multi_kill", "clutch", "ace", "eco_win" (others are shown with the default look).</summary>
+        public string kind;
+        public string text;
+        public JToken big;
+    }
+
+    public class PersonaLineMsg
+    {
+        public string persona;
+        public string text;
+    }
+
+    public class DuelEndMsg
+    {
+        /// <summary>{ player, enemy } per the spec; read through Lenient.Int.</summary>
+        public JToken score;
+        public string beatTip;
+        /// <summary>Shape not in the spec ("{...}"): shown as key / value pairs.</summary>
+        public JToken stats;
+
+        public int PlayerScore => score is JObject o ? Lenient.Int(o["player"]) : 0;
+        public int EnemyScore => score is JObject o ? Lenient.Int(o["enemy"]) : 0;
     }
 }

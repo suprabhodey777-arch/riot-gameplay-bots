@@ -167,6 +167,10 @@ namespace Saltworks
         /// <summary>Scoped sensitivity, relative to the zoom (1 = the same turn per screen width as unscoped).</summary>
         public static float ScopedSens = 1f;
 
+        // ---- round 5 ------------------------------------------------------------------------------
+        /// <summary>The broadcast overlay (chat, alerts, goal bar, LIVE pill, camera frame) over the game.</summary>
+        public static bool StreamerMode;
+
         /// <summary>Bumped on every change, so caches can tell they are stale.</summary>
         public static int Version { get; private set; }
 
@@ -238,6 +242,7 @@ namespace Saltworks
             ToggleCrouch = PlayerPrefs.GetInt(P + "tog.crouch", 0) == 1;
             ToggleWalk = PlayerPrefs.GetInt(P + "tog.walk", 0) == 1;
             ScopedSens = PlayerPrefs.GetFloat(P + "sens.scoped", ScopedSens);
+            StreamerMode = PlayerPrefs.GetInt(P + "streamer", 0) == 1;
             Clamp();
             Version++;
         }
@@ -321,6 +326,7 @@ namespace Saltworks
             PlayerPrefs.SetInt(P + "tog.crouch", ToggleCrouch ? 1 : 0);
             PlayerPrefs.SetInt(P + "tog.walk", ToggleWalk ? 1 : 0);
             PlayerPrefs.SetFloat(P + "sens.scoped", ScopedSens);
+            PlayerPrefs.SetInt(P + "streamer", StreamerMode ? 1 : 0);
             PlayerPrefs.Save();
         }
 

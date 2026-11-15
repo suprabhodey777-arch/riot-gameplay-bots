@@ -24,6 +24,8 @@ namespace Saltworks
         public string Team;
         public string Archetype;
         public string Agent;
+        /// <summary>The persona this bot plays (bots-wire.4), or null.</summary>
+        public string Persona;
         public string Thought = "";
         public bool Alive = true;
         public bool Revealed;
@@ -85,7 +87,7 @@ namespace Saltworks
             return go;
         }
 
-        public BotView(string id, string team, string archetype, string agent, Transform parent, Material revealMat, Color tc)
+        public BotView(string id, string team, string archetype, string agent, Transform parent, Material revealMat, Color tc, string look = null, Color? accentOverride = null)
         {
             Id = id;
             Team = team;
@@ -115,7 +117,8 @@ namespace Saltworks
             hp.Bot = this;
             hp.Head = true;
 
-            Rig = new BotRig(tilt, tc, string.IsNullOrEmpty(agent) ? new Color(0.6f, 0.62f, 0.68f) : Agents.ColorOf(agent));
+            Color accent = accentOverride ?? (string.IsNullOrEmpty(agent) ? new Color(0.6f, 0.62f, 0.68f) : Agents.ColorOf(agent));
+            Rig = new BotRig(tilt, tc, accent, look ?? agent);
             Rig.SetWeapon(null);
 
             // Recon silhouette: a slightly larger shell drawn through walls, off until revealed.
@@ -202,9 +205,16 @@ namespace Saltworks
             else
             {
                 deathStart = -1f;
+                fallKnown = false;
                 tilt.localRotation = Quaternion.identity;
                 tilt.localPosition = Vector3.zero;
             }
+        }
+
+        /// <summary>A hit landed on this bot; `dir` is the bullet's travel (world).</summary>
+        public void Hit(Vector3 dir)
+        {
+            Rig?.Hit(dir);
         }
 
         public void Animate()
@@ -222,12 +232,28 @@ namespace Saltworks
             hasLastPos = true;
             Rig?.Animate(dt, vel, Root.transform.eulerAngles.y, crouched, Alive);
             if (Alive || deathStart < 0f) return;
-            float t = Mathf.Clamp01((Time.time - deathStart) / 0.55f);
-            float e = t * t * (3f - 2f * t);
-            // Falls backwards around the feet and settles on the floor.
-            tilt.localRotation = Quaternion.Euler(-88f * e, 0f, 12f * e);
-            tilt.localPosition = new Vector3(0f, Radius * e * 0.5f, -0.1f * e);
+            // Ragdoll-like fall: the knees go first (the rig), then the body tips over away from the last hit,
+            // accelerating, hits the floor and bounces once.
+            if (!fallKnown)
+            {
+                fallKnown = true;
+                Vector3 d = Rig != null && Time.time - Rig.LastHitAt < 1.5f ? Rig.LastHitDir : -Root.transform.forward;
+                d = Root.transform.InverseTransformDirection(d);
+                d.y = 0f;
+                fallDir = d.sqrMagnitude > 1e-4f ? d.normalized : Vector3.back;
+            }
+            float t = Time.time - deathStart;
+            float drop = Mathf.Clamp01((t - 0.12f) / 0.5f);
+            drop *= drop;
+            float bounce = t > 0.62f ? Mathf.Sin((t - 0.62f) * 16f) * Mathf.Exp(-(t - 0.62f) * 7f) * 7f : 0f;
+            float ang = 84f * drop - Mathf.Max(0f, bounce);
+            Vector3 axis = Vector3.Cross(Vector3.up, fallDir);
+            tilt.localRotation = Quaternion.AngleAxis(ang, axis);
+            tilt.localPosition = fallDir * (0.15f * drop) + Vector3.up * (Radius * drop * 0.45f);
         }
+
+        Vector3 fallDir = Vector3.back;
+        bool fallKnown;
 
         public void Destroy()
         {
@@ -242,6 +268,10 @@ namespace Saltworks
         public Material Mat;
         public float Born;
         public SmokeState State;
+        /// <summary>Billboard puffs swirling over the dome (they soften its edge).</summary>
+        public Transform[] Puffs;
+        public MeshRenderer[] PuffRenderers;
+        public MaterialPropertyBlock Block;
     }
 
     class TracerView
@@ -345,11 +375,7 @@ namespace Saltworks
         {
             foreach (BotView b in Bots.Values) b.Destroy();
             Bots.Clear();
-            foreach (SmokeView s in smokes.Values)
-            {
-                Object.Destroy(s.Go);
-                Object.Destroy(s.Mat);
-            }
+            foreach (SmokeView s in smokes.Values) DestroySmoke(s);
             smokes.Clear();
             revealedByEvent.Clear();
             Impacts?.Clear();
@@ -367,11 +393,15 @@ namespace Saltworks
             PlayerTeam = d.playerTeam ?? "attack";
             var arch = new Dictionary<string, string>();
             var agentOf = new Dictionary<string, string>();
+            var personaOf = new Dictionary<string, Persona>();
             if (d.bots != null)
                 foreach (DrillBotInfo b in d.bots)
                 {
+                    if (b == null || b.id == null) continue;
                     arch[b.id] = b.archetype;
                     if (!string.IsNullOrEmpty(b.agent)) agentOf[b.id] = b.agent;
+                    Persona p = Personas.ForBot(b);
+                    if (p != null) personaOf[b.id] = p;
                 }
             if (d.spec != null && d.spec.bots != null)
                 foreach (DrillBotSpec b in d.spec.bots)
@@ -382,8 +412,13 @@ namespace Saltworks
                 if (a.id == PlayerId) continue;
                 arch.TryGetValue(a.id, out string archetype);
                 if (!agentOf.TryGetValue(a.id, out string agent)) agent = a.agent;
-                var bv = new BotView(a.id, a.team, archetype ?? "bot", agent, botsRoot, revealMat, Palette.Relation(a.team, PlayerTeam));
-                bv.LabelLine = GameController.ArchetypeName(bv.Archetype) + (string.IsNullOrEmpty(agent) ? "" : "  |  " + Agents.NameOf(agent));
+                personaOf.TryGetValue(a.id, out Persona persona);
+                if (persona != null && string.IsNullOrEmpty(agent)) agent = persona.Agent;
+                var bv = new BotView(a.id, a.team, archetype ?? "bot", agent, botsRoot, revealMat, Palette.Relation(a.team, PlayerTeam),
+                                     persona?.Id, persona != null ? persona.Primary : (Color?)null);
+                bv.Persona = persona?.Id;
+                string who = persona != null ? persona.Name.ToUpperInvariant() : GameController.ArchetypeName(bv.Archetype);
+                bv.LabelLine = who + (string.IsNullOrEmpty(agent) ? "" : "  |  " + Agents.NameOf(agent));
                 bv.SetPose(Geo.ToWorld(a.pos), Geo.YawToHeading(a.yaw));
                 Bots[a.id] = bv;
             }
@@ -522,6 +557,12 @@ namespace Saltworks
             if (id != null && Bots.TryGetValue(id, out BotView b)) b.Shot();
         }
 
+        /// <summary>A bot was hit (`dir`: the bullet's travel, world): it flinches, and falls that way if it dies.</summary>
+        public void NoteHit(string id, Vector3 dir)
+        {
+            if (id != null && Bots.TryGetValue(id, out BotView b)) b.Hit(dir);
+        }
+
         /// <summary>A bot's muzzle in the world (the chest for the player or an unknown id).</summary>
         public Vector3 MuzzleOf(string id, Vector3 fallback)
         {
@@ -615,6 +656,7 @@ namespace Saltworks
                         mr.sharedMaterial = m;
                         mr.shadowCastingMode = ShadowCastingMode.Off;
                         v = new SmokeView { Go = go, Mat = m, Born = Time.time };
+                        AddPuffs(v);
                         smokes[s.id] = v;
                     }
                     v.State = s;
@@ -628,6 +670,7 @@ namespace Saltworks
                     Color col = v.Mat.color;
                     col.a = alpha;
                     v.Mat.color = col;
+                    SwirlPuffs(v, Geo.ToWorld(s.pos, 0f), d * 0.5f, alpha);
                 }
             }
             goneSmokes.Clear();
@@ -635,10 +678,76 @@ namespace Saltworks
                 if (!live.Contains(id)) goneSmokes.Add(id);
             foreach (string id in goneSmokes)
             {
-                Object.Destroy(smokes[id].Go);
-                Object.Destroy(smokes[id].Mat);
+                DestroySmoke(smokes[id]);
                 smokes.Remove(id);
             }
+        }
+
+        const int PuffCount = 9;
+        static Material puffMat;
+        Camera viewCam;
+
+        /// <summary>Layered billboard puffs for a new smoke (one shared material, opacity per renderer).</summary>
+        void AddPuffs(SmokeView v)
+        {
+            if (puffMat == null)
+            {
+                puffMat = Mats.Transparent(Color.white, 3201);
+                if (puffMat.HasProperty("_MainTex")) puffMat.mainTexture = FxTex.Puff();
+            }
+            v.Puffs = new Transform[PuffCount];
+            v.PuffRenderers = new MeshRenderer[PuffCount];
+            v.Block = new MaterialPropertyBlock();
+            for (int i = 0; i < PuffCount; i++)
+            {
+                GameObject q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                q.name = "Puff";
+                Collider c = q.GetComponent<Collider>();
+                if (c != null) Object.DestroyImmediate(c);
+                q.transform.SetParent(fxRoot, false);
+                var mr = q.GetComponent<MeshRenderer>();
+                mr.sharedMaterial = puffMat;
+                mr.shadowCastingMode = ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+                v.Puffs[i] = q.transform;
+                v.PuffRenderers[i] = mr;
+            }
+        }
+
+        /// <summary>The puffs orbit slowly at different heights over the dome, facing the camera and turning in place.</summary>
+        void SwirlPuffs(SmokeView v, Vector3 centre, float r, float alpha)
+        {
+            if (v.Puffs == null) return;
+            if (viewCam == null) viewCam = Camera.main;
+            if (viewCam == null) return;
+            Quaternion face = viewCam.transform.rotation;
+            float t = Time.time;
+            Color sc = Palette.Smoke;
+            for (int i = 0; i < v.Puffs.Length; i++)
+            {
+                float u = Mathf.Repeat(i * 0.618f, 1f);
+                float dir = i % 2 == 0 ? 1f : -1f;
+                float ang = i * 2.39996f + t * (0.16f + 0.14f * u) * dir;
+                float h = r * (0.18f + 0.62f * u) + Mathf.Sin(t * 0.7f + i) * 0.12f;
+                float ring = Mathf.Sqrt(Mathf.Max(0f, r * r - h * h)) * 0.8f;
+                Transform p = v.Puffs[i];
+                p.position = centre + new Vector3(Mathf.Cos(ang) * ring, h, Mathf.Sin(ang) * ring);
+                p.rotation = face * Quaternion.Euler(0f, 0f, t * 14f * dir + i * 40f);
+                float size = r * (0.85f + 0.45f * Mathf.Repeat(i * 0.29f, 1f));
+                p.localScale = new Vector3(size, size, size);
+                v.Block.SetColor("_Color", new Color(sc.r, sc.g, sc.b, alpha * (0.5f + 0.2f * u)));
+                v.PuffRenderers[i].SetPropertyBlock(v.Block);
+            }
+        }
+
+        static void DestroySmoke(SmokeView s)
+        {
+            if (s == null) return;
+            Object.Destroy(s.Go);
+            Object.Destroy(s.Mat);
+            if (s.Puffs != null)
+                foreach (Transform p in s.Puffs)
+                    if (p != null) Object.Destroy(p.gameObject);
         }
 
         void UpdateSpike()

@@ -8,7 +8,9 @@ namespace Saltworks
 {
     public partial class ClientUI
     {
-        static readonly string[] TabNames = { "General", "Video", "Controls", "Crosshair", "Minimap", "Colours" };
+        static readonly string[] TabNames = { "General", "Video", "Controls", "Crosshair", "Minimap", "Colours", "About" };
+        /// <summary>The About tab (the menu's About button opens settings on it).</summary>
+        const int AboutTab = 6;
         static readonly string[] OnOff = { "Off", "On" };
         static readonly string[] MapModes = { "Rotate with me", "Fixed north" };
         int settingsTab;
@@ -18,9 +20,12 @@ namespace Saltworks
         {
             Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.6f * Intro01));
             settingsArea = Centered(1020f, H - 60f);
+            Frame(settingsArea, "Settings");
             GUILayout.BeginArea(settingsArea, panel);
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Settings", title);
+            GUILayout.BeginVertical(GUILayout.Width(400f));
+            TitleBlock("Settings");
+            GUILayout.EndVertical();
             GUILayout.FlexibleSpace();
             if (Btn("Done", primary, GUILayout.Width(140f), GUILayout.Height(40f))) Game.Do(Game.CloseSettings);
             GUILayout.EndHorizontal();
@@ -47,6 +52,7 @@ namespace Saltworks
                 case 3: CrosshairTab(); break;
                 case 4: MinimapTab(); break;
                 case 5: ColoursTab(); break;
+                case AboutTab: AboutPanel(); break;
                 default: GeneralTab(); break;
             }
             GUILayout.EndVertical();
@@ -155,6 +161,10 @@ namespace Saltworks
         void GeneralTab()
         {
             settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
+            SectionHeader("Streamer mode");
+            bool streamer = ToggleRow("Streamer mode", Settings.StreamerMode, "A broadcast overlay: chat, alerts, a goal bar, the LIVE pill and a camera frame.");
+            if (streamer != Settings.StreamerMode) Game.Do(() => Game.SetStreamer(streamer));
+            if (!Game.V4) GUILayout.Label("Chat comes from a bridge that speaks bots-wire.4; on this bridge the overlay shows your own kill alerts.", small);
             SectionHeader("Mouse");
             GUILayout.BeginHorizontal();
             float sens = SliderRow("Sensitivity", Settings.ValorantSens, 0.05f, 3f, Settings.ValorantSens.ToString("0.000"));
@@ -366,6 +376,28 @@ namespace Saltworks
             GUILayout.FlexibleSpace();
             Btn("Primary button", primary, GUILayout.Width(200f), GUILayout.Height(38f));
             GUILayout.EndHorizontal();
+            GUILayout.EndScrollView();
+        }
+
+        /// <summary>About: what this is, who made it, and the persona rule.</summary>
+        void AboutPanel()
+        {
+            settingsScroll = GUILayout.BeginScrollView(settingsScroll, false, false);
+            Rect hero = GUILayoutUtility.GetRect(10f, 70f, GUILayout.ExpandWidth(true));
+            Condensed(hero, Spaced("Saltworks"), displayL, Theme.Ink, 0.78f);
+            Rect line = GUILayoutUtility.GetRect(10f, 10f, GUILayout.ExpandWidth(true));
+            Neon(new Rect(line.x, line.y + 3f, 120f, 3f), Settings.Accent, 1f);
+            Rect credit = GUILayoutUtility.GetRect(10f, 24f, GUILayout.ExpandWidth(true));
+            DrawCredit(new Vector2(credit.x, credit.y + 3f));
+            GUILayout.Space(Theme.S2);
+            GUILayout.Label("A tactical coaching client: the bridge reads a player's matches, finds the situation they lose most, and builds drills against bots that play like people. Then the same skills go into full matches, duels against pro personas, and a practice stream with its own chat.", body);
+            SectionHeader("Built from code");
+            GUILayout.Label("Every figure, gun, map prop, texture, sound and screen is generated at runtime: no downloaded models, textures or audio.", small);
+            SectionHeader("Pro personas");
+            GUILayout.Label("Zephyr, Atlas, Ember, Wisp and Nova are original characters that play a famous style. No real player's name, likeness or voice is used.", small);
+            SectionHeader("Credits");
+            GUILayout.Label("Built for DevHacks 2026.", bodyBold);
+            GUILayout.Label("Bridge protocol " + (Game.V4 ? Wire.Protocol4 : Game.V3 ? Wire.Protocol : Game.V2 ? Wire.Protocol2 : Wire.LegacyProtocol) + "   \u00b7   Unity " + Application.unityVersion, small);
             GUILayout.EndScrollView();
         }
 

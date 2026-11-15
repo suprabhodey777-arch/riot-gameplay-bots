@@ -138,16 +138,21 @@ namespace Saltworks
             lastLook = Vector2.zero;
         }
 
-        /// <summary>Overview camera for the menus: a slow orbit above the map.</summary>
+        /// <summary>Overview camera for the menus: a slow, low cinematic orbit over the map that drifts in height and aim.</summary>
         public void Orbit(MapDef map)
         {
             float w = map?.bounds != null && map.bounds.width > 0 ? map.bounds.width : 110f;
             float h = map?.bounds != null && map.bounds.height > 0 ? map.bounds.height : 80f;
             var c = new Vector3(w / 2f, 0f, h / 2f);
-            float a = Time.time * 0.05f;
-            float r = Mathf.Max(w, h) * 0.75f;
-            transform.position = c + new Vector3(Mathf.Cos(a) * r, Mathf.Max(w, h) * 0.45f, Mathf.Sin(a) * r);
-            transform.rotation = Quaternion.LookRotation(c - transform.position, Vector3.up);
+            float t = Time.unscaledTime;
+            float a = t * 0.035f;
+            float size = Mathf.Max(w, h);
+            float r = size * (0.62f + 0.06f * Mathf.Sin(t * 0.05f));
+            float y = size * (0.26f + 0.05f * Mathf.Sin(t * 0.07f + 1f));
+            transform.position = c + new Vector3(Mathf.Cos(a) * r, y, Mathf.Sin(a) * r);
+            // Look a little past the centre, so the map sits right of the menu column.
+            Vector3 look = c + new Vector3(Mathf.Cos(a + 1.9f) * size * 0.12f, 0f, Mathf.Sin(a + 1.9f) * size * 0.12f);
+            transform.rotation = Quaternion.LookRotation(look - transform.position, Vector3.up);
         }
 
         void LateUpdate()

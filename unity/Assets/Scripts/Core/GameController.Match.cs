@@ -168,6 +168,7 @@ namespace Saltworks
                 Victim = ShortName(e.victim),
                 Weapon = weapon,
                 Head = e.part == "head",
+                Wallbang = IsWallbang(e),
                 KillerColor = Palette.Relation(TeamOf(e.killer) ?? "attack", PlayerTeam),
                 VictimColor = Palette.Relation(TeamOf(e.victim) ?? "defense", PlayerTeam),
                 Color = TeamColorOf(e.killer),
@@ -210,7 +211,7 @@ namespace Saltworks
             InMatch = true;
             if (!string.IsNullOrEmpty(MatchAgentId)) PlayerPrefs.SetString(PrefAgent, MatchAgentId);
             if (!string.IsNullOrEmpty(MatchMapId)) PlayerPrefs.SetString(PrefMap, MatchMapId);
-            Send(Wire.Match(MatchMapId, MatchAgentId), "match");
+            Send(MatchMessage(), "match");
             if (WaitingFor != "match") InMatch = false;
         }
 
@@ -287,6 +288,7 @@ namespace Saltworks
             MatchHeadKills = 0;
             RoundHistory.Clear();
             SideSwapAt = -10f;
+            ResetDuel();
         }
 
         public string OwnedPrimary
@@ -381,6 +383,7 @@ namespace Saltworks
                 }
             }
             if (Loadout != null && Loadout.credits.HasValue) Credits = Loadout.credits.Value;
+            ShowRoundBanner();
             bool roundLive = Screen == AppScreen.Playing && Drill != null && !DrillDone;
             if (!roundLive)
             {
@@ -435,12 +438,15 @@ namespace Saltworks
         void MatchRoundStarted(DrillMsg d)
         {
             if (!string.IsNullOrEmpty(d.playerTeam)) MatchSide = d.playerTeam;
+            // A duel without buy phases counts its rounds from the score.
+            if (InDuel && BuyPhase == null) Round = DuelScore.player + DuelScore.enemy + 1;
             if (Round <= 0) Round = 1;
             if (d?.spec?.loadout != null)
             {
                 Loadout = d.spec.loadout;
                 if (Loadout.credits.HasValue) Credits = Loadout.credits.Value;
             }
+            ShowRoundBanner();
         }
 
         /// <summary>Per frame: the buy timer, and the match end screen after its banner.</summary>

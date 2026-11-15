@@ -79,4 +79,4 @@ rounds ("Win 3 rounds against Zephyr").
 | --- | --- |
 | `bot/`, `analyzer/`, `session/`, `bridge/`, `shared/` | Codex |
 | `unity/Assets/` | Kiro |
-| this doc | Claude |
+| this doc | Lead (Suprabho) |

@@ -1,9 +1,10 @@
-// Round 4 screens and HUD parts: the main menu, the match setup, the buy menu
-// (full screen between rounds, an overlay during the round's buy phase), the
-// round result and side-swap banners, the match end screen, and the in-round
-// score bar, ammo counter, credits, armour, kill feed with weapon icons, damage
-// numbers and the Longshot's scope. The buy menu and every HUD part use only
-// GUI.* calls (no GUILayout), because IMGUI's layout pass is off while playing.
+// Round 4 and 5 screens in the broadcast look: the main menu (animated hero over
+// the orbiting map, streamer toggle, event credit), the match setup (with
+// the persona enemy team), the buy menu (full screen between rounds, an overlay
+// during the round's buy phase), the round result and side-swap banners and the
+// match end screen. The buy menu and the banners use only GUI.* calls (no
+// GUILayout), because IMGUI's layout pass is off while playing. The in-round
+// HUD parts are in ClientUI.Hud.cs.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -12,7 +13,7 @@ namespace Saltworks
     public partial class ClientUI
     {
         GUIStyle hero, kicker, menuTitle, menuDesc, cardTitle, cardSmall, priceStyle, statLabel, bigNumRight, timerStyle,
-            roundChip, ammoBig, ammoSmall, killName, dmgStyle, dmgHead, scoreNum, centerSmall, centerBody, rightSmall;
+            roundChip, ammoBig, ammoSmall, killName, dmgStyle, dmgHead, scoreNum, centerSmall, centerBody, rightSmall, menuNum;
         Texture2D fadeLeft, fadeDown;
 
         void EnsureMatchStyles()
@@ -21,8 +22,9 @@ namespace Saltworks
             hero = Text(lbl, 64, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             // Lbl tints with GUI.contentColor, so these styles are white and take their colour from the call.
             kicker = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
-            menuTitle = Text(lbl, 21, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
+            menuTitle = Text(lbl, 26, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             menuDesc = Text(lbl, 13, FontStyle.Normal, Color.white, TextAnchor.UpperLeft, true);
+            menuNum = Text(lbl, 13, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             cardTitle = Text(lbl, 16, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             cardSmall = Text(lbl, 11, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             priceStyle = Text(lbl, 15, FontStyle.Bold, Color.white, TextAnchor.UpperRight, false);
@@ -30,15 +32,17 @@ namespace Saltworks
             bigNumRight = Text(lbl, 40, FontStyle.Bold, Color.white, TextAnchor.MiddleRight, false);
             timerStyle = Text(lbl, 30, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             roundChip = Text(lbl, 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
-            ammoBig = Text(lbl, 44, FontStyle.Bold, Color.white, TextAnchor.LowerRight, false);
+            ammoBig = Text(lbl, 50, FontStyle.Bold, Color.white, TextAnchor.LowerRight, false);
             ammoSmall = Text(lbl, 18, FontStyle.Bold, Color.white, TextAnchor.LowerLeft, false);
             killName = Text(lbl, 14, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             dmgStyle = Text(lbl, 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             dmgHead = Text(lbl, 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
-            scoreNum = Text(lbl, 26, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
+            scoreNum = Text(lbl, 30, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             centerSmall = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             centerBody = Text(lbl, 15, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter, true);
             rightSmall = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.MiddleRight, false);
+            EnsureBroadcastStyles();
+            EnsureHudStyles();
             if (fadeLeft == null)
             {
                 fadeLeft = Own(Gradient(256, 1, true));
@@ -60,7 +64,7 @@ namespace Saltworks
                 float k = horizontal ? x / (float)(w - 1) : 1f - y / (float)(h - 1);
                 float a = (1f - k);
                 a = a * a * (3f - 2f * a);
-                px[y * w + x] = new Color32(6, 7, 10, (byte)Mathf.RoundToInt(a * 240f));
+                px[y * w + x] = new Color32(4, 6, 12, (byte)Mathf.RoundToInt(a * 245f));
             }
             t.SetPixels32(px);
             t.Apply(false);
@@ -84,11 +88,13 @@ namespace Saltworks
             GUI.color = old;
         }
 
-        /// <summary>A rounded outline: `w` px of colour `c` around the inside of `r`.</summary>
+        /// <summary>A selected card: angular card fill with a bright outline and an inner glow line.</summary>
         void Outline(Rect r, Color c, float w)
         {
-            Round(r, c);
-            Round(new Rect(r.x + w, r.y + w, r.width - 2f * w, r.height - 2f * w), new Color(Theme.CardC.r, Theme.CardC.g, Theme.CardC.b, 1f));
+            Plate(r, Theme.CardC);
+            PlateLine(r, c);
+            if (w > 1.5f) PlateLine(new Rect(r.x + 1f, r.y + 1f, r.width - 2f, r.height - 2f), new Color(c.r, c.g, c.b, 0.5f));
+            Fill(new Rect(r.x + Theme.Cut, r.y, r.width - Theme.Cut - 4f, 2f), c);
         }
 
         bool Hover(Rect r)
@@ -109,85 +115,156 @@ namespace Saltworks
         }
 
         // ---- main menu -----------------------------------------------------------------------------
-        static readonly string[] MenuTitles = { "Play a match", "Practice", "Rehearse", "Settings" };
+        static readonly string[] MenuTitles = { "Play match", "Practice", "Rehearse", "Pro personas", "Settings" };
+        static readonly string[] MenuNums = { "01", "02", "03", "04", "05" };
         static readonly string[] MenuDescs =
         {
-            "You and four bot teammates against five bots. Buy rounds, first to 7, sides swap after round 6.",
-            "The coach reads a player's matches, finds the weakest situation and builds drills from it.",
+            "You and four bot teammates against five bots. Buy rounds, first to 7.",
+            "The coach reads a player's matches and builds drills from the weakest moment.",
             "Replay the exact moments a sample player lost: same positions, same clock.",
-            "Mouse, crosshair, graphics preset, viewmodel, minimap, colours and the key list.",
+            "Duel or face original pro playstyles: the flick duelist, the anchor, the lurker.",
+            "Mouse, crosshair, graphics, streamer mode, colours and the key list.",
         };
 
         void DrawMenu()
         {
+            float now = Time.unscaledTime;
             if (Event.current.type == EventType.Repaint)
             {
-                GUI.DrawTexture(new Rect(0f, 0f, Mathf.Min(W, 900f), H), fadeLeft, ScaleMode.StretchToFill, true);
-                GUI.DrawTexture(new Rect(0f, H - 220f, W, 220f), fadeDown, ScaleMode.StretchToFill, true);
+                GUI.DrawTexture(new Rect(0f, 0f, Mathf.Min(W, 980f), H), fadeLeft, ScaleMode.StretchToFill, true);
+                GUI.DrawTexture(new Rect(0f, H - 260f, W, 260f), fadeDown, ScaleMode.StretchToFill, true);
             }
-            float rise = (1f - Intro01) * 18f;
-            float x = 72f, y = Mathf.Max(60f, H * 0.16f) + rise;
-            Lbl(new Rect(x, y, 600f, 18f), "TACTICAL COACHING CLIENT", kicker, Settings.Accent);
-            Lbl(new Rect(x - 3f, y + 16f, 700f, 80f), "SALTWORKS", hero, Theme.Ink);
-            Fill(new Rect(x, y + 94f, 64f, 4f), Settings.Accent);
-            Lbl(new Rect(x, y + 108f, 520f, 40f), "Find what you lose, practise it against bots that play like people, then take it into a full match.", menuDesc, Theme.Muted);
+            float k = Intro01;
+            float x = 76f, y = Mathf.Max(54f, H * 0.11f) + (1f - k) * 18f;
+            Color ac = Settings.Accent;
 
-            float by = y + 168f;
+            // Hero: kicker, wordmark (with a rare glitch), neon rule, tagline.
+            Kicker(new Rect(x, y, 700f, 16f), "Season 01  //  Tactical training protocol", ac);
+            GUIStyle word = W > 1150f ? displayXL : displayL;
+            float wh = W > 1150f ? 112f : 70f;
+            var wr = new Rect(x - 6f, y + 18f, Mathf.Min(980f, W - x - 20f), wh);
+            string wordmark = Spaced("Saltworks");
+            int gseed = (int)(now * 24f);
+            bool glitch = Mathf.Repeat(now, 4.7f) < 0.14f || k < 0.6f;
+            if (glitch)
+            {
+                Condensed(new Rect(wr.x + (Hash01(gseed) - 0.5f) * 14f, wr.y, wr.width, wr.height), wordmark, word, new Color(ac.r, ac.g, ac.b, 0.75f), 0.78f);
+                Condensed(new Rect(wr.x - (Hash01(gseed + 9) - 0.5f) * 14f, wr.y + 2f, wr.width, wr.height), wordmark, word, new Color(Theme.Neon2.r, Theme.Neon2.g, Theme.Neon2.b, 0.6f), 0.78f);
+            }
+            Condensed(wr, wordmark, word, Theme.Ink, 0.78f);
+            float ry = wr.yMax + 4f;
+            Neon(new Rect(x, ry, 160f, 3f), ac, Mathf.Clamp01((now - screenAt) / 0.6f));
+            Neon(new Rect(x + 170f, ry, 40f, 3f), Theme.Neon2, Mathf.Clamp01((now - screenAt - 0.2f) / 0.5f));
+            Lbl(new Rect(x, ry + 14f, 560f, 40f), "Find what you lose, practise it against bots that play like people, then take it into a full match.", menuDesc, Theme.Muted);
+
+            // Menu items: numbered angular slats that stagger in, slide on hover and tick.
+            float by = ry + 70f;
             bool idle = Idle;
             for (int i = 0; i < MenuTitles.Length; i++)
             {
-                var r = new Rect(x, by + i * 86f, 440f, 74f);
-                bool enabled = i == 3 || (idle && (i != 0 || Game.V3));
-                bool hover = enabled && Hover(r);
-                Round(r, hover ? new Color(1f, 1f, 1f, 0.09f) : new Color(0.08f, 0.09f, 0.12f, 0.72f));
-                Fill(new Rect(r.x, r.y + 12f, hover ? 4f : 2f, r.height - 24f), enabled ? Settings.Accent : Theme.Faint);
+                float ik = Theme.Ease((now - screenAt - 0.08f - i * 0.05f) / 0.3f);
+                if (ik <= 0f) continue;
+                bool enabled = i == 4 || (idle && (i != 0 || Game.V3));
+                var r = new Rect(x - (1f - ik) * 40f, by + i * 66f, 500f, 58f);
+                float h = HoverAnim(1000 + i, enabled && Hover(r));
+                Color oldC = GUI.color;
+                GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * ik);
+                var body2 = new Rect(r.x + h * 12f, r.y, r.width, r.height);
+                Plate(body2, Color.Lerp(new Color(0.04f, 0.05f, 0.08f, 0.72f), new Color(ac.r * 0.22f, ac.g * 0.22f, ac.b * 0.22f, 0.9f), h));
+                PlateLine(body2, new Color(1f, 1f, 1f, 0.06f + 0.1f * h));
+                Fill(new Rect(body2.x, body2.y + 8f, 3f + 3f * h, body2.height - 16f), enabled ? ac : Theme.Faint);
+                if (h > 0.01f) Fill(new Rect(body2.x + 14f, body2.yMax - 2f, (body2.width - 28f) * Theme.Ease(h), 2f), ac);
                 Color tc = enabled ? Theme.Ink : Theme.Faint;
-                Lbl(new Rect(r.x + 22f, r.y + 10f, r.width - 40f, 26f), MenuTitles[i], menuTitle, tc);
-                string desc = i == 0 && !Game.V3 ? "Needs a bridge that speaks bots-wire.3 (weapons and economy). This one does not." : MenuDescs[i];
-                Lbl(new Rect(r.x + 22f, r.y + 37f, r.width - 40f, 34f), desc, menuDesc, enabled ? Theme.Muted : Theme.Faint);
-                if (hover) Lbl(new Rect(r.xMax - 40f, r.y + 22f, 24f, 30f), "\u203a", menuTitle, Settings.Accent);
-                GUI.enabled = enabled;
+                Lbl(new Rect(body2.x + 18f, body2.y + 6f, 30f, 28f), MenuNums[i], menuNum, enabled ? ac : Theme.Faint);
+                Condensed(new Rect(body2.x + 48f, body2.y + 4f, body2.width - 90f, 30f), Upper(MenuTitles[i]), menuTitle, tc, 0.86f);
+                string desc = i == 0 && !Game.V3 ? "Needs a bridge that speaks bots-wire.3 (weapons and economy)." : i == 3 && !Game.V4 ? "Needs a bridge that speaks bots-wire.4. The screens open; the bridge plays the personas." : MenuDescs[i];
+                Lbl(new Rect(body2.x + 48f, body2.y + 33f, body2.width - 80f, 20f), desc, menuDesc, enabled ? Theme.Muted : Theme.Faint);
+                if (h > 0.01f) Lbl(new Rect(body2.xMax - 34f, body2.y + 12f, 24f, 30f), "\u203a", menuTitle, new Color(ac.r, ac.g, ac.b, h));
+                GUI.color = oldC;
+                if (!enabled) continue;
                 if (GUI.Button(r, GUIContent.none, GUIStyle.none))
                 {
+                    PlayUi(UiSound.Confirm, 0.8f);
                     switch (i)
                     {
                         case 0: Game.Do(Game.OpenMatchSetup); break;
                         case 1: Game.Do(Game.OpenPractice); break;
                         case 2: Game.Do(Game.OpenRehearse); break;
+                        case 3: Game.Do(Game.OpenPersonas); break;
                         default: Game.Do(Game.OpenSettings); break;
                     }
                 }
-                GUI.enabled = true;
             }
 
-            // Status card, bottom right.
-            var sr = new Rect(W - 372f, H - 154f, 340f, 118f);
-            Round(sr, new Color(0.07f, 0.08f, 0.11f, 0.86f));
+            // Top right: streamer mode switch, the LIVE pill, About.
+            DrawStreamerSwitch(new Rect(W - 400f, 22f, 230f, 36f));
+            if (GButton(new Rect(W - 156f, 22f, 130f, 36f), "About", 2)) Game.Do(() => { settingsTab = AboutTab; Game.OpenSettings(); });
+
+            // Bottom right: the session card.
+            var sr = new Rect(W - 392f, H - 168f, 360f, 128f);
+            Glass(sr);
+            Brackets(new Rect(sr.x - 5f, sr.y - 5f, sr.width + 10f, sr.height + 10f), new Color(ac.r, ac.g, ac.b, 0.4f), 12f, 2f);
             float sy = sr.y + 14f;
-            Lbl(new Rect(sr.x + 18f, sy, 300f, 16f), "BRIDGE", caption, Color.white);
-            string proto = Game.V3 ? "bots-wire.3: matches, weapons, economy" : Game.V2 ? "bots-wire.2: drills, maps, agents" : "bots-wire.1: drills";
-            Lbl(new Rect(sr.x + 18f, sy + 16f, 310f, 20f), (Game.Connected ? "Connected  " : "Offline  ") + proto, small, Game.Connected ? Palette.Ok : Palette.Bad);
-            Lbl(new Rect(sr.x + 18f, sy + 44f, 140f, 16f), "MAP", caption, Color.white);
-            Lbl(new Rect(sr.x + 18f, sy + 60f, 150f, 22f), string.IsNullOrEmpty(Game.MapName) ? "?" : Game.MapName, bodyBold, Theme.Ink);
-            Lbl(new Rect(sr.x + 180f, sy + 44f, 140f, 16f), "AGENT", caption, Color.white);
+            Kicker(new Rect(sr.x + 16f, sy, 320f, 14f), "Bridge", Theme.Muted);
+            string proto = Game.V4 ? "bots-wire.4: personas, streamer overlay" : Game.V3 ? "bots-wire.3: matches, weapons, economy" : Game.V2 ? "bots-wire.2: drills, maps, agents" : "bots-wire.1: drills";
+            Round(new Rect(sr.x + 18f, sy + 24f, 8f, 8f), Game.Connected ? Palette.Ok : Palette.Bad);
+            Lbl(new Rect(sr.x + 32f, sy + 18f, 310f, 20f), (Game.Connected ? "Online  " : "Offline  ") + proto, small, Game.Connected ? Palette.Ok : Palette.Bad);
+            Kicker(new Rect(sr.x + 16f, sy + 48f, 150f, 14f), "Map", Theme.Muted);
+            Lbl(new Rect(sr.x + 18f, sy + 66f, 150f, 24f), Upper(string.IsNullOrEmpty(Game.MapName) ? "?" : Game.MapName), cardTitle, Theme.Ink);
+            Kicker(new Rect(sr.x + 186f, sy + 48f, 150f, 14f), "Agent", Theme.Muted);
             string ag = Game.PickedAgentId ?? Game.RememberedAgent;
-            Lbl(new Rect(sr.x + 180f, sy + 60f, 150f, 22f), string.IsNullOrEmpty(ag) ? "not picked" : Agents.NameOf(ag), bodyBold, string.IsNullOrEmpty(ag) ? Theme.Muted : Agents.ColorOf(ag));
-            Lbl(new Rect(x, H - 34f, 600f, 18f), "Esc closes menus.   F3 frame rate.", small, Theme.Faint);
+            Lbl(new Rect(sr.x + 188f, sy + 66f, 150f, 24f), Upper(string.IsNullOrEmpty(ag) ? "not picked" : Agents.NameOf(ag)), cardTitle, string.IsNullOrEmpty(ag) ? Theme.Muted : Agents.ColorOf(ag));
+
+            // Bottom left: the credit.
+            DrawCredit(new Vector2(x, H - 44f));
+            Lbl(new Rect(x + 260f, H - 40f, 400f, 18f), "Esc closes menus   \u00b7   F3 frame rate", small, Theme.Faint);
+        }
+
+        /// <summary>The event credit with a small spinning star mark.</summary>
+        void DrawCredit(Vector2 at)
+        {
+            Color ac = Settings.Accent;
+            Matrix4x4 m = GUI.matrix;
+            var star = new Rect(at.x, at.y, 18f, 18f);
+            GUIUtility.RotateAroundPivot(Time.unscaledTime * 40f, star.center * scale);
+            Tex(star, UiTex.Glyph("persona"), ac);
+            GUI.matrix = m;
+            Lbl(new Rect(at.x + 26f, at.y, 240f, 18f), Spaced("DevHacks 2026"), kickerStyle, Theme.Ink);
+        }
+
+        /// <summary>The streamer mode switch (menu and settings): label, a sliding knob, and the LIVE pill when on.</summary>
+        void DrawStreamerSwitch(Rect r)
+        {
+            bool on = Settings.StreamerMode;
+            float h = HoverAnim(4242, Hover(r));
+            Plate(r, new Color(0.04f, 0.05f, 0.08f, 0.8f + 0.15f * h));
+            PlateLine(r, new Color(1f, 1f, 1f, 0.08f + 0.2f * h));
+            Lbl(new Rect(r.x + 14f, r.y, r.width - 80f, r.height), Spaced("Streamer mode"), kickerStyle, on ? Theme.Ink : Theme.Muted);
+            var track = new Rect(r.xMax - 58f, r.center.y - 8f, 42f, 16f);
+            Plate(track, on ? Palette.Spike : new Color(1f, 1f, 1f, 0.15f));
+            float kx = on ? track.xMax - 15f : track.x + 1f;
+            Fill(new Rect(kx, track.y + 2f, 14f, 12f), Color.white);
+            if (on) DrawLivePill(new Vector2(r.x - 86f, r.y + 5f), false);
+            if (GUI.Button(r, GUIContent.none, GUIStyle.none))
+            {
+                PlayUi(UiSound.Confirm, 0.8f);
+                Game.Do(() => Game.SetStreamer(!Settings.StreamerMode));
+            }
         }
 
         // ---- match setup ----------------------------------------------------------------------------
         void DrawMatchSetup()
         {
-            Rect area = Centered(Mathf.Min(1060f, W - 40f), Mathf.Min(620f, H - 40f));
-            Round(area, Theme.PanelC);
-            float x = area.x + 28f, y = area.y + 24f, w = area.width - 56f;
-            Lbl(new Rect(x, y, w, 40f), "Play a match", title, Theme.Ink);
-            Lbl(new Rect(x, y + 40f, w, 36f), "You and four bot teammates against five bots, first to 7 rounds, sides swap after round 6. Each round starts with a 20 s buy phase (B). A finished match is analysed like your drills.", muted, Color.white);
+            Rect area = Centered(Mathf.Min(1100f, W - 40f), Mathf.Min(720f, H - 50f));
+            Frame(area, "Match setup");
+            Glass(area);
+            float x = area.x + 28f, y = area.y + 22f, w = area.width - 56f;
+            Condensed(new Rect(x, y, w, 44f), "PLAY A MATCH", titleDisplay, Theme.Ink);
+            Lbl(new Rect(x, y + 44f, w, 36f), "You and four bot teammates against five bots, first to 7 rounds, sides swap after round 6. Each round starts with a 20 s buy phase (B). A finished match is analysed like your drills.", muted, Color.white);
             y += 92f;
 
-            Lbl(new Rect(x, y, 200f, 16f), "MAP", caption, Color.white);
-            Fill(new Rect(x, y + 16f, 28f, 2f), Settings.Accent);
-            y += 26f;
+            Kicker(new Rect(x, y, 200f, 16f), "Map", Settings.Accent);
+            y += 22f;
             List<MapInfo> maps = Game.Maps;
             var shown = new List<MapInfo>();
             if (maps != null) foreach (MapInfo m in maps) if (m != null && !string.IsNullOrEmpty(m.id)) shown.Add(m);
@@ -196,53 +273,81 @@ namespace Saltworks
             for (int i = 0; i < shown.Count; i++)
             {
                 MapInfo m = shown[i];
-                var r = new Rect(x + i * (mw + 12f), y, mw, 74f);
+                var r = new Rect(x + i * (mw + 12f), y, mw, 72f);
                 bool sel = m.id == Game.MatchMapId;
+                float h = HoverAnim(KeyOf(m.id, r), Hover(r));
                 if (sel) Outline(r, Settings.Accent, 2f);
-                else Round(r, Hover(r) ? Theme.ButtonHoverC : Theme.CardC);
-                Lbl(new Rect(r.x + 14f, r.y + 10f, r.width - 28f, 22f), (m.name ?? m.id) + (sel ? "  \u2713" : ""), cardTitle, Theme.Ink);
-                Lbl(new Rect(r.x + 14f, r.y + 34f, r.width - 28f, 36f), MapBlurb(m.id), menuDesc, Theme.Muted);
+                else Plate(r, Color.Lerp(Theme.CardC, Theme.ButtonHoverC, h));
+                Condensed(new Rect(r.x + 14f, r.y + 8f, r.width - 28f, 24f), Upper(m.name ?? m.id) + (sel ? "  \u2713" : ""), cardTitle, Theme.Ink, 0.9f);
+                Lbl(new Rect(r.x + 14f, r.y + 32f, r.width - 28f, 36f), MapBlurb(m.id), menuDesc, Theme.Muted);
                 string id = m.id;
-                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) Game.Do(() => Game.MatchMapId = id);
+                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { PlayUi(UiSound.Confirm, 0.7f); Game.Do(() => Game.MatchMapId = id); }
             }
-            y += 92f;
+            y += 88f;
 
-            Lbl(new Rect(x, y, 200f, 16f), "AGENT", caption, Color.white);
-            Fill(new Rect(x, y + 16f, 28f, 2f), Settings.Accent);
-            y += 26f;
+            Kicker(new Rect(x, y, 200f, 16f), "Agent", Settings.Accent);
+            y += 22f;
             int n = Agents.All.Count;
             float aw = (w - 12f * (n - 1)) / Mathf.Max(1, n);
             for (int i = 0; i < n; i++)
             {
                 AgentInfo a = Agents.All[i];
-                var r = new Rect(x + i * (aw + 12f), y, aw, 150f);
+                var r = new Rect(x + i * (aw + 12f), y, aw, 140f);
                 bool sel = a.Id == Game.MatchAgentId;
+                float h = HoverAnim(KeyOf(a.Id, r), Hover(r));
                 if (sel) Outline(r, a.Color, 2f);
-                else Round(r, Hover(r) ? Theme.ButtonHoverC : Theme.CardC);
-                Round(new Rect(r.x + 12f, r.y + 12f, r.width - 24f, 5f), a.Color);
-                Lbl(new Rect(r.x + 14f, r.y + 24f, r.width - 28f, 26f), a.Name + (sel ? "  \u2713" : ""), h2, a.Color);
-                Lbl(new Rect(r.x + 14f, r.y + 50f, r.width - 28f, 16f), (a.Role ?? "").ToUpperInvariant(), cardSmall, Theme.Muted);
+                else Plate(r, Color.Lerp(Theme.CardC, Theme.ButtonHoverC, h));
+                Tex(new Rect(r.xMax - 40f, r.y + 14f, 24f, 24f), UiTex.Role(a.Role), new Color(a.Color.r, a.Color.g, a.Color.b, 0.8f));
+                Condensed(new Rect(r.x + 14f, r.y + 12f, r.width - 60f, 30f), Upper(a.Name) + (sel ? "  \u2713" : ""), displayM, a.Color, 0.84f);
+                Lbl(new Rect(r.x + 14f, r.y + 44f, r.width - 28f, 16f), Spaced(a.Role ?? ""), tinyCaps, Theme.Muted);
                 float ix = r.x + 14f;
                 foreach (Ability ab in Agents.AllAbilities)
                 {
                     int c = a.Kit != null ? a.Kit.Get(ab) : 0;
                     if (c <= 0) continue;
-                    Icon(new Rect(ix, r.y + 70f, 20f, 20f), ab, Agents.AbilityColor(ab));
-                    Lbl(new Rect(ix + 22f, r.y + 70f, 40f, 20f), "\u00d7" + c, cardSmall, Theme.Ink);
+                    Icon(new Rect(ix, r.y + 64f, 20f, 20f), ab, Agents.AbilityColor(ab));
+                    Lbl(new Rect(ix + 22f, r.y + 64f, 40f, 20f), "\u00d7" + c, cardSmall, Theme.Ink);
                     ix += 56f;
                 }
-                Lbl(new Rect(r.x + 14f, r.y + 96f, r.width - 28f, 50f), a.Blurb ?? "", menuDesc, Theme.Muted);
+                Lbl(new Rect(r.x + 14f, r.y + 90f, r.width - 28f, 46f), a.Blurb ?? "", menuDesc, Theme.Muted);
                 string id = a.Id;
-                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) Game.Do(() => Game.MatchAgentId = id);
+                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { PlayUi(UiSound.Confirm, 0.7f); Game.Do(() => Game.MatchAgentId = id); }
+            }
+            y += 156f;
+
+            // Enemy team: plain bots, or personas (bots-wire.4).
+            Kicker(new Rect(x, y, 300f, 16f), "Enemy team", Settings.Accent);
+            y += 22f;
+            bool v4 = Game.V4;
+            if (GButton(new Rect(x, y, 150f, 40f), "Bots", Game.PersonaEnemies ? 0 : 1)) Game.Do(() => Game.PersonaEnemies = false);
+            if (GButton(new Rect(x + 160f, y, 190f, 40f), "Pro personas", Game.PersonaEnemies ? 1 : 0, v4)) Game.Do(() => Game.SetPersonaEnemies(true));
+            if (!v4) Lbl(new Rect(x + 366f, y + 10f, w - 370f, 20f), "Persona teams need a bridge that speaks bots-wire.4.", small, Theme.Muted);
+            else if (Game.PersonaEnemies)
+            {
+                float px = x + 366f;
+                float pw = Mathf.Min(140f, (area.xMax - 28f - px - 4f * 8f) / 5f);
+                List<Persona> all = Personas.All;
+                for (int i = 0; i < all.Count && i < 5; i++)
+                {
+                    Persona p = all[i];
+                    var r = new Rect(px + i * (pw + 8f), y, pw, 40f);
+                    bool inTeam = Game.EnemyPersonas.Contains(p.Id);
+                    float h = HoverAnim(KeyOf(p.Id, r), Hover(r));
+                    Plate(r, inTeam ? new Color(p.Primary.r * 0.3f, p.Primary.g * 0.3f, p.Primary.b * 0.3f, 0.95f) : Color.Lerp(Theme.CardC, Theme.ButtonHoverC, h));
+                    if (inTeam) PlateLine(r, p.Primary);
+                    Fill(new Rect(r.x + 8f, r.y + 8f, 3f, r.height - 16f), p.Primary);
+                    Lbl(new Rect(r.x + 18f, r.y, r.width - 20f, r.height), Upper(p.Name), cardTitle, inTeam ? Theme.Ink : Theme.Muted);
+                    string pid = p.Id;
+                    if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { PlayUi(UiSound.Tick, 0.8f); Game.Do(() => Game.ToggleEnemyPersona(pid)); }
+                }
             }
 
-            float byy = area.yMax - 70f;
+            float byy = area.yMax - 68f;
             if (!Game.V3) Lbl(new Rect(x, byy - 26f, w, 20f), "This bridge does not speak bots-wire.3, so it has no match mode. Update the bridge, then reconnect.", bodyBold, Palette.Warn);
             if (Game.WaitingFor == "match") Lbl(new Rect(x, byy - 26f, w, 20f), "Starting the match...", bodyBold, Theme.Muted);
-            if (GUI.Button(new Rect(x, byy, 160f, 46f), "Back", button)) Game.Do(Game.OpenMenu);
-            GUI.enabled = Idle && Game.V3 && !string.IsNullOrEmpty(Game.MatchAgentId);
-            if (GUI.Button(new Rect(area.xMax - 28f - 260f, byy, 260f, 46f), "Start match", primary)) Game.Do(Game.StartMatch);
-            GUI.enabled = true;
+            if (GButton(new Rect(x, byy, 160f, 46f), "Back", 2)) Game.Do(Game.OpenMenu);
+            bool canStart = Idle && Game.V3 && !string.IsNullOrEmpty(Game.MatchAgentId) && (!Game.PersonaEnemies || Game.EnemyPersonas.Count > 0);
+            if (GButton(new Rect(area.xMax - 28f - 280f, byy, 280f, 46f), Game.PersonaEnemies ? "Start persona match" : "Start match", 1, canStart)) Game.Do(Game.StartMatch);
         }
 
         // ---- buy menu ---------------------------------------------------------------------------------
@@ -253,7 +358,7 @@ namespace Saltworks
             new[] { "lancer", "viper" },
             new[] { "longshot" },
         };
-        static readonly string[] BuyColumnNames = { "SIDEARMS", "SMG  /  SHOTGUN", "RIFLES", "SNIPER" };
+        static readonly string[] BuyColumnNames = { "Sidearms", "SMG / Shotgun", "Rifles", "Sniper" };
 
         string buyTimerStr = "", creditStr = "", scoreStr = "", roundStr = "";
         int buyTimerKey = -1, creditKey = int.MinValue, scoreKey = int.MinValue, roundKey = int.MinValue;
@@ -267,10 +372,11 @@ namespace Saltworks
         void DrawBuy(bool overlay)
         {
             BuyPhaseMsg bp = Game.BuyPhase;
-            Fill(new Rect(0f, 0f, W, H), new Color(0.02f, 0.03f, 0.05f, overlay ? 0.62f : 0.5f));
+            Fill(new Rect(0f, 0f, W, H), new Color(0.01f, 0.015f, 0.03f, overlay ? 0.62f : 0.5f));
             float pw = Mathf.Min(1240f, W - 40f), ph = Mathf.Min(700f, H - 40f);
             var area = new Rect(Mathf.Round((W - pw) / 2f), Mathf.Round((H - ph) / 2f), pw, ph);
-            Round(area, Theme.PanelC);
+            if (!overlay) Frame(area, "Buy phase");
+            Glass(area);
             float x = area.x + 24f, y = area.y + 20f;
 
             // Header: round type chip, round, score, timer, credits.
@@ -279,9 +385,9 @@ namespace Saltworks
             if (rt.Length > 0)
             {
                 Vector2 sz = roundChip.CalcSize(new GUIContent(rt));
-                var chip = new Rect(x, y, sz.x + 28f, 40f);
-                Round(chip, rc);
-                Lbl(chip, rt, roundChip, new Color(0.06f, 0.06f, 0.07f));
+                var chip = new Rect(x, y, sz.x + 32f, 40f);
+                Plate(chip, rc);
+                Lbl(chip, rt, roundChip, new Color(0.04f, 0.04f, 0.05f));
                 x = chip.xMax + 16f;
             }
             int rk = Game.Round * 10 + (Game.MatchSide == "defense" ? 1 : 0);
@@ -293,7 +399,6 @@ namespace Saltworks
             Lbl(new Rect(x, y, 260f, 20f), roundStr, cardTitle, Theme.Ink);
             Lbl(new Rect(x, y + 20f, 420f, 20f), Weapons.RoundTypeAdvice(Game.RoundType), small, Color.white);
 
-            // Score in the middle.
             ScoreInfo sc = Game.Score;
             int sk = sc == null ? -1 : sc.player * 100 + sc.enemy;
             if (sk != scoreKey)
@@ -301,35 +406,33 @@ namespace Saltworks
                 scoreKey = sk;
                 scoreStr = sc == null ? "0  :  0" : sc.player + "  :  " + sc.enemy;
             }
-            Lbl(new Rect(area.center.x - 90f, y - 2f, 180f, 30f), scoreStr, scoreNum, Theme.Ink);
-            Lbl(new Rect(area.center.x - 90f, y + 26f, 180f, 16f), "YOU  \u00b7  FIRST TO 7  \u00b7  THEM", centerSmall, Theme.Muted);
+            Lbl(new Rect(area.center.x - 90f, y - 4f, 180f, 34f), scoreStr, scoreNum, Theme.Ink);
+            Lbl(new Rect(area.center.x - 120f, y + 28f, 240f, 16f), Game.InDuel ? "YOU  \u00b7  FIRST TO 5  \u00b7  " + Upper(Game.DuelPersonaName) : "YOU  \u00b7  FIRST TO 7  \u00b7  THEM", centerSmall, Theme.Muted);
 
-            // Timer and credits on the right.
             float left = Game.BuyTimeLeft;
             int tk = Mathf.CeilToInt(left);
             if (tk != buyTimerKey)
             {
                 buyTimerKey = tk;
-                buyTimerStr = Game.Readied ? "READY" : tk + " s";
+                buyTimerStr = tk + " s";
             }
             var timerR = new Rect(area.xMax - 24f - 380f, y, 110f, 40f);
-            Round(timerR, new Color(1f, 1f, 1f, 0.06f));
+            Plate(timerR, new Color(1f, 1f, 1f, 0.06f));
             Lbl(timerR, Game.Readied ? "READY" : buyTimerStr, timerStyle, left < 5f && !Game.Readied ? Palette.Warn : Theme.Ink);
             float total = bp != null && bp.timeS > 0f ? bp.timeS : 20f;
-            Fill(new Rect(timerR.x + 8f, timerR.yMax - 3f, (timerR.width - 16f) * Mathf.Clamp01(left / total), 3f), Settings.Accent);
+            Neon(new Rect(timerR.x + 8f, timerR.yMax - 3f, timerR.width - 16f, 2f), Settings.Accent, Mathf.Clamp01(left / total));
             int ck = Game.Credits;
             if (ck != creditKey)
             {
                 creditKey = ck;
                 creditStr = Credits(ck);
             }
-            Lbl(new Rect(area.xMax - 24f - 250f, y - 4f, 250f, 14f), "CREDITS", rightSmall, Theme.Muted);
+            Lbl(new Rect(area.xMax - 24f - 250f, y - 4f, 250f, 14f), Spaced("Credits"), rightSmall, Theme.Muted);
             Lbl(new Rect(area.xMax - 24f - 250f, y + 6f, 250f, 40f), creditStr, bigNumRight, Settings.Accent);
 
             float top = area.y + 84f;
             Fill(new Rect(area.x + 24f, top - 10f, area.width - 48f, 1f), new Color(1f, 1f, 1f, 0.08f));
 
-            // Weapons (left) and team (right).
             float teamW = Mathf.Min(300f, area.width * 0.26f);
             float gridW = area.width - 48f - teamW - 20f;
             float colW = (gridW - 3f * 12f) / 4f;
@@ -337,27 +440,25 @@ namespace Saltworks
             for (int c = 0; c < BuyColumns.Length; c++)
             {
                 float cx = area.x + 24f + c * (colW + 12f);
-                Lbl(new Rect(cx, top, colW, 16f), BuyColumnNames[c], caption, Color.white);
+                Kicker(new Rect(cx, top, colW, 16f), BuyColumnNames[c], Theme.Muted);
                 for (int i = 0; i < BuyColumns[c].Length; i++)
                 {
                     WeaponInfo wi = Weapons.Find(BuyColumns[c][i]);
                     if (wi == null) continue;
-                    WeaponCard(new Rect(cx, top + 20f + i * (cardH + 10f), colW, cardH), wi);
+                    WeaponCard(new Rect(cx, top + 22f + i * (cardH + 10f), colW, cardH), wi);
                 }
             }
 
-            // Armour row.
-            float ay = top + 20f + 2f * (cardH + 10f) + 4f;
-            Lbl(new Rect(area.x + 24f, ay, 200f, 16f), "ARMOUR", caption, Color.white);
+            float ay = top + 22f + 2f * (cardH + 10f) + 4f;
+            Kicker(new Rect(area.x + 24f, ay, 200f, 16f), "Armour", Theme.Muted);
             float armW = (gridW - 12f) / 2f;
             ArmorCard(new Rect(area.x + 24f, ay + 20f, armW, 70f), "light");
             ArmorCard(new Rect(area.x + 24f + armW + 12f, ay + 20f, armW, 70f), "heavy");
 
-            // Team panel.
             var tr = new Rect(area.xMax - 24f - teamW, top, teamW, area.yMax - 24f - top - 60f);
-            Round(tr, Theme.CardC);
-            Lbl(new Rect(tr.x + 14f, tr.y + 10f, tr.width, 16f), "TEAM CREDITS", caption, Color.white);
-            float ty = tr.y + 32f;
+            Plate(tr, Theme.CardC);
+            Kicker(new Rect(tr.x + 14f, tr.y + 10f, tr.width, 16f), "Team credits", Theme.Muted);
+            float ty = tr.y + 34f;
             if (bp?.team != null && bp.team.Count > 0)
             {
                 foreach (TeamMember m in bp.team)
@@ -378,15 +479,12 @@ namespace Saltworks
             int avg = Game.TeamAverageCredits();
             if (avg >= 0) Lbl(new Rect(tr.x + 14f, tr.yMax - 26f, tr.width - 28f, 18f), "Team average " + Credits(avg), cardSmall, Theme.Muted);
 
-            // Footer.
             float fy = area.yMax - 24f - 48f;
             Lbl(new Rect(area.x + 24f, fy + 4f, area.width - 380f, 40f),
                 (overlay ? "B closes the menu.  " : "") + "Click a weapon to buy it, click an owned one to sell it back. The round starts when the timer ends or everyone is ready.", menuDesc, Theme.Muted);
-            GUI.enabled = Game.BuyPhaseActive;
-            if (GUI.Button(new Rect(area.xMax - 24f - teamW, fy, teamW, 48f), Game.Readied ? "Ready" : "Ready up", primary)) Game.Do(Game.ReadyUp);
-            GUI.enabled = true;
-            if (overlay && GUI.Button(new Rect(area.xMax - 24f - teamW - 132f, fy, 120f, 48f), "Close (B)", button)) Game.Do(Game.CloseBuyMenu);
-            if (!overlay && Game.Readied || (!overlay && !Game.BuyPhaseActive))
+            if (GButton(new Rect(area.xMax - 24f - teamW, fy, teamW, 48f), Game.Readied ? "Ready" : "Ready up", 1, Game.BuyPhaseActive)) Game.Do(Game.ReadyUp);
+            if (overlay && GButton(new Rect(area.xMax - 24f - teamW - 132f, fy, 120f, 48f), "Close (B)", 2)) Game.Do(Game.CloseBuyMenu);
+            if ((!overlay && Game.Readied) || (!overlay && !Game.BuyPhaseActive))
                 Lbl(new Rect(area.x + 24f, fy - 22f, 500f, 18f), "Waiting for the round to start...", small, Color.white);
         }
 
@@ -394,8 +492,15 @@ namespace Saltworks
         {
             Lbl(new Rect(r.x, r.y, 40f, r.height), label, statLabel, Theme.Muted);
             var bar = new Rect(r.x + 40f, r.y + r.height / 2f - 2f, r.width - 40f, 4f);
-            Fill(bar, new Color(1f, 1f, 1f, 0.1f));
-            Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(v), bar.height), c);
+            // Segmented: ten cells, lit up to the value.
+            float cw = (bar.width - 9f * 2f) / 10f;
+            for (int i = 0; i < 10; i++)
+            {
+                float lit = Mathf.Clamp01(v * 10f - i);
+                var cell = new Rect(bar.x + i * (cw + 2f), bar.y, cw, bar.height);
+                Fill(cell, new Color(1f, 1f, 1f, 0.08f));
+                if (lit > 0f) Fill(new Rect(cell.x, cell.y, cell.width * lit, cell.height), c);
+            }
         }
 
         void WeaponCard(Rect r, WeaponInfo w)
@@ -403,18 +508,22 @@ namespace Saltworks
             bool owned = Game.Owns(w.Id);
             bool afford = Game.CanAfford(w.Id);
             bool active = Game.BuyPhaseActive;
-            bool hover = Hover(r) && active;
+            float h = HoverAnim(KeyOf(w.Id, r), Hover(r) && active && (afford || owned));
             float a = owned || afford ? 1f : 0.45f;
             if (owned) Outline(r, Settings.Accent, 2f);
-            else Round(r, hover && afford ? Theme.ButtonHoverC : Theme.CardC);
+            else
+            {
+                Plate(r, Color.Lerp(Theme.CardC, Theme.ButtonHoverC, h));
+                PlateLine(r, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, 0.1f + 0.5f * h));
+            }
             Color oldC = GUI.color;
             GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * a);
-            Lbl(new Rect(r.x + 12f, r.y + 8f, r.width - 90f, 22f), w.Name, cardTitle, Theme.Ink);
-            Lbl(new Rect(r.x + 12f, r.y + 28f, r.width - 24f, 14f), w.ClassName.ToUpperInvariant(), cardSmall, Theme.Muted);
+            Condensed(new Rect(r.x + 12f, r.y + 6f, r.width - 100f, 24f), Upper(w.Name), cardTitle, Theme.Ink, 0.9f);
+            Lbl(new Rect(r.x + 12f, r.y + 28f, r.width - 24f, 14f), Spaced(w.ClassName), tinyCaps, Theme.Muted);
             string price = w.Price <= 0 ? "FREE" : Credits(w.Price);
             Lbl(new Rect(r.xMax - 90f, r.y + 8f, 78f, 22f), price, priceStyle, afford || owned ? Theme.Ink : Palette.Bad);
             float iconH = Mathf.Clamp(r.height - 112f, 26f, 54f);
-            Tex(new Rect(r.x + 12f, r.y + 46f, r.width - 24f, iconH), GunModels.Icon(w.Id), owned ? Settings.Accent : Color.white);
+            Tex(new Rect(r.x + 12f + h * 6f, r.y + 46f, r.width - 24f, iconH), GunModels.Icon(w.Id), owned ? Settings.Accent : Color.white);
             float sy = r.y + 50f + iconH;
             float sw = r.width - 24f;
             Color bc = owned ? Settings.Accent : Theme.Lighten(Settings.Accent, 0.2f);
@@ -428,8 +537,8 @@ namespace Saltworks
             string id = w.Id;
             if (GUI.Button(r, GUIContent.none, GUIStyle.none))
             {
-                if (owned && w.Price > 0) Game.Do(() => Game.SellItem(id));
-                else if (!owned && afford) Game.Do(() => Game.BuyItem(id));
+                if (owned && w.Price > 0) { PlayUi(UiSound.Back, 0.8f); Game.Do(() => Game.SellItem(id)); }
+                else if (!owned && afford) { PlayUi(UiSound.Confirm, 0.8f); Game.Do(() => Game.BuyItem(id)); }
             }
         }
 
@@ -438,28 +547,27 @@ namespace Saltworks
             bool owned = Game.Owns(kind);
             bool afford = Game.CanAfford(kind);
             bool active = Game.BuyPhaseActive;
-            bool hover = Hover(r) && active;
+            float h = HoverAnim(KeyOf(kind, r), Hover(r) && active && (afford || owned));
             if (owned) Outline(r, Settings.Accent, 2f);
-            else Round(r, hover && afford ? Theme.ButtonHoverC : Theme.CardC);
+            else
+            {
+                Plate(r, Color.Lerp(Theme.CardC, Theme.ButtonHoverC, h));
+                PlateLine(r, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, 0.1f + 0.5f * h));
+            }
             float a = owned || afford ? 1f : 0.45f;
             Color oldC = GUI.color;
             GUI.color = new Color(oldC.r, oldC.g, oldC.b, oldC.a * a);
-            // A shield glyph: a rounded plate with one or two bars.
-            var sh = new Rect(r.x + 14f, r.y + 14f, 34f, 42f);
-            Round(sh, owned ? Settings.Accent : new Color(0.7f, 0.74f, 0.8f));
-            Round(new Rect(sh.x + 5f, sh.y + 5f, sh.width - 10f, sh.height - 10f), Theme.CardC);
-            Fill(new Rect(sh.x + 10f, sh.y + 14f, sh.width - 20f, 4f), owned ? Settings.Accent : Color.white);
-            if (kind == "heavy") Fill(new Rect(sh.x + 10f, sh.y + 22f, sh.width - 20f, 4f), owned ? Settings.Accent : Color.white);
-            Lbl(new Rect(r.x + 62f, r.y + 12f, r.width - 160f, 22f), Weapons.ArmorName(kind), cardTitle, Theme.Ink);
-            Lbl(new Rect(r.x + 62f, r.y + 34f, r.width - 160f, 30f), Weapons.ArmorPointsOf(kind) + " points, absorbs 66% of each hit" + (owned ? (active ? "   OWNED \u00b7 CLICK TO SELL" : "   OWNED") : ""), menuDesc, owned ? Settings.Accent : Theme.Muted);
+            Tex(new Rect(r.x + 12f, r.y + 12f, 44f, 46f), UiTex.Glyph("sentinel"), owned ? Settings.Accent : new Color(0.75f, 0.85f, 1f));
+            Condensed(new Rect(r.x + 64f, r.y + 10f, r.width - 160f, 24f), Upper(Weapons.ArmorName(kind)), cardTitle, Theme.Ink, 0.9f);
+            Lbl(new Rect(r.x + 64f, r.y + 34f, r.width - 160f, 30f), Weapons.ArmorPointsOf(kind) + " points, absorbs 66% of each hit" + (owned ? (active ? "   OWNED \u00b7 CLICK TO SELL" : "   OWNED") : ""), menuDesc, owned ? Settings.Accent : Theme.Muted);
             Lbl(new Rect(r.xMax - 92f, r.y + 12f, 80f, 22f), Credits(Weapons.ArmorPrice(kind)), priceStyle, afford || owned ? Theme.Ink : Palette.Bad);
             GUI.color = oldC;
             if (!active) return;
             string id = kind;
             if (GUI.Button(r, GUIContent.none, GUIStyle.none))
             {
-                if (owned) Game.Do(() => Game.SellItem(id));
-                else if (afford) Game.Do(() => Game.BuyItem(id));
+                if (owned) { PlayUi(UiSound.Back, 0.8f); Game.Do(() => Game.SellItem(id)); }
+                else if (afford) { PlayUi(UiSound.Confirm, 0.8f); Game.Do(() => Game.BuyItem(id)); }
             }
         }
 
@@ -473,7 +581,8 @@ namespace Saltworks
             if (rr != null && now - Game.RoundResultAt < 4.5f)
             {
                 bool won = Game.RoundWon(rr);
-                float k = Theme.Ease((now - Game.RoundResultAt) / 0.3f) * Mathf.Clamp01((4.5f - (now - Game.RoundResultAt)) / 0.4f);
+                float age = now - Game.RoundResultAt;
+                float k = Theme.Ease(age / 0.3f) * Mathf.Clamp01((4.5f - age) / 0.4f);
                 if (!ReferenceEquals(resultFor, rr))
                 {
                     resultFor = rr;
@@ -486,347 +595,74 @@ namespace Saltworks
                     resultSub = string.Join("     ", parts);
                 }
                 Color c = won ? Palette.Ok : Palette.Bad;
-                var br = new Rect(0f, H * 0.26f + (1f - k) * 16f, W, 112f);
-                Fill(br, new Color(0.04f, 0.05f, 0.07f, 0.82f * k));
-                Fill(new Rect(W / 2f - W * 0.3f * k, br.y, W * 0.6f * k, 3f), c);
-                Fill(new Rect(W / 2f - W * 0.3f * k, br.yMax - 3f, W * 0.6f * k, 3f), c);
+                var br = new Rect(0f, H * 0.26f + (1f - k) * 16f, W, 116f);
+                Fill(br, new Color(0.02f, 0.03f, 0.05f, 0.82f * k));
+                Slash(new Rect(W / 2f - W * 0.32f * k, br.y - 6f, W * 0.64f * k, 4f), c);
+                Slash(new Rect(W / 2f - W * 0.32f * k, br.yMax + 2f, W * 0.64f * k, 4f), c);
+                Scanlines(br, 0.25f * k);
                 c.a = k;
-                Shadowed(new Rect(0f, br.y + 12f, W, 56f), won ? "ROUND WON" : "ROUND LOST", banner, c);
-                Shadowed(new Rect(40f, br.y + 70f, W - 80f, 30f), resultSub, bannerSub, new Color(1f, 1f, 1f, k));
+                Condensed(new Rect(0f, br.y + 10f, W, 64f), won ? "ROUND WON" : "ROUND LOST", displayLC, c, 0.82f, true);
+                Shadowed(new Rect(40f, br.y + 76f, W - 80f, 30f), resultSub, bannerSub, new Color(1f, 1f, 1f, k));
             }
             float sw = now - Game.SideSwapAt;
             if (sw >= 0f && sw < 4f)
             {
                 float k = Mathf.Clamp01(sw / 0.3f) * Mathf.Clamp01((4f - sw) / 0.4f);
-                var r = new Rect(W / 2f - 260f, H * 0.18f, 520f, 54f);
-                Round(r, new Color(0.06f, 0.07f, 0.1f, 0.85f * k));
-                Shadowed(new Rect(r.x, r.y + 4f, r.width, 28f), "SIDES SWAP", hudCenter, new Color(1f, 1f, 1f, k));
-                Shadowed(new Rect(r.x, r.y + 28f, r.width, 20f), "You now play " + (Game.MatchSide ?? "the other side"), centerSmall, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, k));
+                var r = new Rect(W / 2f - 260f, H * 0.18f, 520f, 58f);
+                Plate(r, new Color(0.03f, 0.04f, 0.07f, 0.88f * k));
+                PlateLine(r, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, k));
+                Condensed(new Rect(r.x, r.y + 4f, r.width, 30f), Spaced("Sides swap"), hudCenter, new Color(1f, 1f, 1f, k), 0.9f, true);
+                Shadowed(new Rect(r.x, r.y + 32f, r.width, 20f), "You now play " + (Game.MatchSide ?? "the other side"), centerSmall, new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, k));
             }
+            DrawRoundSweep(now);
         }
 
         // ---- match end --------------------------------------------------------------------------------
         void DrawMatchEnd()
         {
             MatchEndMsg me = Game.MatchEnd;
-            Fill(new Rect(0f, 0f, W, H), new Color(0.02f, 0.03f, 0.05f, 0.7f));
-            Rect area = Centered(760f, 560f);
-            Round(area, Theme.PanelC);
+            Fill(new Rect(0f, 0f, W, H), new Color(0.01f, 0.015f, 0.03f, 0.6f));
+            Rect area = Centered(820f, 580f);
             bool won = me != null && me.won;
             Color c = won ? Palette.Ok : Palette.Bad;
-            Fill(new Rect(area.x, area.y, area.width, 4f), c);
-            Lbl(new Rect(area.x, area.y + 30f, area.width, 60f), won ? "VICTORY" : "DEFEAT", banner, c);
+            Frame(area, won ? "Match won" : "Match lost");
+            Glass(area);
+            float k = Intro01;
+            Neon(new Rect(area.x + Theme.Cut, area.y, area.width - Theme.Cut * 2f, 3f), c, k);
+            Condensed(new Rect(area.x, area.y + 24f, area.width, 90f), won ? Spaced("Victory") : Spaced("Defeat"), displayLC, c, 0.82f, true);
             ScoreInfo sc = me?.score ?? Game.Score;
-            Lbl(new Rect(area.x, area.y + 92f, area.width, 40f), sc != null ? sc.player + "  :  " + sc.enemy : "", scoreNum, Theme.Ink);
-            Lbl(new Rect(area.x, area.y + 128f, area.width, 18f), "ROUNDS  YOU : THEM", centerSmall, Theme.Muted);
+            Lbl(new Rect(area.x, area.y + 112f, area.width, 40f), sc != null ? sc.player + "  :  " + sc.enemy : "", scoreNum, Theme.Ink);
+            Lbl(new Rect(area.x, area.y + 148f, area.width, 18f), "ROUNDS  YOU : THEM", centerSmall, Theme.Muted);
 
-            // Round history pips.
             int nh = Game.RoundHistory.Count;
             float pw = 18f, pg = 6f;
             float px0 = area.center.x - (nh * pw + Mathf.Max(0, nh - 1) * pg) / 2f;
             for (int i = 0; i < nh; i++)
-                Round(new Rect(px0 + i * (pw + pg), area.y + 156f, pw, 8f), Game.RoundHistory[i] ? Palette.Ok : Palette.Bad);
+            {
+                float pk = Mathf.Clamp01((Time.unscaledTime - screenAt - 0.3f - i * 0.05f) / 0.2f);
+                Plate(new Rect(px0 + i * (pw + pg), area.y + 176f + (1f - pk) * 6f, pw, 8f), new Color(Game.RoundHistory[i] ? Palette.Ok.r : Palette.Bad.r, Game.RoundHistory[i] ? Palette.Ok.g : Palette.Bad.g, Game.RoundHistory[i] ? Palette.Ok.b : Palette.Bad.b, pk));
+            }
 
             MatchStats st = me?.stats;
             int kills = st != null ? st.kills : Game.MatchKills;
             int deaths = st != null ? st.deaths : Game.MatchDeaths;
             float hs = st != null ? st.headshotPct : (Game.MatchKills > 0 ? Game.MatchHeadKills / (float)Game.MatchKills : 0f);
             if (hs > 1f) hs /= 100f;
-            string[] labels = { "KILLS", "DEATHS", "K / D", "HEADSHOT KILLS" };
+            string[] labels = { "Kills", "Deaths", "K / D", "Headshot kills" };
             string[] values = { kills.ToString(), deaths.ToString(), (deaths > 0 ? kills / (float)deaths : kills).ToString("0.00"), Mathf.RoundToInt(hs * 100f) + "%" };
             float cw = (area.width - 56f - 36f) / 4f;
             for (int i = 0; i < 4; i++)
             {
-                var r = new Rect(area.x + 28f + i * (cw + 12f), area.y + 190f, cw, 96f);
-                Round(r, Theme.CardC);
-                Lbl(new Rect(r.x, r.y + 12f, r.width, 44f), values[i], scoreNum, Theme.Ink);
-                Lbl(new Rect(r.x, r.y + 62f, r.width, 18f), labels[i], centerSmall, Theme.Muted);
+                var r = new Rect(area.x + 28f + i * (cw + 12f), area.y + 208f, cw, 100f);
+                Plate(r, Theme.CardC);
+                Fill(new Rect(r.x + Theme.Cut, r.y, r.width - Theme.Cut - 4f, 2f), i == 0 ? Settings.Accent : new Color(1f, 1f, 1f, 0.15f));
+                Condensed(new Rect(r.x, r.y + 12f, r.width, 50f), values[i], displayMC, Theme.Ink, 0.9f);
+                Lbl(new Rect(r.x, r.y + 66f, r.width, 18f), Spaced(labels[i]), centerSmall, Theme.Muted);
             }
-            Lbl(new Rect(area.x + 40f, area.y + 306f, area.width - 80f, 60f),
+            Lbl(new Rect(area.x + 40f, area.y + 326f, area.width - 80f, 60f),
                 "The match is recorded like your drills and re-analysed, so what happened here feeds your weakness report.", centerBody, Theme.Muted);
-            if (GUI.Button(new Rect(area.x + 28f, area.yMax - 74f, 220f, 46f), "Main menu", button)) Game.Do(Game.BackFromMatchEnd);
-            GUI.enabled = Idle && Game.V3;
-            if (GUI.Button(new Rect(area.xMax - 28f - 260f, area.yMax - 74f, 260f, 46f), "Play again", primary)) Game.Do(Game.OpenMatchSetup);
-            GUI.enabled = true;
-        }
-
-        // ---- in-round HUD parts --------------------------------------------------------------------------
-        string scoreBarL = "", scoreBarR = "", roundLine = "";
-        int scoreBarKey = int.MinValue, roundLineKey = int.MinValue;
-
-        /// <summary>Top centre: your score, the round clock, their score, alive pips, and the round line.</summary>
-        void DrawScoreBar(SimState s, float now)
-        {
-            bool post = s.phase == "post_plant";
-            float t = Mathf.Max(0f, s.roundTimeLeftS);
-            var clockR = new Rect(W / 2f - 70f, 12f, 140f, 54f);
-            Round(clockR, new Color(0.06f, 0.07f, 0.10f, 0.8f));
-            Fill(new Rect(clockR.x + 10f, clockR.yMax - 3f, clockR.width - 20f, 3f), post ? Palette.Spike : Palette.Team(Game.PlayerTeam));
-            int ck = t < 10f ? (int)(t * 10f) : (int)t * 10;
-            if (ck != clockKey)
-            {
-                clockKey = ck;
-                clockStr = string.Format("{0}:{1:00}", (int)(t / 60f), (int)t % 60) + (t < 10f ? "." + ((int)(t * 10f) % 10) : "");
-            }
-            if (!ReferenceEquals(phaseSrc, s.phase))
-            {
-                phaseSrc = s.phase;
-                phaseStr = (s.phase ?? "").Replace('_', ' ').ToUpperInvariant();
-            }
-            Shadowed(new Rect(clockR.x, clockR.y + 1f, clockR.width, 38f), clockStr, hudClock, post ? new Color(1f, 0.55f, 0.55f) : Color.white);
-            GUI.Label(new Rect(clockR.x, clockR.y + 35f, clockR.width, 16f), post ? "SPIKE PLANTED" : phaseStr, hudSmall);
-
-            // Score boxes either side (a match) or team labels (a drill).
-            ScoreInfo sc = Game.Score;
-            int key = sc == null ? -1 : sc.player * 100 + sc.enemy;
-            if (key != scoreBarKey)
-            {
-                scoreBarKey = key;
-                scoreBarL = sc == null ? "" : Theme.Int(sc.player);
-                scoreBarR = sc == null ? "" : Theme.Int(sc.enemy);
-            }
-            Color ally = Settings.Ally, enemy = Settings.Enemy;
-            var lr = new Rect(clockR.x - 70f, 12f, 64f, 54f);
-            var rr = new Rect(clockR.xMax + 6f, 12f, 64f, 54f);
-            Round(lr, new Color(ally.r * 0.25f, ally.g * 0.25f, ally.b * 0.25f, 0.85f));
-            Round(rr, new Color(enemy.r * 0.25f, enemy.g * 0.25f, enemy.b * 0.25f, 0.85f));
-            Fill(new Rect(lr.x + 8f, lr.yMax - 3f, lr.width - 16f, 3f), ally);
-            Fill(new Rect(rr.x + 8f, rr.yMax - 3f, rr.width - 16f, 3f), enemy);
-            if (Game.InMatch && sc != null)
-            {
-                Shadowed(new Rect(lr.x, lr.y + 4f, lr.width, 34f), scoreBarL, scoreNum, ally);
-                Shadowed(new Rect(rr.x, rr.y + 4f, rr.width, 34f), scoreBarR, scoreNum, enemy);
-            }
-            else
-            {
-                Shadowed(new Rect(lr.x, lr.y + 8f, lr.width, 24f), "US", hudCenter, ally);
-                Shadowed(new Rect(rr.x, rr.y + 8f, rr.width, 24f), "THEM", hudCenter, enemy);
-            }
-            // Alive pips under each box.
-            int allyAlive = 0, allyAll = 0, enemyAlive = 0, enemyAll = 0;
-            if (s.agents != null)
-                foreach (AgentState a in s.agents)
-                {
-                    bool mine = a.team == Game.PlayerTeam;
-                    if (mine) { allyAll++; if (a.alive) allyAlive++; }
-                    else { enemyAll++; if (a.alive) enemyAlive++; }
-                }
-            Pips(new Rect(lr.x, lr.yMax - 16f, lr.width, 8f), allyAlive, allyAll, ally);
-            Pips(new Rect(rr.x, rr.yMax - 16f, rr.width, 8f), enemyAlive, enemyAll, enemy);
-
-            if (Game.InMatch)
-            {
-                int rk = Game.Round * 10 + (Game.RoundType ?? "").Length;
-                if (rk != roundLineKey)
-                {
-                    roundLineKey = rk;
-                    string tl = Weapons.RoundTypeLabel(Game.RoundType);
-                    roundLine = "ROUND " + Game.Round + (tl.Length > 0 ? "  \u00b7  " + tl : "");
-                }
-                Shadowed(new Rect(W / 2f - 150f, clockR.yMax + 4f, 300f, 16f), roundLine, centerSmall, Theme.Ink);
-                if (Game.BuyPhaseActive)
-                {
-                    int left = Mathf.CeilToInt(Game.BuyTimeLeft);
-                    Shadowed(new Rect(W / 2f - 150f, clockR.yMax + 20f, 300f, 18f), Game.BuyOpen ? "BUY PHASE" : "BUY PHASE  \u00b7  B TO BUY  \u00b7  " + Theme.Int(left) + " s", centerSmall, Settings.Accent);
-                }
-            }
-        }
-
-        void Pips(Rect r, int alive, int all, Color c)
-        {
-            if (all <= 0) return;
-            float pw = Mathf.Min(8f, (r.width - 8f) / all - 2f), gap = 2f;
-            float tot = all * pw + (all - 1) * gap;
-            float x0 = r.center.x - tot / 2f;
-            for (int i = 0; i < all; i++)
-                Fill(new Rect(x0 + i * (pw + gap), r.y + 2f, pw, 3f), i < alive ? c : new Color(1f, 1f, 1f, 0.15f));
-        }
-
-        string ammoStr = "", reserveStr = "", weaponLine = "", creditsHud = "", armorStr = "";
-        int ammoKey = int.MinValue, reserveKey = int.MinValue, creditsHudKey = int.MinValue, armorKey = int.MinValue;
-        string weaponLineFor;
-
-        /// <summary>Bottom right: the weapon, its ammo, reload progress and the two slots.</summary>
-        void DrawAmmo(AgentState me, float now)
-        {
-            if (me == null || !me.alive) return;
-            Gunplay g = Game.Gun;
-            WeaponInfo w = g.Weapon;
-            var r = new Rect(W - 336f, H - 118f, 316f, 98f);
-            Round(r, new Color(0.05f, 0.06f, 0.08f, 0.62f));
-            Fill(new Rect(r.x, r.y + 10f, 3f, r.height - 20f), Settings.Accent);
-            int ak = g.Ammo;
-            if (ak != ammoKey)
-            {
-                ammoKey = ak;
-                ammoStr = Theme.Int(ak);
-            }
-            int rk = g.Reserve * 1000 + w.Mag;
-            if (rk != reserveKey)
-            {
-                reserveKey = rk;
-                reserveStr = g.Reserve >= 0 ? "/ " + Theme.Int(g.Reserve) : "/ " + Theme.Int(w.Mag);
-            }
-            if (!ReferenceEquals(weaponLineFor, w.Id))
-            {
-                weaponLineFor = w.Id;
-                weaponLine = w.Name.ToUpperInvariant() + "  \u00b7  " + w.ClassName.ToUpperInvariant();
-            }
-            bool low = g.Ammo <= Mathf.Max(1, w.Mag / 4);
-            Shadowed(new Rect(r.x + 14f, r.y + 6f, r.width - 28f, 16f), weaponLine, capLeft, Color.white);
-            Shadowed(new Rect(r.x + 10f, r.y + 14f, 96f, 52f), ammoStr, ammoBig, low ? Palette.Warn : Color.white);
-            Shadowed(new Rect(r.x + 110f, r.y + 14f, 70f, 46f), reserveStr, ammoSmall, Theme.Muted);
-            Tex(new Rect(r.xMax - 136f, r.y + 22f, 124f, 40f), GunModels.Icon(w.Id), new Color(1f, 1f, 1f, 0.9f));
-            if (g.Reloading(now))
-            {
-                float p = g.ReloadProgress(now);
-                var pr = new Rect(r.x + 14f, r.y + 68f, r.width - 28f, 4f);
-                Fill(pr, new Color(1f, 1f, 1f, 0.12f));
-                Fill(new Rect(pr.x, pr.y, pr.width * p, pr.height), Settings.Accent);
-                Shadowed(new Rect(r.x + 14f, r.y + 72f, r.width - 28f, 18f), "RELOADING", capLeft, Settings.Accent);
-            }
-            else
-            {
-                // Slots: 1 primary, 2 secondary.
-                string prim = g.Primary, sec = g.Secondary;
-                SlotChip(new Rect(r.x + 14f, r.y + 70f, 140f, 20f), "1", prim != null ? Weapons.NameOf(prim) : "none", g.OnPrimary && prim != null, prim != null);
-                SlotChip(new Rect(r.x + 160f, r.y + 70f, 140f, 20f), "2", Weapons.NameOf(sec), !g.OnPrimary || prim == null, true);
-            }
-            if (g.Ammo <= 0 && !g.Reloading(now)) Shadowed(new Rect(W / 2f - 150f, H / 2f + 40f, 300f, 22f), "R  RELOAD", hudCenter, Palette.Warn);
-        }
-
-        void SlotChip(Rect r, string key, string name, bool on, bool has)
-        {
-            Round(r, on ? new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, 0.85f) : new Color(1f, 1f, 1f, has ? 0.08f : 0.03f));
-            Color tc = on ? new Color(0.05f, 0.05f, 0.06f) : has ? Theme.Ink : Theme.Faint;
-            Lbl(new Rect(r.x + 8f, r.y + 1f, 16f, r.height), key, slotKey, tc);
-            Lbl(new Rect(r.x + 24f, r.y + 3f, r.width - 28f, r.height), name.ToUpperInvariant(), cardSmall, tc);
-        }
-
-        /// <summary>Bottom left, above health: credits (a match or a drill with a loadout) and armour.</summary>
-        void DrawCreditsArmor(AgentState me)
-        {
-            int c = Game.Credits;
-            if (c >= 0)
-            {
-                if (c != creditsHudKey)
-                {
-                    creditsHudKey = c;
-                    creditsHud = c.ToString("N0");
-                }
-                var cr = new Rect(20f, H - 158f, 170f, 28f);
-                Round(cr, new Color(0.05f, 0.06f, 0.08f, 0.62f));
-                // A small credit coin: a ring with a bar.
-                Round(new Rect(cr.x + 8f, cr.y + 7f, 14f, 14f), Settings.Accent);
-                Round(new Rect(cr.x + 11f, cr.y + 10f, 8f, 8f), new Color(0.05f, 0.06f, 0.08f, 1f));
-                Fill(new Rect(cr.x + 14f, cr.y + 9f, 2f, 10f), Settings.Accent);
-                Shadowed(new Rect(cr.x + 30f, cr.y + 4f, 130f, 20f), creditsHud, modeStyle, Color.white);
-            }
-            if (me == null || !me.alive) return;
-            int pts = me.ArmorPoints;
-            string kind = me.ArmorKind ?? (Game.InMatch ? Game.OwnedArmor : null);
-            if (pts < 0 && !string.IsNullOrEmpty(kind)) pts = Weapons.ArmorPointsOf(kind);
-            if (pts <= 0) return;
-            if (pts != armorKey)
-            {
-                armorKey = pts;
-                armorStr = Theme.Int(pts);
-            }
-            var ar = new Rect(184f, H - 86f, 64f, 40f);
-            Round(new Rect(ar.x, ar.y + 6f, 18f, 22f), new Color(0.7f, 0.85f, 1f));
-            Round(new Rect(ar.x + 3f, ar.y + 9f, 12f, 16f), new Color(0.05f, 0.06f, 0.08f, 1f));
-            Shadowed(new Rect(ar.x + 24f, ar.y, 50f, 34f), armorStr, hudCenter, new Color(0.75f, 0.88f, 1f));
-            GUI.Label(new Rect(ar.x, ar.y + 30f, 80f, 14f), "ARMOUR", capLeft);
-        }
-
-        /// <summary>Top right: kills as "killer [weapon] (headshot) victim", other events as text.</summary>
-        void DrawKillFeed(float now)
-        {
-            float fy = 14f;
-            for (int i = Game.Feed.Count - 1; i >= 0; i--)
-            {
-                FeedItem item = Game.Feed[i];
-                float age = now - item.At;
-                if (age > 7f) continue;
-                float a = Mathf.Clamp01((7f - age) / 1f);
-                float right = W - 16f;
-                if (item.IsKill)
-                {
-                    if (item.KillerW < 0f) item.KillerW = killName.CalcSize(new GUIContent(item.Killer)).x;
-                    if (item.VictimW < 0f) item.VictimW = killName.CalcSize(new GUIContent(item.Victim)).x;
-                    const float iconW = 58f, headW = 18f;
-                    float total = 12f + item.KillerW + 10f + iconW + (item.Head ? headW + 4f : 0f) + 10f + item.VictimW + 12f;
-                    var r = new Rect(right - total, fy, total, 28f);
-                    bool mine = item.Killer == "You" || item.Victim == "You";
-                    Round(r, mine ? new Color(Settings.Accent.r * 0.3f, Settings.Accent.g * 0.3f, Settings.Accent.b * 0.3f, 0.75f * a) : new Color(0.05f, 0.06f, 0.08f, 0.62f * a));
-                    if (mine) Fill(new Rect(r.x, r.y + 4f, 2f, r.height - 8f), new Color(Settings.Accent.r, Settings.Accent.g, Settings.Accent.b, a));
-                    float x = r.x + 12f;
-                    Shadowed(new Rect(x, r.y, item.KillerW + 4f, r.height), item.Killer, killName, new Color(item.KillerColor.r, item.KillerColor.g, item.KillerColor.b, a));
-                    x += item.KillerW + 10f;
-                    Tex(new Rect(x, r.y + 5f, iconW, 18f), GunModels.Icon(item.Weapon), new Color(1f, 1f, 1f, 0.92f * a));
-                    x += iconW + 4f;
-                    if (item.Head)
-                    {
-                        // A headshot mark: a small ringed dot.
-                        var hr = new Rect(x, r.y + 7f, 14f, 14f);
-                        Round(hr, new Color(1f, 0.85f, 0.3f, a));
-                        Round(new Rect(hr.x + 3f, hr.y + 3f, 8f, 8f), new Color(0.05f, 0.06f, 0.08f, a));
-                        Round(new Rect(hr.x + 5f, hr.y + 5f, 4f, 4f), new Color(1f, 0.85f, 0.3f, a));
-                        x += headW + 4f;
-                    }
-                    x += 6f;
-                    Shadowed(new Rect(x, r.y, item.VictimW + 4f, r.height), item.Victim, killName, new Color(item.VictimColor.r, item.VictimColor.g, item.VictimColor.b, a));
-                }
-                else
-                {
-                    var r = new Rect(W - 516f, fy, 500f, 26f);
-                    if (item.Width < 0f) item.Width = feed.CalcSize(new GUIContent(item.Text)).x;
-                    Round(new Rect(r.xMax - item.Width - 16f, r.y, item.Width + 16f, r.height), new Color(0.05f, 0.06f, 0.08f, 0.62f * a));
-                    Fill(new Rect(r.xMax - 3f, r.y + 4f, 3f, r.height - 8f), new Color(item.Color.r, item.Color.g, item.Color.b, a));
-                    Shadowed(new Rect(r.x, r.y, r.width - 9f, r.height), item.Text, feed, new Color(1f, 1f, 1f, a));
-                }
-                fy += 32f;
-            }
-        }
-
-        void DrawDamageNumbers(Camera cam, float now)
-        {
-            if (!Settings.DamageNumbers) return;
-            List<DamageNumber> list = Game.DamageNumbers;
-            for (int i = 0; i < list.Count; i++)
-            {
-                DamageNumber d = list[i];
-                float age = now - d.At;
-                if (age < 0f || age > 1f) continue;
-                Vector3 sp = cam.WorldToScreenPoint(d.World);
-                if (sp.z <= 0.1f) continue;
-                float x = sp.x / scale, y = (Screen.height - sp.y) / scale - age * 36f;
-                float a = Mathf.Clamp01((1f - age) / 0.35f);
-                float pop = 1f + Mathf.Clamp01(1f - age / 0.12f) * 0.3f;
-                GUIStyle st = d.Head ? dmgHead : dmgStyle;
-                Color c = d.Head ? new Color(1f, 0.85f, 0.3f, a) : new Color(1f, 1f, 1f, a);
-                Shadowed(new Rect(x - 60f * pop, y - 16f * pop, 120f * pop, 32f * pop), d.Text, st, c);
-            }
-        }
-
-        /// <summary>The Longshot's scope: black outside a lens, fine cross hairs, a centre dot.</summary>
-        void DrawScope()
-        {
-            Gunplay g = Game.Gun;
-            if (g == null || !g.Weapon.Scopes || g.Scope01 < 0.9f || Event.current.type != EventType.Repaint) return;
-            float size = H;
-            float x0 = (W - size) / 2f;
-            Fill(new Rect(0f, 0f, x0 + 1f, H), Color.black);
-            Fill(new Rect(x0 + size - 1f, 0f, W - (x0 + size) + 1f, H), Color.black);
-            GUI.DrawTexture(new Rect(x0, 0f, size, size), Textures.ScopeMask(), ScaleMode.StretchToFill, true);
-            Color line = new Color(0f, 0f, 0f, 0.85f);
-            float cx = W / 2f, cy = H / 2f;
-            Fill(new Rect(x0 + size * 0.08f, cy - 0.75f, size * 0.84f, 1.5f), line);
-            Fill(new Rect(cx - 0.75f, size * 0.08f, 1.5f, size * 0.84f), line);
-            Fill(new Rect(x0 + size * 0.08f, cy - 2f, size * 0.25f, 4f), line);
-            Fill(new Rect(x0 + size * 0.67f, cy - 2f, size * 0.25f, 4f), line);
-            Fill(new Rect(cx - 2f, cy + size * 0.17f, 4f, size * 0.25f), line);
-            Round(new Rect(cx - 2.5f, cy - 2.5f, 5f, 5f), new Color(1f, 0.25f, 0.2f, 0.95f));
+            if (GButton(new Rect(area.x + 28f, area.yMax - 74f, 220f, 46f), "Main menu", 2)) Game.Do(Game.BackFromMatchEnd);
+            if (GButton(new Rect(area.xMax - 28f - 260f, area.yMax - 74f, 260f, 46f), "Play again", 1, Idle && Game.V3)) Game.Do(Game.OpenMatchSetup);
         }
     }
 }

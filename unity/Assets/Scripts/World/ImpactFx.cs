@@ -20,6 +20,7 @@ namespace Saltworks
         AudioSource tinkSource;
         AudioClip tink;
         float nextTink;
+        int lastFlashFrame = -1;
 
         void Awake()
         {
@@ -141,6 +142,12 @@ namespace Saltworks
             d.rotation = Quaternion.LookRotation(-n) * Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
             float s = Random.Range(0.07f, 0.11f);
             d.localScale = new Vector3(s, s, s);
+            // One spark light per frame at most (pellets hit together).
+            if (lastFlashFrame != Time.frameCount)
+            {
+                lastFlashFrame = Time.frameCount;
+                FxLights.Flash(p + n * 0.12f, new Color(1f, 0.72f, 0.38f), 1.1f, 2.6f, 0.06f);
+            }
 
             Vector3 refl = Vector3.Reflect(dir.normalized, n);
             int count = Random.Range(5, 10);

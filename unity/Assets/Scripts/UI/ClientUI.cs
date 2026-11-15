@@ -3,13 +3,15 @@
 // window. Buttons queue their action through GameController.Do so a screen
 // change never happens between IMGUI's layout and repaint passes.
 //
-// Look: rounded 9-sliced panels and buttons (Theme), one type scale, the
-// accent colour from the settings, a short fade-and-rise when a screen opens.
+// Look: the broadcast design language in ClientUI.Style.cs (angular glass
+// plates with cut corners, condensed display type, neon lines, glitch
+// transitions, hover ticks), one type scale, the accent colour from the settings.
 // The in-drill HUD uses only GUI.* calls (no GUILayout), so the layout pass is
 // switched off while playing, and its strings are cached so it allocates
 // nothing per frame. The crosshair and minimap are drawn with GL (Draw2D).
 //
-// Split across ClientUI.cs (screens, HUD), ClientUI.Settings.cs and ClientUI.Advice.cs.
+// Split across ClientUI.cs (screens, HUD frame), .Style (design language, sting), .Match (menu, match, buy),
+// .Hud (in-round HUD), .Agents (agent select), .Streamer (overlay, personas, duels), .Settings and .Advice.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -41,7 +43,6 @@ namespace Saltworks
         readonly List<Texture2D> owned = new List<Texture2D>();
 
         static readonly string[] SkillLabels = { "Entry", "Clutch", "Time pressure", "Smoke usage" };
-        static readonly string[] AbilityUpper = { "SMOKE", "FLASH", "DASH", "RECON" };
 
         static readonly string[][] Controls =
         {
@@ -88,7 +89,7 @@ namespace Saltworks
                 alignment = align,
                 wordWrap = true,
                 richText = false,
-                border = Theme.Border(radius),
+                border = Theme.Border(Mathf.Min(radius, 6)),
                 padding = new RectOffset(16, 16, 10, 10),
                 margin = new RectOffset(4, 4, 5, 5),
             };
@@ -119,20 +120,21 @@ namespace Saltworks
             stylesAccent = Settings.AccentColor;
             Color accent = Settings.Accent;
 
-            Texture2D texPanel = Own(Theme.Rounded(Theme.PanelC, Theme.Radius, new Color(1f, 1f, 1f, 0.07f)));
-            Texture2D texCard = Own(Theme.Rounded(Theme.CardC, Theme.Radius, new Color(1f, 1f, 1f, 0.05f)));
-            Texture2D texButton = Own(Theme.Rounded(Theme.ButtonC, 8));
-            Texture2D texButtonHover = Own(Theme.Rounded(Theme.ButtonHoverC, 8, new Color(accent.r, accent.g, accent.b, 0.55f)));
-            Texture2D texButtonDown = Own(Theme.Rounded(Theme.ButtonDownC, 8));
-            Texture2D texChosen = Own(Theme.Rounded(Theme.Darken(accent, 0.55f), 8, accent, 1.5f));
-            Texture2D texPrimary = Own(Theme.Rounded(accent, 8));
-            Texture2D texPrimaryHover = Own(Theme.Rounded(Theme.Lighten(accent, 0.18f), 8));
-            Texture2D texPrimaryDown = Own(Theme.Rounded(Theme.Darken(accent, 0.2f), 8));
-            Texture2D texGhostHover = Own(Theme.Rounded(new Color(1f, 1f, 1f, 0.07f), 8));
-            Texture2D texWhite = Own(Theme.Rounded(Color.white, Theme.Radius));
+            // Angular glass: every plate has its top-left and bottom-right corners cut (Theme.Chamfer).
+            Texture2D texPanel = Own(Theme.Chamfer(Theme.PanelC, Theme.Cut, new Color(1f, 1f, 1f, 0.08f)));
+            Texture2D texCard = Own(Theme.Chamfer(Theme.CardC, Theme.Cut, new Color(1f, 1f, 1f, 0.05f)));
+            Texture2D texButton = Own(Theme.Chamfer(Theme.ButtonC, 6, new Color(accent.r, accent.g, accent.b, 0.18f)));
+            Texture2D texButtonHover = Own(Theme.Chamfer(Theme.ButtonHoverC, 6, new Color(accent.r, accent.g, accent.b, 0.8f), 1.5f));
+            Texture2D texButtonDown = Own(Theme.Chamfer(Theme.ButtonDownC, 6));
+            Texture2D texChosen = Own(Theme.Chamfer(Theme.Darken(accent, 0.6f), 6, accent, 1.5f));
+            Texture2D texPrimary = Own(Theme.Chamfer(accent, 6));
+            Texture2D texPrimaryHover = Own(Theme.Chamfer(Theme.Lighten(accent, 0.2f), 6, Color.white, 1.5f));
+            Texture2D texPrimaryDown = Own(Theme.Chamfer(Theme.Darken(accent, 0.2f), 6));
+            Texture2D texGhostHover = Own(Theme.Chamfer(new Color(1f, 1f, 1f, 0.07f), 6, new Color(accent.r, accent.g, accent.b, 0.5f)));
+            Texture2D texWhite = Own(Theme.Chamfer(Color.white, Theme.Cut));
             Texture2D texTrack = Own(Theme.Rounded(new Color(1f, 1f, 1f, 0.14f), 3));
-            Texture2D texThumb = Own(Theme.Rounded(Color.white, 8, new Color(accent.r, accent.g, accent.b, 1f), 2.5f));
-            Texture2D texThumbHover = Own(Theme.Rounded(Theme.Lighten(accent, 0.6f), 8, accent, 2.5f));
+            Texture2D texThumb = Own(Theme.Chamfer(Color.white, 4, new Color(accent.r, accent.g, accent.b, 1f), 2.5f));
+            Texture2D texThumbHover = Own(Theme.Chamfer(Theme.Lighten(accent, 0.6f), 4, accent, 2.5f));
 
             GUIStyle lbl = GUI.skin.label;
             Color white = Theme.Ink, grey = Theme.Muted;
@@ -165,14 +167,14 @@ namespace Saltworks
             tabOn.padding = tab.padding;
             tabOn.fontStyle = FontStyle.Bold;
 
-            panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(28, 28, 24, 24), border = Theme.Border(Theme.Radius) };
+            panel = new GUIStyle(GUI.skin.box) { padding = new RectOffset(28, 28, 24, 24), border = Theme.Border(Theme.Cut) };
             panel.normal.background = texPanel;
-            card = new GUIStyle(GUI.skin.box) { padding = new RectOffset(16, 16, 14, 14), margin = new RectOffset(0, 0, 6, 6), border = Theme.Border(Theme.Radius) };
+            card = new GUIStyle(GUI.skin.box) { padding = new RectOffset(16, 16, 14, 14), margin = new RectOffset(0, 0, 6, 6), border = Theme.Border(Theme.Cut) };
             card.normal.background = texCard;
-            roundWhite = new GUIStyle { border = Theme.Border(Theme.Radius) };
+            roundWhite = new GUIStyle { border = Theme.Border(Theme.Cut) };
             roundWhite.normal.background = texWhite;
-            roundSmall = new GUIStyle { border = Theme.Border(2) };
-            roundSmall.normal.background = Own(Theme.Rounded(Color.white, 2));
+            roundSmall = new GUIStyle { border = Theme.Border(4) };
+            roundSmall.normal.background = Own(Theme.Chamfer(Color.white, 4));
             badge = Text(lbl, Theme.Caption, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, false);
             badge.padding = new RectOffset(8, 8, 3, 3);
 
@@ -242,9 +244,9 @@ namespace Saltworks
             Color old = GUI.color;
             GUI.color = new Color(c.r, c.g, c.b, c.a * old.a);
             float m = Mathf.Min(r.width, r.height);
-            // Thin shapes use a smaller corner so the 9-slice borders never overlap.
-            if (m >= 20f) roundWhite.Draw(r, false, false, false, false);
-            else if (m >= 8f) roundSmall.Draw(r, false, false, false, false);
+            // Thin shapes use a smaller cut so the 9-slice borders never overlap.
+            if (m >= 26f) roundWhite.Draw(r, false, false, false, false);
+            else if (m >= 12f) roundSmall.Draw(r, false, false, false, false);
             else GUI.DrawTexture(r, Texture2D.whiteTexture);
             GUI.color = old;
         }
@@ -290,7 +292,15 @@ namespace Saltworks
 
         bool Btn(string text, GUIStyle s, params GUILayoutOption[] o)
         {
-            return GUILayout.Button(text, s, o);
+            bool clicked = GUILayout.Button(text, s, o);
+            // Hover ticks and the click sound for the GUILayout screens too.
+            if (Event.current.type == EventType.Repaint && GUI.enabled)
+            {
+                Rect r = GUILayoutUtility.GetLastRect();
+                if (r.Contains(Event.current.mousePosition)) hoverKey = KeyOf(text, r);
+            }
+            if (clicked) PlayUi(UiSound.Confirm, 0.7f);
+            return clicked;
         }
 
         /// <summary>The opening animation of the current screen: 0 just opened, 1 settled.</summary>
@@ -338,8 +348,11 @@ namespace Saltworks
             H = Screen.height / scale;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
             bool layout = useGUILayout;
+            float now = Time.unscaledTime;
+            StingInput(now);
 
             bool menu = Game.Screen != AppScreen.Playing;
+            if (menu && Game.Screen != AppScreen.Buy) Backdrop(Game.Screen == AppScreen.Intro ? 0.5f : 1f);
             GUI.color = new Color(1f, 1f, 1f, menu && !Game.SettingsOpen ? Mathf.Lerp(0.2f, 1f, Intro01) : 1f);
             switch (Game.Screen)
             {
@@ -348,7 +361,8 @@ namespace Saltworks
                 case AppScreen.MatchSetup: DrawMatchSetup(); break;
                 case AppScreen.Buy:
                     DrawBuy(false);
-                    DrawRoundBanners(Time.unscaledTime);
+                    DrawRoundBanners(now);
+                    if (Settings.StreamerMode) DrawStreamerOverlay(now, false);
                     break;
                 case AppScreen.MatchEnd: DrawMatchEnd(); break;
                 case AppScreen.Choose: DrawChoose(); break;
@@ -358,18 +372,25 @@ namespace Saltworks
                 case AppScreen.Intro: DrawIntro(); break;
                 case AppScreen.Playing: DrawHud(layout); break;
                 case AppScreen.Result: DrawResult(); break;
+                case AppScreen.PersonaSelect: DrawPersonaSelect(); break;
+                case AppScreen.DuelSetup: DrawDuelSetup(); break;
+                case AppScreen.DuelEnd: DrawDuelEnd(); break;
             }
             GUI.color = Color.white;
-            if (menu && !Game.SettingsOpen && Game.Screen != AppScreen.Menu && Game.Screen != AppScreen.Buy && Game.Screen != AppScreen.MatchEnd) DrawSettingsButton();
+            bool noSettingsButton = Game.Screen == AppScreen.Menu || Game.Screen == AppScreen.Buy || Game.Screen == AppScreen.MatchEnd || Game.Screen == AppScreen.DuelEnd;
+            if (menu && !Game.SettingsOpen && !noSettingsButton) DrawSettingsButton();
             if (Game.SettingsOpen && layout) DrawSettings();
+            if (menu || Game.SettingsOpen) DrawTransition(now);
             DrawFps();
             DrawToast();
+            DrawSting(now);
+            ScreenSounds();
+            FinishHoverSounds();
         }
 
         void DrawSettingsButton()
         {
-            var r = new Rect(W - 146f, 16f, 130f, 38f);
-            if (GUI.Button(r, "Settings", ghost)) Game.Do(Game.OpenSettings);
+            if (GButton(new Rect(W - 146f, 16f, 130f, 38f), "Settings", 2)) Game.Do(Game.OpenSettings);
         }
 
         string fpsText = "";
@@ -408,9 +429,11 @@ namespace Saltworks
         // ---- (1) connect --------------------------------------------------------------------------
         void DrawConnect()
         {
-            GUILayout.BeginArea(Centered(620f, 360f), panel);
-            GUILayout.Label("SALTWORKS", display);
-            GUILayout.Label("Tactical coaching client. The bridge runs the sim, the bots and the coach; this window is the eyes and hands.", muted);
+            Rect cr = Centered(620f, 380f);
+            Frame(cr, "Bridge link");
+            GUILayout.BeginArea(cr, panel);
+            TitleBlock("Saltworks", "Tactical coaching client");
+            GUILayout.Label("The bridge runs the sim, the bots and the coach; this window is the eyes and hands.", muted);
             GUILayout.Space(Theme.S4);
             BridgeClient c = Game.Client;
             string where = c.Host + ":" + c.Port;
@@ -441,8 +464,10 @@ namespace Saltworks
         // ---- (2) choose a sample player ---------------------------------------------------------------
         void DrawChoose()
         {
-            GUILayout.BeginArea(Centered(680f, 540f), panel);
-            GUILayout.Label("Whose history?", title);
+            Rect pr = Centered(680f, 560f);
+            Frame(pr, "Practice");
+            GUILayout.BeginArea(pr, panel);
+            TitleBlock("Whose history?", "Sample player");
             GUILayout.Label("Pick a sample player. The bridge reads their matches, finds the weakest situation and builds drills from it.", muted);
             GUILayout.Space(Theme.S3);
             GUI.enabled = Idle;
@@ -472,8 +497,10 @@ namespace Saltworks
 
         void DrawMapSelect()
         {
-            GUILayout.BeginArea(Centered(720f, 560f), panel);
-            GUILayout.Label("Choose a map", title);
+            Rect mr = Centered(720f, 580f);
+            Frame(mr, "Map select");
+            GUILayout.BeginArea(mr, panel);
+            TitleBlock("Choose a map", "Practice");
             GUILayout.Label("Drills are built on this map. Rehearsals of your own mistakes need the map the history was played on; on another map the coach generates fresh drills instead.", muted);
             GUILayout.Space(Theme.S3);
             List<MapInfo> maps = Game.Maps;
@@ -510,76 +537,7 @@ namespace Saltworks
             GUILayout.EndArea();
         }
 
-        // ---- (2c) agent select ---------------------------------------------------------------------------
-        void DrawAgentSelect()
-        {
-            bool wide = W > 960f;
-            string mainPick = Game.AdviceMain, practice = Game.AdvicePractice;
-            bool advice = mainPick != null || practice != null;
-            GUILayout.BeginArea(Centered(wide ? 1040f : 660f, wide ? (advice ? 560f : 500f) : H - 50f), panel);
-            GUILayout.Label("Choose your agent", title);
-            GUILayout.Label(advice
-                ? "Your kit for every drill. The coach read your matches: one pick suits how you play, one trains what you avoid. The practice pick is selected."
-                : "Your kit for every drill. A drill that trains a tool you lack lends you an agent who has it.", muted);
-            GUILayout.Space(Theme.S3);
-            string current = Game.PickedAgentId ?? practice ?? Game.RememberedAgent;
-            GUI.enabled = Idle;
-            if (wide) GUILayout.BeginHorizontal();
-            foreach (AgentInfo a in Agents.All)
-            {
-                string id = a.Id;
-                bool sel = id == current;
-                GUILayout.BeginVertical(card, wide ? GUILayout.Width(236f) : GUILayout.ExpandWidth(true));
-                Rect band = GUILayoutUtility.GetRect(10f, 6f, GUILayout.ExpandWidth(true));
-                Round(band, a.Color);
-                GUILayout.Space(Theme.S1);
-                GUILayout.BeginHorizontal(GUILayout.Height(22f));
-                if (id == mainPick) Badge("YOUR MAIN", Theme.Darken(a.Color, 0.35f), Color.white);
-                if (id == practice) Badge("PRACTISE YOUR WEAKNESS", Settings.Accent, new Color(0.06f, 0.06f, 0.07f));
-                GUILayout.FlexibleSpace();
-                GUILayout.EndHorizontal();
-                Color old = GUI.contentColor;
-                GUI.contentColor = a.Color;
-                GUILayout.Label(a.Name + (sel ? "  \u2713" : ""), h2);
-                GUI.contentColor = old;
-                GUILayout.Label((a.Role ?? "").ToUpperInvariant(), capLeft);
-                GUILayout.Space(Theme.S1);
-                GUILayout.BeginHorizontal();
-                foreach (Ability ab in Agents.AllAbilities)
-                {
-                    int n = a.Kit != null ? a.Kit.Get(ab) : 0;
-                    if (n <= 0) continue;
-                    Rect ir = GUILayoutUtility.GetRect(24f, 24f, GUILayout.Width(24f), GUILayout.Height(24f));
-                    Icon(ir, ab, Agents.AbilityColor(ab));
-                    GUILayout.Label(Agents.AbilityName(ab) + " \u00d7" + n, bodyBold, GUILayout.ExpandWidth(false));
-                    GUILayout.Space(Theme.S1);
-                }
-                GUILayout.FlexibleSpace();
-                GUILayout.EndHorizontal();
-                GUILayout.Space(Theme.S1);
-                GUILayout.Label(a.Blurb ?? "", small, GUILayout.MinHeight(36f));
-                GUILayout.Space(Theme.S1);
-                if (Btn("Play " + a.Name, sel ? primary : button, GUILayout.Height(40f))) Game.Do(() => Game.PickAgent(id));
-                GUILayout.EndVertical();
-            }
-            if (wide) GUILayout.EndHorizontal();
-            GUI.enabled = true;
-            GUILayout.FlexibleSpace();
-            Waiting();
-            GUILayout.BeginHorizontal();
-            GUI.enabled = Idle;
-            if (Game.V2 && Btn("Back to maps", button, GUILayout.Height(38f))) Game.Do(Game.OpenMapSelect);
-            if (Btn(Game.PickedAgentId != null ? "Keep " + Agents.NameOf(Game.PickedAgentId) : "Let the drills decide", button, GUILayout.Height(38f))) Game.Do(Game.SkipAgent);
-            GUILayout.FlexibleSpace();
-            if (Game.PickedAgentId == null && practice != null)
-            {
-                string pid = practice;
-                if (Btn("Play " + Agents.NameOf(pid) + "  (recommended practice)", primary, GUILayout.Height(38f), GUILayout.MinWidth(300f))) Game.Do(() => Game.PickAgent(pid));
-            }
-            GUI.enabled = true;
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
-        }
+        // ---- (2c) agent select: ClientUI.Agents.cs ----------------------------------------------------------
 
         static void Icon(Rect r, Ability a, Color c)
         {
@@ -600,9 +558,13 @@ namespace Saltworks
                 return;
             }
             WeaknessReport r = rm.report ?? new WeaknessReport();
-            GUILayout.BeginArea(Centered(1000f, H - 50f), panel);
+            Rect rr = Centered(1000f, H - 70f);
+            Frame(rr, "Coach report");
+            GUILayout.BeginArea(rr, panel);
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Weakness report", title);
+            GUILayout.BeginVertical(GUILayout.Width(420f));
+            TitleBlock("Weakness report");
+            GUILayout.EndVertical();
             GUILayout.FlexibleSpace();
             GUI.enabled = Idle;
             if (Btn("Menu", button, GUILayout.Width(100f))) Game.Do(Game.OpenMenu);
@@ -740,9 +702,11 @@ namespace Saltworks
             if (d == null) return;
             DrillSpec spec = d.spec ?? new DrillSpec();
             Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.35f));
-            GUILayout.BeginArea(Centered(680f, 640f), panel);
+            Rect ir = Centered(680f, 640f);
+            Frame(ir, "Drill briefing");
+            GUILayout.BeginArea(ir, panel);
             introScroll = GUILayout.BeginScrollView(introScroll, false, false);
-            GUILayout.Label(spec.title ?? "Drill", title);
+            TitleBlock(spec.title ?? "Drill", GameController.SkillName(spec.skill));
             GUILayout.Label(GameController.SkillName(spec.skill) + ", difficulty " + spec.difficulty.ToString("0.00"), muted);
             GUILayout.Space(Theme.S3);
             if (!string.IsNullOrEmpty(d.intro)) GUILayout.Label(d.intro, lead);
@@ -836,7 +800,14 @@ namespace Saltworks
             float smoke = Game.World.SmokeDensityAt(cam.transform.position);
             if (smoke > 0f) Fill(new Rect(0f, 0f, W, H), new Color(Palette.Smoke.r * 0.9f, Palette.Smoke.g * 0.9f, Palette.Smoke.b * 0.9f, 0.92f * smoke));
             float dmg = 1f - Mathf.Clamp01((now - Game.DamageAt) / 0.45f);
-            if (dmg > 0f) Fill(new Rect(0f, 0f, W, H), new Color(0.9f, 0.1f, 0.1f, 0.3f * dmg));
+            if (dmg > 0f && repaint)
+            {
+                Color oldD = GUI.color;
+                GUI.color = new Color(0.95f, 0.08f, 0.08f, 0.55f * dmg);
+                GUI.DrawTexture(new Rect(-30f, -30f, W + 60f, H + 60f), UiTex.Vignette, ScaleMode.StretchToFill, true);
+                GUI.color = oldD;
+            }
+            DrawLowHealth(me, now);
             DrawDashStreaks();
 
             if (repaint) DrawBotLabels(cam);
@@ -854,6 +825,7 @@ namespace Saltworks
                 Crosshair.HitMarker(Screen.width / 2f, Screen.height / 2f, hk2, now - Game.HitMarkerAt, Game.HitMarkerHead, Game.HitMarkerKill);
                 Draw2D.End();
             }
+            if (alive && !Game.Paused) DrawDamageIndicators(now);
 
             // Blinded: a white-out over the world and the crosshair that eases out over the blind's remaining time.
             float blind = Game.BlindAmount();
@@ -873,8 +845,8 @@ namespace Saltworks
                 infoX = mr.xMax + 18f;
             }
 
-            // Top centre: score bar and round clock.
-            DrawScoreBar(s, now);
+            // Top centre: the score bug and round clock.
+            DrawScoreBug(s, now);
             if (alive && Game.World.IsRevealed(Game.PlayerId))
             {
                 float pulse = 0.7f + 0.3f * Mathf.Sin(now * 10f);
@@ -903,21 +875,8 @@ namespace Saltworks
             // Top right: kill feed.
             DrawKillFeed(now);
 
-            // Bottom left: health and movement mode.
-            float hp = me != null ? Mathf.Max(0f, me.hp) : 0f;
-            int hk = alive ? Mathf.RoundToInt(hp) : -1;
-            if (hk != hpKey)
-            {
-                hpKey = hk;
-                hpStr = alive ? Theme.Int(hk) : "DOWN";
-            }
-            Color hpc = hp > 50f ? Palette.Ok : hp > 25f ? Palette.Warn : Palette.Bad;
-            Shadowed(new Rect(20f, H - 92f, 160f, 50f), hpStr, hudBig, alive ? Color.white : Palette.Bad);
-            GUI.Label(new Rect(22f, H - 42f, 200f, 18f), "HEALTH", capLeft);
-            Round(new Rect(20f, H - 24f, 220f, 8f), new Color(1f, 1f, 1f, 0.15f));
-            if (hp > 0f) Round(new Rect(20f, H - 24f, Mathf.Max(8f, 220f * Mathf.Clamp01(hp / 100f)), 8f), hpc);
-            DrawMoveMode(new Rect(20f, H - 122f, 240f, 24f), alive);
-            DrawCreditsArmor(me);
+            // Bottom left: health, armour, credits and movement mode.
+            DrawVitals(me, alive, now);
 
             // Bottom centre: abilities.
             DrawAbilityBar(me, now);
@@ -991,6 +950,7 @@ namespace Saltworks
                 Shadowed(new Rect(0f, br.y + 10f, W, 60f), ok ? "DRILL COMPLETE" : "NOT THIS TIME", banner, vc);
                 Shadowed(new Rect(40f, br.y + 70f, W - 80f, 40f), Game.Result.headline ?? "", bannerSub, new Color(1f, 1f, 1f, k));
             }
+            if (Settings.StreamerMode) DrawStreamerOverlay(now, true);
             if (Game.InMatch) DrawRoundBanners(now);
             if (Game.BuyOpen && Game.InMatch) DrawBuy(true);
 
@@ -1064,57 +1024,7 @@ namespace Saltworks
 
         float modeWidth;
 
-        /// <summary>Bottom centre: one slot per ability with its key, a procedural icon and the charges left.</summary>
-        void DrawAbilityBar(AgentState me, float now)
-        {
-            const float size = 58f, gap = 8f;
-            Ability[] all = Agents.AllAbilities;
-            float total = all.Length * size + (all.Length - 1) * gap;
-            float x0 = W / 2f - total / 2f;
-            float y = H - size - 34f;
-            AbilityCharges kit = Game.PlayerKit();
-            for (int i = 0; i < all.Length; i++)
-            {
-                Ability ab = all[i];
-                var r = new Rect(x0 + i * (size + gap), y, size, size);
-                int charges = me != null ? me.Charges(ab) : 0;
-                int max = Mathf.Max(charges, kit != null ? kit.Get(ab) : 0);
-                bool usable = charges > 0 && me != null && me.alive;
-                bool aiming = Game.Aiming.HasValue && Game.Aiming.Value == ab;
-                Color ac = Agents.AbilityColor(ab);
-
-                float denied = 1f - Mathf.Clamp01((now - Game.DeniedAt[(int)ab]) / 0.45f);
-                float used = 1f - Mathf.Clamp01((now - Game.UsedAt[(int)ab]) / 0.35f);
-                Color border = aiming ? ac : denied > 0f ? new Color(Palette.Bad.r, Palette.Bad.g, Palette.Bad.b, denied) : new Color(1f, 1f, 1f, usable ? 0.22f : 0.08f);
-                float bw = aiming ? 3f : 2f;
-                Round(r, border);
-                Round(new Rect(r.x + bw, r.y + bw, r.width - 2f * bw, r.height - 2f * bw), new Color(0.06f, 0.07f, 0.09f, usable ? 0.9f : 0.7f));
-                if (used > 0f) Round(r, new Color(ac.r, ac.g, ac.b, 0.35f * used));
-
-                Color iconC = usable ? ac : new Color(0.55f, 0.56f, 0.6f, max > 0 ? 0.45f : 0.2f);
-                Icon(new Rect(r.x + 11f, r.y + 9f, size - 22f, size - 22f), ab, iconC);
-                Shadowed(new Rect(r.x + 6f, r.y + 4f, 20f, 18f), Agents.KeyLabel(ab), slotKey, usable ? Color.white : new Color(1f, 1f, 1f, 0.4f));
-                if (max > 0) Shadowed(new Rect(r.x, r.y, r.width - 6f, r.height - 3f), Theme.Int(charges), slotCount, usable ? Color.white : new Color(1f, 1f, 1f, 0.45f));
-
-                // Pips: one per charge in the kit, lit while unused.
-                float pw = 8f, pg = 4f;
-                float pipsW = max * pw + Mathf.Max(0, max - 1) * pg;
-                for (int p = 0; p < max; p++)
-                    Round(new Rect(r.center.x - pipsW / 2f + p * (pw + pg), r.yMax + 4f, pw, 4f), p < charges ? ac : new Color(1f, 1f, 1f, 0.15f));
-                GUI.Label(new Rect(r.x - 10f, r.yMax + 10f, r.width + 20f, 16f), AbilityUpper[(int)ab], slotName);
-            }
-            if (Game.Aiming.HasValue)
-            {
-                Ability ab = Game.Aiming.Value;
-                int key = (int)ab * 2 + (Game.AimClamped ? 1 : 0);
-                if (key != hintKey)
-                {
-                    hintKey = key;
-                    hintStr = "Release " + Agents.KeyLabel(ab) + " to throw the " + Agents.AbilityName(ab).ToLowerInvariant() + (Game.AimClamped ? "  (max range)" : "");
-                }
-                Shadowed(new Rect(W / 2f - 250f, y - 28f, 500f, 22f), hintStr, hudCenter, Agents.AbilityColor(ab));
-            }
-        }
+        // The ability bar is in ClientUI.Hud.cs.
 
         void UpdateSpikeText(SimState s)
         {
@@ -1214,8 +1124,10 @@ namespace Saltworks
         void DrawPause()
         {
             Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.55f));
-            GUILayout.BeginArea(Centered(560f, 620f), panel);
-            GUILayout.Label("Paused", title);
+            Rect pr = Centered(560f, 640f);
+            Frame(pr, "Paused");
+            GUILayout.BeginArea(pr, panel);
+            TitleBlock("Paused", "The sim waits for you");
             GUILayout.Label("No inputs are sent while paused, so the sim waits for you.", muted);
             GUILayout.Space(Theme.S3);
             if (Btn("Resume", primary, GUILayout.Height(48f))) Game.Do(Game.Resume);
@@ -1239,12 +1151,14 @@ namespace Saltworks
             if (res == null) return;
             DrillSpec spec = Game.Drill?.spec ?? new DrillSpec();
             Fill(new Rect(0f, 0f, W, H), new Color(0f, 0f, 0f, 0.3f));
-            GUILayout.BeginArea(Centered(780f, H - 60f), panel);
+            Rect vr = Centered(780f, H - 60f);
+            Frame(vr, res.success ? "Drill complete" : "Drill failed");
+            GUILayout.BeginArea(vr, panel);
             resultScroll = GUILayout.BeginScrollView(resultScroll, false, false);
-            Color old = GUI.contentColor;
-            GUI.contentColor = res.success ? Palette.Ok : Palette.Bad;
-            GUILayout.Label(res.success ? "DRILL COMPLETE" : "NOT THIS TIME", verdictTitle);
-            GUI.contentColor = old;
+            Rect vt = GUILayoutUtility.GetRect(10f, 56f, GUILayout.ExpandWidth(true));
+            Condensed(vt, Spaced(res.success ? "Drill complete" : "Not this time"), displayM, res.success ? Palette.Ok : Palette.Bad, 0.84f, true);
+            Rect vl = GUILayoutUtility.GetRect(10f, 8f, GUILayout.ExpandWidth(true));
+            Neon(new Rect(vl.x, vl.y + 2f, 90f, 3f), res.success ? Palette.Ok : Palette.Bad, Intro01);
             if (!string.IsNullOrEmpty(res.headline)) GUILayout.Label(res.headline, h2);
             int ticks = res.result != null ? res.result.ticks : 0;
             GUILayout.Label((spec.title ?? "Drill") + "  (" + GameController.SkillName(spec.skill) + ", " + (ticks / Mathf.Max(1f, Game.Rules.tickRate)).ToString("0.0") + " s)", bodyBold);
