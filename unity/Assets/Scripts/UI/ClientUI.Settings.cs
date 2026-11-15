@@ -193,7 +193,8 @@ namespace Saltworks
             if (streamer != Settings.StreamerMode) Game.Do(() => Game.SetStreamer(streamer));
             if (!Game.V4) Note("Chat comes from a bridge that speaks bots-wire.4; on this bridge the overlay shows your own kill alerts.");
             Section("Bots");
-            int diff = Mathf.RoundToInt(SliderRow("Bot difficulty", Settings.BotDifficulty, 0f, 3f, Settings.DifficultyNames[Mathf.Clamp(Settings.BotDifficulty, 0, 3)], 1f));
+            // Four buttons, not a slider: rounding a dragged slider to a level every frame held it in place.
+            int diff = ChoiceRow("Bot difficulty", Mathf.Clamp(Settings.BotDifficulty, 0, 3), Settings.DifficultyNames, 520f);
             if (diff != Settings.BotDifficulty)
             {
                 Settings.BotDifficulty = Mathf.Clamp(diff, 0, 3);
