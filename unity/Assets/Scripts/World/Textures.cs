@@ -242,13 +242,13 @@ namespace Saltworks
                     int tx = x / tile, ty = y / tile;
                     int lx = x % tile, ly = y % tile;
                     float edge = Mathf.Min(Mathf.Min(lx, tile - 1 - lx), Mathf.Min(ly, tile - 1 - ly));
-                    float tone = 0.86f + (Hash(tx, ty, 31) - 0.5f) * 0.09f;
+                    float tone = 0.56f + (Hash(tx, ty, 31) - 0.5f) * 0.09f; // was 0.86: read as white under the sun
                     float fine = Fbm(u, v, 32, 3, 32);
                     float grime = Fbm(u, v, 4, 4, 33);
                     float c = tone + (fine - 0.5f) * 0.06f;
                     c *= Mathf.Lerp(0.82f, 1.02f, Smooth(0.25f, 0.75f, grime));
                     float height = fine * 0.3f;
-                    float smooth = 0.42f * Mathf.Lerp(0.5f, 1f, grime);
+                    float smooth = 0.2f * Mathf.Lerp(0.5f, 1f, grime); // matte, so the sun does not glare off it
                     // A bevel into the grout: darker near the joint.
                     if (edge < 6f) c *= Mathf.Lerp(0.88f, 1f, edge / 6f);
                     if (edge < 2f)
@@ -451,10 +451,10 @@ namespace Saltworks
                     float edge = Mathf.Min(dSide, Mathf.Min(ly, rh - 1 - ly));
                     float fine = Fbm(u, v, 32, 4, 114);
                     float broad = Fbm(u, v, 4, 3, 115);
-                    float tone = 0.8f + (Hash(stone, row, 116) - 0.5f) * 0.16f;
+                    float tone = 0.55f + (Hash(stone, row, 116) - 0.5f) * 0.16f; // was 0.8: read as white under the sun
                     float c = tone + (fine - 0.5f) * 0.1f + (broad - 0.5f) * 0.08f;
                     float height = fine * 0.4f + Mathf.Clamp01(edge / 8f) * 0.6f;
-                    float smooth = 0.25f + Mathf.Clamp01(edge / 20f) * 0.2f;
+                    float smooth = 0.12f + Mathf.Clamp01(edge / 20f) * 0.1f;
                     if (edge < 6f) c *= Mathf.Lerp(0.82f, 1f, edge / 6f);
                     if (edge < 2f)
                     {

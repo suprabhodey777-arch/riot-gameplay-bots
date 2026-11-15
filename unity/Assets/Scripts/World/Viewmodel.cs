@@ -53,6 +53,8 @@ namespace Saltworks
         AudioClip magOut, magIn, slideClip, drawClip;
 
         float kickZ, kickZVel, kickPitch, kickPitchVel;
+        /// <summary>Uniform scale of every first-person gun and its hands.</summary>
+        const float ViewmodelScale = 0.62f;
         Vector2 sway;
         float bobPhase;
         float cycleAt = -10f;
@@ -286,6 +288,8 @@ namespace Saltworks
             float side = Settings.ViewmodelLeft ? -1f : 1f;
             Vector3 user = new Vector3(Settings.ViewmodelX * 0.04f, Settings.ViewmodelY * 0.04f, Settings.ViewmodelZ * 0.04f);
             Vector3 hold = d.Hold + user;
+            // Sit lower and further right than the model's own hold, so the gun stays in the lower-right corner.
+            hold += new Vector3(0.035f, -0.03f, 0f);
             hold.x *= side;
             Vector3 pos = hold + new Vector3(bobX + sway.x, bobY + breathe + sway.y + (crouch ? -0.01f : 0f), -kickZ);
             pos += new Vector3(-0.02f * side, 0.012f, 0f) * tilt;
@@ -293,7 +297,8 @@ namespace Saltworks
             pos = Vector3.Lerp(pos, new Vector3(0f, -0.07f, 0.16f), scope * 0.85f);
             anchor.localPosition = pos;
             anchor.localRotation = Quaternion.Euler(-kickPitch - 8f * tilt + 38f * away + sway.y * 120f, -1.5f * side + sway.x * -120f, (22f * tilt - 18f * away) * side);
-            anchor.localScale = new Vector3(side, 1f, 1f);
+            // At full size the guns filled a quarter of the screen; 62% is a normal first-person size.
+            anchor.localScale = new Vector3(side, 1f, 1f) * ViewmodelScale;
             bool showGun = visible && scope < 0.9f;
             if (m.Root.activeSelf != showGun) m.Root.SetActive(showGun);
 

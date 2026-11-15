@@ -232,7 +232,7 @@ namespace Saltworks
                 BuildShafts(map);
                 BuildPuddles(map);
                 BuildSigns(map, font, textMat);
-                BuildHaze(map);
+                // Heat haze removed: its screen distortion made the view ripple and hurt aiming.
                 BuildDust();
             }
             catch (System.Exception ex)
@@ -684,7 +684,8 @@ namespace Saltworks
         public void Set(float a)
         {
             amount = Mathf.Clamp01(a);
-            bool on = mat != null && amount > 0.01f && Gfx.Preset >= 1;
+            // Off for good: the colour fringe smeared the screen on every hit, which hurt aiming.
+            bool on = false;
             if (enabled != on) enabled = on;
         }
 

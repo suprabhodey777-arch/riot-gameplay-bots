@@ -58,8 +58,9 @@ namespace Saltworks
                 phaseStr = Spaced((s.phase ?? "").Replace('_', ' '));
             }
             Color tc = post || t < 10f ? new Color(1f, 0.45f + 0.2f * Mathf.Sin(now * 10f), 0.45f) : Color.white;
-            Condensed(new Rect(clockR.x, clockR.y + 2f, clockR.width, 36f), clockStr, bugTimer, tc, 0.88f, true);
-            Lbl(new Rect(clockR.x, clockR.y + 36f, clockR.width, 12f), post ? "S P I K E   P L A N T E D" : phaseStr, bugSmall, Theme.Muted);
+            Condensed(new Rect(clockR.x, clockR.y + 1f, clockR.width, 36f), clockStr, bugTimer, tc, 0.88f, true);
+            // The phase line sits wholly inside the box, above the team bar (bugSmall has no padding).
+            FitCondensed(new Rect(clockR.x + 4f, clockR.y + 35f, clockR.width - 8f, 14f), post ? "S P I K E   P L A N T E D" : phaseStr, bugSmall, Theme.Muted, 1f);
 
             ScoreInfo sc = Game.InDuel ? Game.DuelScore : Game.Score;
             int key = sc == null ? -1 : sc.player * 100 + sc.enemy;
@@ -82,8 +83,9 @@ namespace Saltworks
             }
             else
             {
-                Lbl(new Rect(lr.x, lr.y + 8f, lr.width, 24f), "U S", hudCenter, ally);
-                Lbl(new Rect(rr.x, rr.y + 8f, rr.width, 24f), "T H E M", hudCenter, enemy);
+                // Inside the plates, clear of the team bars; squeezed a little if the spaced name is wider.
+                FitCondensed(new Rect(lr.x + 8f, lr.y + 6f, lr.width - 14f, 28f), "U S", hudCenter, ally, 1f);
+                FitCondensed(new Rect(rr.x + 6f, rr.y + 6f, rr.width - 14f, 28f), "T H E M", hudCenter, enemy, 1f);
             }
             int allyAlive = 0, allyAll = 0, enemyAlive = 0, enemyAll = 0;
             if (s.agents != null)
@@ -174,7 +176,8 @@ namespace Saltworks
             Lbl(new Rect(panel.x + 118f, panel.y + 60f, 120f, 14f), "A R M O U R", tinyCaps, Theme.Muted);
 
             int c = Game.Credits;
-            if (c >= 0)
+            // Credits only mean something in a match; in practice the chip read as an unexplained "0".
+            if (c >= 0 && Game.InMatch)
             {
                 if (c != creditsHudKey)
                 {
@@ -275,7 +278,8 @@ namespace Saltworks
                         float pipsW = max * pw + Mathf.Max(0, max - 1) * pg;
                         for (int p = 0; p < max; p++)
                             Slash(new Rect(r.center.x - pipsW / 2f + p * (pw + pg), r.yMax + 5f, pw, 4f), p < charges ? ac : new Color(1f, 1f, 1f, 0.15f));
-                        Lbl(new Rect(r.x - 12f, r.yMax + 12f, r.width + 24f, 14f), AbilitySpaced[(int)ab], bugSmall, usable ? Theme.Muted : Theme.Faint);
+                        // Shadowed and brighter: grey on a sunlit floor lost whole letters ("SM KE").
+                        Shadowed(new Rect(r.x - 6f, r.yMax + 12f, r.width + 12f, 14f), AbilitySpaced[(int)ab], bugSmall, usable ? new Color(0.92f, 0.93f, 0.96f) : new Color(0.7f, 0.72f, 0.76f));
                     }
                 }
             }
@@ -364,7 +368,8 @@ namespace Saltworks
             }
             bool low = g.Ammo <= Mathf.Max(1, w.Mag / 4);
             Condensed(new Rect(r.x + 14f, r.y + 6f, 150f, 26f), weaponNameStr, weaponName, Color.white, 0.86f, true);
-            Lbl(new Rect(r.x + 14f, r.y + 30f, 160f, 12f), weaponClassStr, tinyCaps, Theme.Muted);
+            // Below the name's box (it ended at y + 32 and clipped the class label).
+            Lbl(new Rect(r.x + 14f, r.y + 34f, 160f, 12f), weaponClassStr, tinyCaps, Theme.Muted);
             Tex(new Rect(r.x + 12f, r.y + 42f, 120f, 30f), GunModels.Icon(w.Id), new Color(1f, 1f, 1f, 0.9f));
             Color ammoC = low ? new Color(Palette.Warn.r, Palette.Warn.g, Palette.Warn.b, 0.75f + 0.25f * Mathf.Sin(now * 8f)) : Color.white;
             Condensed(new Rect(r.xMax - 210f, r.y + 2f, 130f, 62f), ammoStr, ammoBig, ammoC, 0.86f, true);

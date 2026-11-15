@@ -474,9 +474,11 @@ namespace Saltworks
             UpdateSpikeText(s);
             if (spikeStr.Length > 0)
             {
-                var sr = new Rect(W - 440f, H - 156f, 420f, 30f);
-                Shadowed(sr, spikeStr, spikeStyle, s.spike != null && s.spike.status == "planted" ? new Color(1f, 0.6f, 0.6f) : Color.white);
-                Lbl(new Rect(sr.x, sr.y - 18f, sr.width, 18f), "S P I K E", capRight, Theme.Muted);
+                var sr = new Rect(W - 440f, H - 160f, 420f, 30f);
+                // On a dark plate: dim text straight on a sunlit floor could not be read.
+                Plate(new Rect(sr.x + 100f, sr.y - 22f, sr.width - 100f, sr.height + 26f), new Color(0.02f, 0.025f, 0.04f, 0.78f));
+                Shadowed(new Rect(sr.x, sr.y, sr.width - 12f, sr.height), spikeStr, spikeStyle, s.spike != null && s.spike.status == "planted" ? new Color(1f, 0.6f, 0.6f) : Color.white);
+                Lbl(new Rect(sr.x, sr.y - 18f, sr.width - 12f, 18f), "S P I K E", capRight, new Color(0.75f, 0.77f, 0.82f));
             }
 
             // Centre: plant / defuse progress and hints.

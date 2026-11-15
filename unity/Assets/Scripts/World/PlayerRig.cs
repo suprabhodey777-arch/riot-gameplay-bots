@@ -124,8 +124,8 @@ namespace Saltworks
             float speed = dt > 0f ? (new Vector3(ground.x - lastGround.x, 0f, ground.z - lastGround.z)).magnitude / dt : 0f;
             lastGround = ground;
             float moving = Mathf.Clamp01(speed / 6f);
-            bobPhase += dt * Mathf.Lerp(0f, 11f, moving);
-            float bob = Mathf.Sin(bobPhase) * 0.025f * moving;
+            // No camera bob: the eye stays level while moving, so the world never wobbles under the crosshair.
+            float bob = 0f;
 
             Vector2 kick = Gun != null ? Gun.Kick : Vector2.zero;
             float y = Mathf.Lerp(eye + bob, 0.35f, deathLerp);
@@ -268,7 +268,7 @@ namespace Saltworks
             else outcome.TargetId = NearestAimed(world, myTeam, new Ray(origin, ShotDir(Vector2.zero)));
 
             recoil = Mathf.Min(1.5f, recoil + (w.Auto ? 0.45f : 0.8f));
-            shake = Mathf.Min(2f, shake + (w.Class == WeaponClass.Sniper || w.Class == WeaponClass.Shotgun ? 1.2f : 0.25f));
+            // No screen shake on firing: recoil (Gun.Kick) already moves the aim, and shake on top made the view wobble.
             if (Weapon != null) Weapon.OnShot(w);
             return outcome;
         }

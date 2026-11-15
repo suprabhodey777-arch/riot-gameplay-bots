@@ -13,7 +13,7 @@ namespace Saltworks
     public partial class ClientUI
     {
         GUIStyle hero, kicker, menuTitle, menuDesc, cardTitle, cardSmall, priceStyle, statLabel, bigNumRight, timerStyle,
-            roundChip, ammoBig, ammoSmall, killName, dmgStyle, dmgHead, scoreNum, centerSmall, centerBody, rightSmall, menuNum;
+            roundChip, ammoBig, ammoSmall, killName, dmgStyle, dmgHead, scoreNum, centerSmall, centerBody, rightSmall, menuNum, menuDescLine;
         Texture2D fadeLeft, fadeDown;
 
         void EnsureMatchStyles()
@@ -24,6 +24,8 @@ namespace Saltworks
             kicker = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             menuTitle = Text(lbl, 28, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             menuDesc = Text(lbl, 14, FontStyle.Normal, Color.white, TextAnchor.UpperLeft, true);
+            // A menu card's one-line subtitle: never wraps (a wrapped second line would fall out of the card).
+            menuDescLine = Text(lbl, 14, FontStyle.Normal, Color.white, TextAnchor.MiddleLeft, false);
             menuNum = Text(lbl, 14, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft, false);
             cardTitle = Text(lbl, 17, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
             cardSmall = Text(lbl, 12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft, false);
@@ -54,7 +56,10 @@ namespace Saltworks
             }
         }
 
-        /// <summary>A black fade: opaque at the start (left or top) to clear, eased.</summary>
+        /// <summary>
+        /// A black fade, eased: horizontal is opaque at the left and clear at the right; vertical is clear at the
+        /// top and opaque at the bottom (texture row 0 is the bottom of the rect GUI.DrawTexture fills).
+        /// </summary>
         static Texture2D Gradient(int w, int h, bool horizontal)
         {
             var t = new Texture2D(w, h, TextureFormat.RGBA32, false) { hideFlags = HideFlags.DontSave, wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
@@ -62,7 +67,7 @@ namespace Saltworks
             for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
-                float k = horizontal ? x / (float)(w - 1) : 1f - y / (float)(h - 1);
+                float k = horizontal ? x / (float)(w - 1) : y / (float)(h - 1);
                 float a = (1f - k);
                 a = a * a * (3f - 2f * a);
                 px[y * w + x] = new Color32(4, 6, 12, (byte)Mathf.RoundToInt(a * 245f));
@@ -121,14 +126,22 @@ namespace Saltworks
         static readonly string[] MenuTitles = { "Play match", "Practice", "Rehearse", "Pro personas", "Settings" };
         static readonly string[] MenuNums = { "01", "02", "03", "04", "05" };
         static readonly string[] MenuIcons = { "play", "target", "rewind", "persona", "gear" };
+        // One line each: the card is sized to the widest of them (DrawMenu).
         static readonly string[] MenuDescs =
         {
             "You and four bot teammates against five bots. Buy rounds, first to 7.",
-            "The coach reads a player's matches and builds drills from the weakest moment.",
-            "Replay the exact moments a sample player lost: same positions, same clock.",
-            "Duel or face original pro playstyles: the flick duelist, the anchor, the lurker.",
-            "Mouse, crosshair, graphics, the map, streamer mode, colours and persona names.",
+            "The coach reads a player's matches and drills their weakest moment.",
+            "Replay the exact moments a sample player lost, on the same clock.",
+            "Duel original pro playstyles: the flick duelist, the anchor, the lurker.",
+            "Mouse, crosshair, graphics, map, streamer mode, colours and names.",
         };
+
+        string MenuDesc(int i)
+        {
+            return i == 0 && !Game.V3 ? "Needs a bridge that speaks bots-wire.3 (weapons and economy)."
+                : i == 3 && !Game.V4 ? "Needs a bridge that speaks bots-wire.4 to play the personas."
+                : MenuDescs[i];
+        }
 
         void DrawMenu()
         {
@@ -154,7 +167,11 @@ namespace Saltworks
             // The modes: one card each, staggered in.
             float by = ry + 80f;
             bool idle = Idle;
-            const float slatW = 560f, slatH = 76f, slatGap = 10f;
+            // Every subtitle stays on one line: the cards are as wide as the widest one needs (desc from x+72 to xMax-48).
+            float descMax = 0f;
+            for (int i = 0; i < MenuTitles.Length; i++) descMax = Mathf.Max(descMax, TextW(MenuDesc(i), menuDescLine));
+            float slatW = Mathf.Clamp(descMax + 72f + 48f + 8f, 560f, Mathf.Min(720f, W - x - 460f));
+            const float slatH = 76f, slatGap = 10f;
             for (int i = 0; i < MenuTitles.Length; i++)
             {
                 float ik = Theme.Ease((now - screenAt - 0.06f - i * 0.04f) / 0.3f);
@@ -174,10 +191,13 @@ namespace Saltworks
                 Tex(new Rect(b.x + 22f, b.y + 22f, 32f, 32f), UiTex.Glyph(MenuIcons[i]), enabled ? Color.Lerp(Theme.Muted, ac, 0.3f + 0.7f * h) : Theme.Faint);
                 Lbl(new Rect(b.x + 72f, b.y + 8f, 30f, 30f), MenuNums[i], menuNum, enabled ? ac : Theme.Faint);
                 Condensed(new Rect(b.x + 102f, b.y + 6f, b.width - 160f, 34f), Upper(MenuTitles[i]), menuTitle, tc, 0.86f);
-                string desc = i == 0 && !Game.V3 ? "Needs a bridge that speaks bots-wire.3 (weapons and economy)."
-                    : i == 3 && !Game.V4 ? "Needs a bridge that speaks bots-wire.4. The screens open; the bridge plays the personas."
-                    : MenuDescs[i];
-                Lbl(new Rect(b.x + 72f, b.y + 40f, b.width - 120f, 34f), desc, menuDesc, enabled ? Theme.Muted : Theme.Faint);
+                string desc = MenuDesc(i);
+                var dr = new Rect(b.x + 72f, b.y + 42f, b.width - 120f, 24f);
+                Color dc = enabled ? Theme.Muted : Theme.Faint;
+                float dw = TextW(desc, menuDescLine);
+                // A subtitle still too wide for the narrowest window is condensed rather than cut.
+                if (dw > dr.width) Condensed(dr, desc, menuDescLine, dc, Mathf.Max(0.75f, dr.width / dw));
+                else Lbl(dr, desc, menuDescLine, dc);
                 Lbl(new Rect(b.xMax - 40f, b.y, 28f, b.height), "\u203a", menuTitle, new Color(ac.r, ac.g, ac.b, 0.25f + 0.75f * h));
                 GUI.color = oldC;
                 if (CardHit(r, key, enabled))

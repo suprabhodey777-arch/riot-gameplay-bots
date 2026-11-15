@@ -15,11 +15,11 @@ namespace Saltworks
         public static readonly Color Floor = new Color(0.86f, 0.84f, 0.80f);
         public static readonly Color Ground = new Color(0.72f, 0.70f, 0.66f);
         public static readonly Color Wall = new Color(0.93f, 0.90f, 0.85f);
-        public static readonly Color WallTop = new Color(0.97f, 0.95f, 0.92f);
+        public static readonly Color WallTop = new Color(0.64f, 0.62f, 0.59f); // was near-white: clipped to white in sun
         public static readonly Color Outer = new Color(0.78f, 0.80f, 0.84f);
         public static readonly Color Pillar = new Color(0.84f, 0.85f, 0.92f);
-        public static readonly Color Crate = new Color(0.93f, 0.79f, 0.62f);
-        public static readonly Color CrateTop = new Color(0.97f, 0.87f, 0.72f);
+        public static readonly Color Crate = new Color(0.66f, 0.54f, 0.41f);
+        public static readonly Color CrateTop = new Color(0.6f, 0.5f, 0.38f); // was near-white: clipped to white in sun
         public static readonly Color Smoke = new Color(0.86f, 0.84f, 0.93f);
         public static readonly Color Spike = new Color(1.00f, 0.25f, 0.35f);
         public static readonly Color Gun = new Color(0.22f, 0.24f, 0.29f);
