@@ -199,7 +199,7 @@ namespace Saltworks
                 Settings.BotDifficulty = Mathf.Clamp(diff, 0, 3);
                 Game.Do(Game.SendDifficulty);
             }
-            Note("How well bots aim. Every level misses more after a fast turn, against a strafing target, at long range and in a long spray. Applies to the next drill, match or duel.");
+            Note("How well bots aim and how fast they react. Easy bots react twice as slowly and land far fewer shots; every level misses more after a fast turn, against a strafing target, at range and in a long spray. Applies to the next drill, match or duel.");
             Section("Movement");
             Settings.ToggleCrouch = ToggleRow("Toggle crouch", Settings.ToggleCrouch, "On: Ctrl switches crouch on and off. Off: hold.");
             Settings.ToggleWalk = ToggleRow("Toggle walk", Settings.ToggleWalk, "On: Shift switches walk on and off. Off: hold.");
