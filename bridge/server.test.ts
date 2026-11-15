@@ -2,7 +2,7 @@ import { connect, type Socket, type Server } from 'node:net';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBridgeServer, RULES } from './server.ts';
+import { ammoInHand, createBridgeServer, RULES } from './server.ts';
 import { PROTOCOL, type ClientMessage, type ServerMessage } from './protocol.ts';
 import { idleInput, startDrill } from '../session/drill-run.ts';
 import { CoachingSession } from '../session/session.ts';
@@ -59,13 +59,13 @@ describe('Unity bridge TCP', () => {
     c.send({ type: 'next_drill' });
     const drill = await c.next('drill');
     const reference = startDrill(drill.spec);
-    expect(drill.state).toEqual(reference.state());
+    expect(drill.state).toEqual(ammoInHand({ state: reference.state() }).state);
     let done = false;
     for (let tick = 1; !done && tick <= reference.maxTicks; tick++) {
       c.send({ type: 'input', input: idleInput('ignored') });
       const step = await c.next('step');
       const expected = reference.step(idleInput(drill.playerId));
-      expect(step.state).toEqual(expected.state);
+      expect(step.state).toEqual(ammoInHand({ state: expected.state }).state);
       expect(step.events).toEqual(expected.events);
       expect(step.thoughts).toEqual(Object.fromEntries(expected.trace.map((t) => [t.botId, t.node])));
       expect(step.state.tick).toBe(tick);

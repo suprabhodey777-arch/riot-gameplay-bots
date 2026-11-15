@@ -1,6 +1,6 @@
 import type { Socket } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { serveBridgeConnection } from './server.ts';
+import { ammoInHand, serveBridgeConnection } from './server.ts';
 import { PROTOCOL, type ClientMessage, type ServerMessage } from './protocol.ts';
 import { idleInput, startDrill } from '../session/drill-run.ts';
 import { sampleHistory } from '../analyzer/synthetic.ts';
@@ -52,7 +52,7 @@ describe('Unity bridge connection handler (in memory)', () => {
       c.send({ type: 'input', input: idleInput('ignored') });
       const step = await c.next('step');
       const expected = reference.step(idleInput(drill.playerId));
-      expect(step.state).toEqual(expected.state);
+      expect(step.state).toEqual(ammoInHand({ state: expected.state }).state);
       expect(step.events).toEqual(expected.events);
       expect(step.thoughts).toEqual(Object.fromEntries(expected.trace.map((t) => [t.botId, t.node])));
       done = step.done;

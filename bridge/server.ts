@@ -63,6 +63,25 @@ function skill(v: unknown): asserts v is Skill {
   if (!SKILLS.includes(v as Skill)) throw new Error('Unknown skill');
 }
 
+/**
+ * The wire sends each agent's ammo and reserve as the count for the weapon in hand. The sim keeps a
+ * count per weapon, but the 3D client built before 2026-11-14 reads one number and failed to parse
+ * every step otherwise (practice drills froze). Newer clients accept either shape.
+ */
+export function ammoInHand<T>(msg: T): T {
+  const m = msg as unknown as { state?: { agents?: Record<string, unknown>[] } };
+  if (!m.state?.agents) return msg;
+  const agents = m.state.agents.map((a) => {
+    const ammo = a.ammo as Record<string, number> | number | undefined;
+    const reserve = a.reserve as Record<string, number> | number | undefined;
+    if (typeof ammo !== 'object' && typeof reserve !== 'object') return a;
+    const weapon = (a.slot === 'secondary' ? a.secondary : (a.primary ?? a.secondary)) as string;
+    const pick = (v: Record<string, number> | number | undefined): number | undefined => (typeof v === 'object' && v !== null ? (v[weapon] ?? 0) : v);
+    return { ...a, ammo: pick(ammo), reserve: pick(reserve) };
+  });
+  return { ...(msg as object), state: { ...m.state, agents } } as T;
+}
+
 /** Create without listening, so callers can bind port 0 and close it in tests. */
 export function createBridgeServer(options: SessionOptions = {}): Server {
   return createServer((socket) => serveBridgeConnection(socket, options));
@@ -94,7 +113,7 @@ export function serveBridgeConnection(socket: Socket, options: SessionOptions = 
     send({ type: 'step', state, events: [], thoughts: {}, done: false });
   };
   const scheduleBuy = () => { clearBuyTimer(); buyTimer = setTimeout(startMatchRound, 20000); buyTimer.unref(); };
-  const send = (msg: ServerMessage): void => { if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(weaponLegacy(msg)) : protocol === 'bots-wire.2' ? weaponLegacy(msg) : msg) + '\n'); };
+  const send = (msg: ServerMessage): void => { if (!socket.destroyed && socket.writable) socket.write(JSON.stringify(protocol === 'bots-wire.1' ? legacyMessage(weaponLegacy(msg)) : protocol === 'bots-wire.2' ? weaponLegacy(msg) : ammoInHand(msg)) + '\n'); };
   const report = (): void => {
     const staircases = Object.fromEntries(SKILLS.map((s) => [s, { difficulty: session.staircase(s).difficulty }])) as Record<Skill, { difficulty: number }>;
     send({ type: 'report', report: session.report, rehearsals: session.rehearsals().map((d, index) => ({ index, title: d.title, brief: d.goal, skill: d.skill })), staircases, played: played.length, agentAdvice: recommendAgents([...logs, ...played], session.report) });
