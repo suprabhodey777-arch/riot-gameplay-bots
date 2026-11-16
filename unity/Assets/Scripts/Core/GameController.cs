@@ -251,6 +251,7 @@ namespace Saltworks
         {
             ConnectNow();
             StartTourIfAsked();
+            StartDemoIfAsked();
         }
 
         void OnDestroy()

@@ -7,7 +7,9 @@
     "test": "vitest run",
     "play": "vite play --port 5181 --strictPort",
     "play:build": "vite build play",
-    "bridge": "node bridge/server.ts"
+    "bridge": "node bridge/server.ts",
+    "test:quick": "vitest run --exclude 'analyzer/rehearse.test.ts' --exclude 'bot/persona.test.ts' --exclude 'bridge/**' --exclude 'session/session.test.ts' --exclude 'session/match-game.test.ts' --exclude 'evidence/**' --exclude 'coach/live.test.ts' --exclude 'node_modules/**'",
+    "evidence:quick": "node evidence/run.ts --n 30"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

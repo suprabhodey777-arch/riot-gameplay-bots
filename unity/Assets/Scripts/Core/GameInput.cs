@@ -73,6 +73,9 @@ namespace Saltworks
 
         /// <summary>Look movement the tour adds each frame (degrees at sensitivity 1).</summary>
         public static Vector2 SyntheticLook;
+        /// <summary>Demo recording: a key press for one frame, and the fire button held.</summary>
+        public static System.Func<GameKey, bool> SyntheticPressed;
+        public static bool SyntheticFire;
 
         static bool Synthetic(GameKey k)
         {
@@ -123,6 +126,7 @@ namespace Saltworks
 
         public static bool Pressed(GameKey k)
         {
+            if (SyntheticPressed != null && SyntheticPressed(k)) return true;
             foreach (Key key in Keys[(int)k])
             {
                 KeyControl c = Control(key);
@@ -132,7 +136,7 @@ namespace Saltworks
         }
 
         public static bool JumpPressed => Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
-        public static bool FireHeld => Mouse.current != null && Mouse.current.leftButton.isPressed;
+        public static bool FireHeld => SyntheticFire || (Mouse.current != null && Mouse.current.leftButton.isPressed);
         public static bool AimHeld => Mouse.current != null && Mouse.current.rightButton.isPressed;
         public static bool AimPressed => Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame;
 
@@ -189,13 +193,14 @@ namespace Saltworks
 
         public static bool Pressed(GameKey k)
         {
+            if (SyntheticPressed != null && SyntheticPressed(k)) return true;
             foreach (KeyCode key in Keys[(int)k])
                 if (Input.GetKeyDown(key)) return true;
             return false;
         }
 
         public static bool JumpPressed => Input.GetKeyDown(KeyCode.Space);
-        public static bool FireHeld => Input.GetMouseButton(0);
+        public static bool FireHeld => SyntheticFire || Input.GetMouseButton(0);
         public static bool AimHeld => Input.GetMouseButton(1);
         public static bool AimPressed => Input.GetMouseButtonDown(1);
         public static float Scroll => Input.mouseScrollDelta.y;
